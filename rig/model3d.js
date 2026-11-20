@@ -252,7 +252,7 @@ function makeRig(cfg, opts) {
   return rig;
 }
 M3.rigs = {};
-const RIG_CAP = 24; let rigClock = 0, visRig = null;
+const RIG_CAP = 64; let rigClock = 0, visRig = null;      // cap: 5 players + 20 varied enemies + their Armor Break versions fit
 function dropRig(key) {                                                 // geometry is per rig; materials are shared through MAT and stay
   const r = M3.rigs[key]; if (!r) return; HT.scene.remove(r.g); if (visRig === r) visRig = null;
   r.g.traverse(o => { if (o.geometry && o.geometry.dispose) o.geometry.dispose(); }); delete M3.rigs[key];
@@ -289,6 +289,20 @@ M3.getRig = function (role, f) {
     r.key = key;
   }
   return r;
+};
+/* enemy looks: random per enemy, from pools set by rank (armor class). The sim hands each enemy a lookSeed, so every client draws the same man. */
+const RANK_POOLS = {
+  leather: { heads: ['hood'], bodies: ['quilted', 'jack'], metals: ['steel'] },
+  mail:    { heads: ['helm', 'cone', 'sallet', 'kettlehat'], bodies: ['mail', 'brigandine', 'lamellar'], metals: ['steel', 'black'] },
+  plate:   { heads: ['bascinet', 'sallet', 'greathelm', 'beaked', 'domed'], bodies: ['plate', 'komtur', 'griffon', 'stag', 'sun'], metals: ['steel', 'silver', 'black'] },
+  special: { heads: ['crested', 'spire', 'blackhelm', 'greathelm', 'domed'], bodies: ['spire', 'warlord', 'deco', 'plate'], metals: ['gilded', 'black', 'silver', 'bronze'] }
+};
+M3.rankPools = RANK_POOLS;
+M3.enemyLook = function (tier, seed) {
+  const pool = RANK_POOLS[tier] || RANK_POOLS.leather; let a = (seed >>> 0) || 1;
+  const pick = list => { a = (Math.imul(a, 1664525) + 1013904223) >>> 0; return list[(a >>> 8) % list.length]; };
+  const livs = Object.keys(LIVERIES);
+  return { head: pick(pool.heads), body: pick(pool.bodies), metal: pick(pool.metals), liv: pick(livs) };
 };
 M3.parts = { heads: Object.keys(HEADS).map(id => [id, HEADS[id].label]), bodies: Object.keys(BODIES).map(id => [id, BODIES[id].label]), liveries: Object.keys(LIVERIES).map(id => [id, LIVERIES[id].label]), metals: Object.keys(METALS).map(id => [id, METALS[id].label]), presets: Object.keys(ARMOR_PRESETS).map(id => [id, ARMOR_PRESETS[id].label]) };
 

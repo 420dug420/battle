@@ -26,21 +26,37 @@ export const CFG = {
     plate:   { label: 'Plate',           pct: 0.50, dur: 12 },
     special: { label: 'Special unit',    pct: 0.75, dur: 18 },
   },
-  weapons: {                              // dmg and intervals are PLACEHOLDERS
-    longsword:  { label: 'Longsword',  dmg: 3, reach: 44, baseInterval: 0.80, twoHanded: false },
-    greatsword: { label: 'Two-hander', dmg: 4, reach: 58, baseInterval: 1.35, twoHanded: true  },
-    axe:        { label: 'Hand axe',   dmg: 4, reach: 38, baseInterval: 0.95, twoHanded: false, kind: 'axe'   },
-    mace:       { label: 'Mace',       dmg: 4, reach: 36, baseInterval: 1.00, twoHanded: false, kind: 'mace'  },
-    spear:      { label: 'Spear',      dmg: 3, reach: 72, baseInterval: 1.10, twoHanded: true,  kind: 'spear' },
+  // Weapon classes carry the stats; a weapon is a look plus its class. Every weapon of a class fights the same
+  // unless it lists its own override (any class field). posture picks the stance and animation set.
+  // speedStat: the attribute that shortens the swing (dexStep per point above 5). dmg and intervals are PLACEHOLDERS.
+  weaponClasses: {
+    sword1: { dmg: 3, reach: 44, baseInterval: 0.80, twoHanded: false, posture: 'one',   speedStat: 'dex' },
+    sword2: { dmg: 4, reach: 58, baseInterval: 1.35, twoHanded: true,  posture: 'two',   speedStat: 'dex' },
+    axe1:   { dmg: 4, reach: 38, baseInterval: 0.95, twoHanded: false, posture: 'one',   speedStat: 'dex' },
+    mace1:  { dmg: 4, reach: 36, baseInterval: 1.00, twoHanded: false, posture: 'one',   speedStat: 'dex' },
+    spear2: { dmg: 3, reach: 72, baseInterval: 1.10, twoHanded: true,  posture: 'spear', speedStat: 'dex' },
+  },
+  weapons: {
+    longsword:  { label: 'Longsword',  cls: 'sword1' },
+    greatsword: { label: 'Two-hander', cls: 'sword2' },
+    axe:        { label: 'Hand axe',   cls: 'axe1',   kind: 'axe' },
+    mace:       { label: 'Mace',       cls: 'mace1',  kind: 'mace' },
+    spear:      { label: 'Spear',      cls: 'spear2', kind: 'spear' },
   },
   abreak: { sanMult: 0.5, speedMult: 1.25 },   // design
-  enemy:  { hp: 9, san: 5, speed: 46, atkDmg: 2, atkDur: 1.0, atkHitAt: 0.45, atkCool: 0.8, reach: 38 },
+  enemy:  { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1.0, atkHitAt: 0.45, atkCool: 0.8, reach: 38 },
+  rallyPerChr: 0.004,                     // PLACEHOLDER: chance per second, per CHR point, that a fleeing enemy rallies (CHR 5 = 2%/s)
   player: { hp: 30, speed: 90 },
 };
 
-export function swingInterval(cfg, weaponKey, dex) {
-  const w = cfg.weapons[weaponKey];
-  return w.baseInterval * Math.max(0.35, 1 - cfg.dexStep * (dex - 5));
+/* a weapon's fighting stats: its class, with the weapon's own overrides on top */
+export function weaponStats(cfg, weaponKey) {
+  const w = cfg.weapons[weaponKey]; if (!w) throw new Error('unknown weapon ' + weaponKey);
+  const c = cfg.weaponClasses[w.cls]; if (!c) throw new Error('unknown weapon class ' + w.cls);
+  return Object.assign({}, c, w);
+}
+export function swingInterval(cfg, weaponKey, stat) {
+  return weaponStats(cfg, weaponKey).baseInterval * Math.max(0.35, 1 - cfg.dexStep * (stat - 5));
 }
 export const WINDOW_MARGIN = 0.05; // s of safety: frame quantization and hit-stop must not decide the kill
 export function fitsWindow(cfg, weaponKey, dex) {
@@ -52,6 +68,7 @@ export function minDexForWindow(cfg, weaponKey) {
 }
 
 /* small seeded generator: the same seed and inputs give the same fight, which a server-run sim needs */
+export function hash32(a, b) { let h = Math.imul((a >>> 0) ^ 0x85EBCA6B, 0xC2B2AE35) ^ Math.imul((b >>> 0) + 0x27D4EB2F, 0x165667B1); h ^= h >>> 15; h = Math.imul(h, 0x2C1B3C6D); h ^= h >>> 12; return h >>> 0; }
 export function makeRng(seed) {
   let a = (seed >>> 0) || 1;
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -69,7 +86,7 @@ export class Sim {
       weapon: 'longsword', dex: 5, dmgOverride: null, inv: true,
       swing: null, chain: 0, cooldown: 0, moved: false, flash: 0, walkT: 0, moving: false,
     };
-    this.enemies = []; this.fx = []; this.texts = [];
+    this.enemies = []; this.fx = []; this.texts = []; this.routed = 0;
     this.log = []; this.logVer = 0; this.lastHit = null;
     this.input = { x: 0, y: 0 };
   }
@@ -86,11 +103,11 @@ export class Sim {
   }
 
   weaponInfo() {
-    const p = this.player, w = this.cfg.weapons[p.weapon];
+    const p = this.player, w = weaponStats(this.cfg, p.weapon);
     return {
-      key: p.weapon, label: w.label, reach: w.reach, twoHanded: w.twoHanded, kind: w.kind,
+      key: p.weapon, cls: w.cls, label: w.label, reach: w.reach, twoHanded: w.twoHanded, kind: w.kind, posture: w.posture,
       dmg: p.dmgOverride != null ? p.dmgOverride : w.dmg,
-      interval: swingInterval(this.cfg, p.weapon, p.dex),
+      interval: swingInterval(this.cfg, p.weapon, p[w.speedStat] != null ? p[w.speedStat] : 5),
     };
   }
 
@@ -103,7 +120,7 @@ export class Sim {
     const e = {
       id: this.nextId++, x: Math.min(c.arena.right - 20, 380 + i * 46),
       y: this.clampY(p.y + offs[i % 5]), face: -1,
-      hp: c.enemy.hp, maxHp: c.enemy.hp, san: opts.san != null ? opts.san : c.enemy.san,
+      hp: c.enemy.hp, maxHp: c.enemy.hp, san: opts.san != null ? opts.san : c.enemy.san, chr: opts.chr != null ? opts.chr : c.enemy.chr,
       tier, armorPct: c.tiers[tier].pct,
       dur: opts.dur != null ? opts.dur : c.tiers[tier].dur,
       durMax: opts.dur != null ? opts.dur : c.tiers[tier].dur,
@@ -111,6 +128,7 @@ export class Sim {
       ai: opts.ai === 'advance' ? 'advance' : 'stand',
       atk: null, atkCd: 0.6, deathT: 0, dramatic: false, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0,
     };
+    e.lookSeed = hash32(this.seed, e.id);                        // picks this enemy's parts and colours from its rank's pools (client side)
     this.enemies.push(e);
     return e;
   }
@@ -138,7 +156,7 @@ export class Sim {
     this.t += dt;
     this.updatePlayer(dt);
     for (const e of this.enemies) this.updateEnemy(e, dt);
-    this.enemies = this.enemies.filter(e => !(e.state === 'dying' && e.deathT > 2.6));
+    this.enemies = this.enemies.filter(e => !(e.state === 'dying' && e.deathT > 2.6) && e.state !== 'routed');
     this.updateFx(dt);
   }
 
@@ -304,9 +322,18 @@ export class Sim {
     const spd = c.enemy.speed * (e.broken ? c.abreak.speedMult : 1);
     const dx = p.x - e.x, dy = p.y - e.y;
     if (e.flee) {
+      if (this.rng() < Math.min(1, e.chr * c.rallyPerChr) * dt) {   // small CHR-based chance to stop running and fight again
+        e.flee = false;
+        this.say('flee', 'Enemy rallies (CHR ' + e.chr + ').'); this.text(e.x, e.y - 110, 'RALLIES', '#ffd27a', 10);
+        return;
+      }
       const dir = Math.sign(e.x - p.x) || 1;
       const nx = this.clampX(e.x + dir * spd * 1.1 * dt);
       e.moving = nx !== e.x; e.x = nx; e.face = dir; e.walkT += dt;
+      if (nx === (dir > 0 ? c.arena.right : c.arena.left)) {           // reached the edge: off the field, counted as routed
+        e.state = 'routed'; this.routed = (this.routed || 0) + 1;
+        this.say('flee', 'Enemy routed off the field (' + this.routed + ' so far).');
+      }
       return;
     }
     e.face = dx >= 0 ? 1 : -1;

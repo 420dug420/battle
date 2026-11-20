@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { CFG, Sim, makeRng, swingInterval, minDexForWindow, fitsWindow } from './sim.js';
+import { CFG, Sim, makeRng, weaponStats, swingInterval, minDexForWindow, fitsWindow } from './sim.js';
 
 function fresh(weapon, dex) {
   const s = new Sim(CFG); s.rng = () => 0; // always passes chance rolls
@@ -78,7 +78,7 @@ console.log('PASS crit-order math (plate: before=3, after=2)');
 
 // 7. low SAN flees after the crit when armor is broken
 s = fresh('longsword', 5);
-const e10 = s.spawn({ tier: 'leather', dur: 3, ai: 'stand' }); e10.hp = 99; e10.maxHp = 99; e10.x = s.player.x + 40; e10.y = s.player.y;
+const e10 = s.spawn({ tier: 'leather', dur: 3, ai: 'stand', chr: 0 }); e10.hp = 99; e10.maxHp = 99; e10.x = s.player.x + 40; e10.y = s.player.y;
 run(s, 0.45); assert(e10.broken, 'break on first hit (dur 3, raw 3)');
 s.player.x -= 200; // step out of reach so it can recover
 run(s, 1.4); assert(e10.flee, 'fled after recovering');
@@ -103,6 +103,32 @@ console.log('PASS shrug off after surviving crit');
   assert.notStrictEqual(fight(1, false), fight(2, false), 'different seeds differ');
   const r = makeRng(7); for (let i = 0; i < 1000; i++) { const v = r(); assert(v >= 0 && v < 1); }
   console.log('PASS seeded, deterministic sim');
+}
+
+// 10. routing and rallying
+{
+  let s = fresh('longsword', 5);
+  const e = s.spawn({ tier: 'leather', dur: 99, ai: 'stand', chr: 0 }); e.flee = true; e.x = s.player.x + 60;
+  run(s, 12); assert.strictEqual(s.routed, 1, 'fled off the field'); assert(!s.enemies.includes(e), 'routed enemy removed');
+  s = fresh('longsword', 5);                                     // rng always 0: every roll passes, so it rallies at once
+  const e2 = s.spawn({ tier: 'leather', dur: 99, ai: 'stand', chr: 5 }); e2.flee = true; e2.x = s.player.x + 60;
+  run(s, 0.1); assert.strictEqual(e2.flee, false, 'rallied'); assert.strictEqual(s.routed, 0);
+  s = new Sim(CFG, 3); s.rng = () => 0.999;                      // rolls always fail: never rallies
+  const e3 = s.spawn({ tier: 'leather', dur: 99, ai: 'stand', chr: 99 }); e3.flee = true; e3.x = s.player.x + 60;
+  run(s, 12); assert.strictEqual(s.routed, 1);
+  console.log('PASS routed enemies leave; CHR rally');
+}
+
+// 11. weapon classes: same class, same fight; a weapon can override one stat
+{
+  const c = JSON.parse(JSON.stringify(CFG));
+  c.weapons.claymore = { label: 'Claymore', cls: 'sword2' };
+  c.weapons.zwei = { label: 'Zweihander', cls: 'sword2', reach: 66 };
+  const a = weaponStats(c, 'greatsword'), b = weaponStats(c, 'claymore'), z = weaponStats(c, 'zwei');
+  for (const k of ['dmg', 'reach', 'baseInterval', 'twoHanded', 'posture']) assert.strictEqual(a[k], b[k], k);
+  assert.strictEqual(z.reach, 66); assert.strictEqual(z.dmg, a.dmg);
+  assert.strictEqual(swingInterval(c, 'claymore', 15), swingInterval(c, 'greatsword', 15));
+  console.log('PASS weapon classes share stats; overrides apply');
 }
 
 console.log('\nALL SIM TESTS PASSED');

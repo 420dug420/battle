@@ -52,6 +52,8 @@ import { CFG, Sim, fitsWindow, minDexForWindow } from './sim.js';
     s.globalCompositeOperation = 'source-in'; s.fillStyle = '#000'; s.fillRect(0, 0, S, H);
     if (flash) { o.globalCompositeOperation = 'source-atop'; o.fillStyle = 'rgba(255,255,255,.72)'; o.fillRect(0, 0, S, H); o.globalCompositeOperation = 'source-over'; }
   }
+  const enemyLook = e => e._look || (e._look = M3.enemyLook(e.tier, e.lookSeed));
+  const withLook = (e, f) => { const l = enemyLook(e); f.pHead = l.head; f.pBody = l.body; f.pLiv = l.liv; f.pMetal = l.metal; return f; };
   function drawFigure(f) {
     const rig = M3.pose(f.role, f); if (!rig) return;
     ctx.save();
@@ -206,16 +208,16 @@ import { CFG, Sim, fitsWindow, minDexForWindow } from './sim.js';
         const e = it.e;
         if (e.state === 'dying') {
           const alpha = e.deathT > 1.9 ? Math.max(0, 1 - (e.deathT - 1.9) / 0.7) : 1;
-          drawFigure({ role: 'e', x: e.x, y: e.y, z: e.z, face: e.face, tier: e.tier, broken: e.broken, shield: true,
-            alpha, dead: true, deathT: e.deathT, dramatic: e.dramatic, t: sim.t, flash: 0, swing: null });
+          drawFigure(withLook(e, { role: 'e', x: e.x, y: e.y, z: e.z, face: e.face, tier: e.tier, broken: e.broken, shield: true,
+            alpha, dead: true, deathT: e.deathT, dramatic: e.dramatic, t: sim.t, flash: 0, swing: null }));
         } else {
           if (target === e) {
             ctx.strokeStyle = 'rgba(240,195,90,.9)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.5;
             ctx.beginPath(); ctx.ellipse(Math.round(e.x), Math.round(e.y), 22, 6, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]);
           }
           const atk = e.atk ? { t: e.atk.t, dur: CFG.enemy.atkDur, dur0: CFG.enemy.atkDur, hitAt: CFG.enemy.atkHitAt, extra: 0 } : null;
-          drawFigure({ role: 'e', x: e.x, y: e.y, face: e.face, tier: e.tier, broken: e.broken, shield: true,
-            swing: atk, woundedPose: e.wounded > 0, moving: e.moving, walkT: e.walkT, t: sim.t, flash: e.flash, flashMax: 0.12 });
+          drawFigure(withLook(e, { role: 'e', x: e.x, y: e.y, face: e.face, tier: e.tier, broken: e.broken, shield: true,
+            swing: atk, woundedPose: e.wounded > 0, moving: e.moving, walkT: e.walkT, t: sim.t, flash: e.flash, flashMax: 0.12 }));
         }
       }
     }
