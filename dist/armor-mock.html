@@ -14514,6 +14514,71 @@ void main(){
     box(0.3, 0.95, 0.012, A, P2, 0, -0.34, -0.145);
     belt();
   } };
+  var leatherTex = (base, hi, lo2) => TX(64, 64, (T) => {
+    T.fill(base);
+    T.speckle(420, [lo2, hi], 0.02, 0.08, 1.3);
+    T.rect(0, 0, 1, 0.035, lo2);
+    T.rect(0, 0.965, 1, 1, lo2);
+  });
+  var tunicMat = (A, B) => mat("tunic" + A + B, () => TX(64, 64, (T) => {
+    clothBase(T, A, B);
+    T.rect(0, 0.05, 1, 0.065, shade(A, -0.25));
+  }));
+  var tunicSkirt = (k, lo2) => loft(ringsOf([[lo2, 0.24, 0.17], [lo2 + 0.12, 0.225, 0.155], [-0.1, 0.205, 0.135], [0.06, 0.19, 0.118], [0.3, 0.205, 0.126], [0.5, 0.2, 0.12], [0.57, 0.15, 0.1]]), 16, tunicMat(k.A, k.B), k.P, 0, 0, 0, lo2, 0.57);
+  var sleeves = (k, m, long) => k.bothArms((a) => {
+    tube(a.sg, -0.02, -0.29, 0.068, 0.058, m, 10);
+    if (long) tube(a.eg, -0.01, -0.19, 0.054, 0.046, m, 10);
+  });
+  HEADS.bare = { label: "Bare head", draft: true, f: (k) => {
+  } };
+  HEADS.cap = { label: "Arming cap", draft: true, f: (k) => {
+    const { H } = k, m = mat("cap" + k.B, () => quilt(shade(k.B, -0.15), shade(k.B, -0.45)));
+    loft(ringsOf([[0.06, 0.104, 0.126], [0.16, 0.106, 0.128], [0.23, 0.088, 0.108], [0.27, 0.05, 0.062], [0.285, 6e-3, 8e-3]]), 14, m, H, 0, 0, 0, 0.06, 0.285);
+    for (const s of [-1, 1]) box(0.012, 0.1, 0.05, shade(k.B, -0.15), H, s * 0.1, 0.05, 0.04);
+  } };
+  HEADS.leathercap = { label: "Leather cap", draft: true, f: (k) => {
+    const { H } = k, m = mat("lcap", () => leatherTex("#5a3f27", "#7a5a3a", "#2c1d10"));
+    loft(ringsOf([[0.13, 0.108, 0.13], [0.19, 0.106, 0.127], [0.25, 0.084, 0.1], [0.285, 0.04, 0.048], [0.295, 5e-3, 6e-3]]), 14, m, H, 0, 0, 0, 0.13, 0.295);
+    loft(ringsOf([[0.12, 0.118, 0.14], [0.15, 0.118, 0.14]]), 14, m, H, 0, 0, 0, 0.12, 0.15);
+  } };
+  HEADS.coif = { label: "Mail coif", draft: true, f: (k) => {
+    const { H, mail } = k;
+    loft(ringsOf([[-0.16, 0.2, 0.15, -0.03], [-0.08, 0.15, 0.125, -0.03], [0, 0.118, 0.12, -0.035], [0.1, 0.112, 0.12, -0.035], [0.2, 0.104, 0.118, -0.025], [0.25, 0.082, 0.094, -0.015], [0.285, 0.032, 0.036], [0.29, 4e-3, 5e-3]]), 16, mail, H, 0, 0, 0, -0.16, 0.29);
+  } };
+  HEADS.coifhelm = { label: "Skullcap over coif", draft: true, f: (k) => {
+    HEADS.coif.f(k);
+    const { H, metal } = k;
+    loft(ringsOf([[0.15, 0.116, 0.136], [0.21, 0.108, 0.128], [0.26, 0.082, 0.098], [0.29, 0.036, 0.044], [0.3, 4e-3, 5e-3]]), 16, metal, H, 0, 0, 0, 0.15, 0.3);
+    box(0.016, 0.1, 0.012, "#8f98a2", H, 0, 0.1, 0.138);
+  } };
+  BODIES.tunic = { label: "Tunic", draft: true, f: (k) => {
+    tunicSkirt(k, -0.34);
+    sleeves(k, tunicMat(k.A, k.B), true);
+    k.belt();
+  } };
+  BODIES.jerkin = { label: "Leather jerkin", draft: true, f: (k) => {
+    const { P: P2 } = k, lth = mat("jerkin", () => leatherTex("#6a4a2c", "#8a6a44", "#33220f"));
+    tunicSkirt(k, -0.3);
+    sleeves(k, tunicMat(k.A, k.B), true);
+    loft(ringsOf([[-0.14, 0.22, 0.15], [-0.02, 0.21, 0.138], [0.1, 0.2, 0.128], [0.3, 0.214, 0.134], [0.5, 0.208, 0.126], [0.56, 0.16, 0.104]]), 16, lth, P2, 0, 0, 0, -0.14, 0.56);
+    k.bothArms((a) => dome(a.sg, 0, -0.02, 0, 0.085, 0.08, 0.07, lth));
+    k.belt();
+  } };
+  BODIES.haubergeon = { label: "Mail shirt over tunic", draft: true, f: (k) => {
+    const { P: P2, mail } = k;
+    tunicSkirt(k, -0.36);
+    sleeves(k, tunicMat(k.A, k.B), true);
+    loft(ringsOf([[-0.16, 0.222, 0.152], [-0.05, 0.208, 0.136], [0.08, 0.198, 0.124], [0.3, 0.212, 0.132], [0.5, 0.206, 0.124], [0.57, 0.155, 0.1]]), 16, mail, P2, 0, 0, 0, -0.16, 0.57);
+    k.bothArms((a) => tube(a.sg, -0, -0.16, 0.074, 0.068, mail, 10));
+    k.belt();
+  } };
+  BODIES.mailjerkin = { label: "Mail under leather", draft: true, f: (k) => {
+    const { P: P2, mail } = k, lth = mat("jerkin", () => leatherTex("#6a4a2c", "#8a6a44", "#33220f"));
+    loft(ringsOf([[-0.24, 0.225, 0.155], [-0.1, 0.208, 0.136], [0.05, 0.196, 0.122], [0.3, 0.21, 0.13], [0.5, 0.204, 0.124], [0.57, 0.155, 0.1]]), 16, mail, P2, 0, 0, 0, -0.24, 0.57);
+    k.bothArms((a) => tube(a.sg, -0.02, -0.3, 0.064, 0.056, mail, 10));
+    loft(ringsOf([[-0.06, 0.228, 0.16], [0.06, 0.214, 0.144], [0.3, 0.224, 0.142], [0.5, 0.218, 0.134], [0.555, 0.17, 0.11]]), 16, lth, P2, 0, 0, 0, -0.06, 0.555);
+    k.belt();
+  } };
   var ARMOR_PRESETS = {
     leather: { label: "Leather / cloth", head: "hood", body: "quilted", metal: "steel" },
     mail: { label: "Mail", head: "helm", body: "mail", metal: "steel" },
@@ -14530,7 +14595,7 @@ void main(){
     stag: { label: "Stag (bend tabard)", head: "beaked", body: "stag", metal: "steel", liv: "green" },
     warlord: { label: "Warlord (black spiked)", head: "blackhelm", body: "warlord", metal: "black", liv: "red" }
   };
-  var BODYCFG = { quilted: "leather", jack: "leather", mail: "mail", brigandine: "mail", lamellar: "mail" };
+  var BODYCFG = { quilted: "leather", jack: "leather", tunic: "leather", jerkin: "leather", mail: "mail", brigandine: "mail", lamellar: "mail", haubergeon: "mail", mailjerkin: "mail" };
   function dressMedieval(rig, role, tier, broken, lo2) {
     const P2 = rig.pelvis, H = rig.headG, c = COL[role] || COL.p;
     const pre = ARMOR_PRESETS[tier] || ARMOR_PRESETS.leather, head = lo2 && HEADS[lo2.head] ? lo2.head : pre.head, body = lo2 && BODIES[lo2.body] ? lo2.body : pre.body;
@@ -14673,7 +14738,9 @@ void main(){
     const livs = Object.keys(LIVERIES);
     return { head: pick(pool.heads), body: pick(pool.bodies), metal: pick(pool.metals), liv: pick(livs) };
   };
-  M3.parts = { heads: Object.keys(HEADS).map((id) => [id, HEADS[id].label]), bodies: Object.keys(BODIES).map((id) => [id, BODIES[id].label]), liveries: Object.keys(LIVERIES).map((id) => [id, LIVERIES[id].label]), metals: Object.keys(METALS).map((id) => [id, METALS[id].label]), presets: Object.keys(ARMOR_PRESETS).map((id) => [id, ARMOR_PRESETS[id].label]) };
+  var listParts = (R, draft) => Object.keys(R).filter((id) => !!R[id].draft === draft).map((id) => [id, R[id].label]);
+  M3.draftParts = { heads: listParts(HEADS, true), bodies: listParts(BODIES, true) };
+  M3.parts = { heads: listParts(HEADS, false), bodies: listParts(BODIES, false), liveries: Object.keys(LIVERIES).map((id) => [id, LIVERIES[id].label]), metals: Object.keys(METALS).map((id) => [id, METALS[id].label]), presets: Object.keys(ARMOR_PRESETS).map((id) => [id, ARMOR_PRESETS[id].label]) };
   var P = (o) => Object.assign({
     py: 0,
     pel: [0, 0, 0],

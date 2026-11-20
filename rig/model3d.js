@@ -209,6 +209,38 @@ BODIES.warlord = { label: 'Spiked harness', f: k => { const { P, A, rig, belt, b
   for (const s of [-1, 1]) { dome(P, s * .27, .5, 0, .15, .125, .12, metal, 0, -s * .6); loft(ringsOf([[0, .05, .05], [.22, .004, .004]]), 8, metal, P, s * .29, .56, 0, 0, .22); loft(ringsOf([[0, .035, .035], [.14, .004, .004]]), 8, metal, P, s * .31, .5, .05, 0, .14); }
   armsLegs(k, metal); box(.3, .95, .012, A, P, 0, -.34, -.145); belt(); } };
 
+/* ----- low-tier clothing and mail (draft: shown in the armor mock page only until approved) ----- */
+const leatherTex = (base, hi, lo) => TX(64, 64, T => { T.fill(base); T.speckle(420, [lo, hi], .02, .08, 1.3); T.rect(0, 0, 1, .035, lo); T.rect(0, .965, 1, 1, lo); });
+const tunicMat = (A, B) => mat('tunic' + A + B, () => TX(64, 64, T => { clothBase(T, A, B); T.rect(0, .05, 1, .065, shade(A, -.25)); }));
+const tunicSkirt = (k, lo) => loft(ringsOf([[lo, .24, .17], [lo + .12, .225, .155], [-.1, .205, .135], [.06, .19, .118], [.3, .205, .126], [.5, .2, .12], [.57, .15, .1]]), 16, tunicMat(k.A, k.B), k.P, 0, 0, 0, lo, .57);
+const sleeves = (k, m, long) => k.bothArms(a => { tube(a.sg, -.02, -.29, .068, .058, m, 10); if (long) tube(a.eg, -.01, -.19, .054, .046, m, 10); });
+HEADS.bare = { label: 'Bare head', draft: true, f: k => { } };
+HEADS.cap = { label: 'Arming cap', draft: true, f: k => { const { H } = k, m = mat('cap' + k.B, () => quilt(shade(k.B, -.15), shade(k.B, -.45)));
+  loft(ringsOf([[.06, .104, .126], [.16, .106, .128], [.23, .088, .108], [.27, .05, .062], [.285, .006, .008]]), 14, m, H, 0, 0, 0, .06, .285);
+  for (const s of [-1, 1]) box(.012, .1, .05, shade(k.B, -.15), H, s * .1, .05, .04); } };
+HEADS.leathercap = { label: 'Leather cap', draft: true, f: k => { const { H } = k, m = mat('lcap', () => leatherTex('#5a3f27', '#7a5a3a', '#2c1d10'));
+  loft(ringsOf([[.13, .108, .13], [.19, .106, .127], [.25, .084, .1], [.285, .04, .048], [.295, .005, .006]]), 14, m, H, 0, 0, 0, .13, .295);
+  loft(ringsOf([[.12, .118, .14], [.15, .118, .14]]), 14, m, H, 0, 0, 0, .12, .15); } };
+HEADS.coif = { label: 'Mail coif', draft: true, f: k => { const { H, mail } = k;
+  loft(ringsOf([[-.16, .2, .15, -.03], [-.08, .15, .125, -.03], [0, .118, .12, -.035], [.1, .112, .12, -.035], [.2, .104, .118, -.025], [.25, .082, .094, -.015], [.285, .032, .036], [.29, .004, .005]]), 16, mail, H, 0, 0, 0, -.16, .29); } };
+HEADS.coifhelm = { label: 'Skullcap over coif', draft: true, f: k => { HEADS.coif.f(k); const { H, metal } = k;
+  loft(ringsOf([[.15, .116, .136], [.21, .108, .128], [.26, .082, .098], [.29, .036, .044], [.3, .004, .005]]), 16, metal, H, 0, 0, 0, .15, .3);
+  box(.016, .1, .012, '#8f98a2', H, 0, .1, .138); } };
+BODIES.tunic = { label: 'Tunic', draft: true, f: k => { tunicSkirt(k, -.34); sleeves(k, tunicMat(k.A, k.B), true); k.belt(); } };
+BODIES.jerkin = { label: 'Leather jerkin', draft: true, f: k => { const { P } = k, lth = mat('jerkin', () => leatherTex('#6a4a2c', '#8a6a44', '#33220f'));
+  tunicSkirt(k, -.3); sleeves(k, tunicMat(k.A, k.B), true);
+  loft(ringsOf([[-.14, .22, .15], [-.02, .21, .138], [.1, .2, .128], [.3, .214, .134], [.5, .208, .126], [.56, .16, .104]]), 16, lth, P, 0, 0, 0, -.14, .56);
+  k.bothArms(a => dome(a.sg, 0, -.02, 0, .085, .08, .07, lth)); k.belt(); } };
+BODIES.haubergeon = { label: 'Mail shirt over tunic', draft: true, f: k => { const { P, mail } = k;
+  tunicSkirt(k, -.36); sleeves(k, tunicMat(k.A, k.B), true);
+  loft(ringsOf([[-.16, .222, .152], [-.05, .208, .136], [.08, .198, .124], [.3, .212, .132], [.5, .206, .124], [.57, .155, .1]]), 16, mail, P, 0, 0, 0, -.16, .57);
+  k.bothArms(a => tube(a.sg, -.0, -.16, .074, .068, mail, 10)); k.belt(); } };
+BODIES.mailjerkin = { label: 'Mail under leather', draft: true, f: k => { const { P, mail } = k, lth = mat('jerkin', () => leatherTex('#6a4a2c', '#8a6a44', '#33220f'));
+  loft(ringsOf([[-.24, .225, .155], [-.1, .208, .136], [.05, .196, .122], [.3, .21, .13], [.5, .204, .124], [.57, .155, .1]]), 16, mail, P, 0, 0, 0, -.24, .57);
+  k.bothArms(a => tube(a.sg, -.02, -.3, .064, .056, mail, 10));
+  loft(ringsOf([[-.06, .228, .16], [.06, .214, .144], [.3, .224, .142], [.5, .218, .134], [.555, .17, .11]]), 16, lth, P, 0, 0, 0, -.06, .555);
+  k.belt(); } };
+
 // presets: the old tiers and the new designs. Each is just a choice of head, body, livery and metal
 const ARMOR_PRESETS = {
   leather: { label: 'Leather / cloth', head: 'hood', body: 'quilted', metal: 'steel' }, mail: { label: 'Mail', head: 'helm', body: 'mail', metal: 'steel' }, plate: { label: 'Plate', head: 'bascinet', body: 'plate', metal: 'steel' }, special: { label: 'Special (gilded)', head: 'crested', body: 'plate', metal: 'gilded' },
@@ -216,7 +248,7 @@ const ARMOR_PRESETS = {
   komtur: { label: 'Komtur (mantle, great helm)', head: 'greathelm', body: 'komtur', metal: 'steel', liv: 'white' }, spire: { label: 'Spire (black lancet)', head: 'spire', body: 'spire', metal: 'black', liv: 'black' }, deco: { label: 'Deco plate', head: 'domed', body: 'deco', metal: 'silver', liv: 'azure' },
   griffon: { label: 'Griffon (per fess)', head: 'beaked', body: 'griffon', metal: 'steel', liv: 'azure' }, sun: { label: 'Sunburst', head: 'domed', body: 'sun', metal: 'silver', liv: 'red' }, stag: { label: 'Stag (bend tabard)', head: 'beaked', body: 'stag', metal: 'steel', liv: 'green' }, warlord: { label: 'Warlord (black spiked)', head: 'blackhelm', body: 'warlord', metal: 'black', liv: 'red' }
 };
-const BODYCFG = { quilted: 'leather', jack: 'leather', mail: 'mail', brigandine: 'mail', lamellar: 'mail' };
+const BODYCFG = { quilted: 'leather', jack: 'leather', tunic: 'leather', jerkin: 'leather', mail: 'mail', brigandine: 'mail', lamellar: 'mail', haubergeon: 'mail', mailjerkin: 'mail' };
 function dressMedieval(rig, role, tier, broken, lo) {
   const P = rig.pelvis, H = rig.headG, c = COL[role] || COL.p;
   const pre = ARMOR_PRESETS[tier] || ARMOR_PRESETS.leather, head = (lo && HEADS[lo.head]) ? lo.head : pre.head, body = (lo && BODIES[lo.body]) ? lo.body : pre.body;
@@ -304,7 +336,9 @@ M3.enemyLook = function (tier, seed) {
   const livs = Object.keys(LIVERIES);
   return { head: pick(pool.heads), body: pick(pool.bodies), metal: pick(pool.metals), liv: pick(livs) };
 };
-M3.parts = { heads: Object.keys(HEADS).map(id => [id, HEADS[id].label]), bodies: Object.keys(BODIES).map(id => [id, BODIES[id].label]), liveries: Object.keys(LIVERIES).map(id => [id, LIVERIES[id].label]), metals: Object.keys(METALS).map(id => [id, METALS[id].label]), presets: Object.keys(ARMOR_PRESETS).map(id => [id, ARMOR_PRESETS[id].label]) };
+const listParts = (R, draft) => Object.keys(R).filter(id => !!R[id].draft === draft).map(id => [id, R[id].label]);
+M3.draftParts = { heads: listParts(HEADS, true), bodies: listParts(BODIES, true) };
+M3.parts = { heads: listParts(HEADS, false), bodies: listParts(BODIES, false), liveries: Object.keys(LIVERIES).map(id => [id, LIVERIES[id].label]), metals: Object.keys(METALS).map(id => [id, METALS[id].label]), presets: Object.keys(ARMOR_PRESETS).map(id => [id, ARMOR_PRESETS[id].label]) };
 
 /* ---------- poses ---------- */
 // pose fields (all optional; missing = neutral guard):
