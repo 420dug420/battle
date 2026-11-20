@@ -43,6 +43,7 @@ h1 span { color: var(--gold); }
 .field label { color: var(--bone); }
 input[type=number], select { background: var(--ink); color: var(--bone); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; font: inherit; min-height: 32px; }
 input[type=number] { width: 84px; text-align: right; }
+input[type=text] { background: var(--ink); color: var(--bone); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; font: inherit; min-height: 32px; }
 select { max-width: 190px; }
 input[type=range] { width: 170px; accent-color: var(--gold); }
 input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--gold); }
@@ -120,6 +121,16 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
         <p class="muted">The set picks all four; any part set here overrides it. Looks only: the player has no armor rule yet.</p>
       </section>
 
+      <section class="panel">
+        <details><summary>Online test (server room)</summary>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div class="field"><label for="netbase">Server</label><input id="netbase" type="text" value="ws://127.0.0.1:8799" style="width:190px" class="frm"></div>
+            <div class="field"><label for="netroom">Room</label><input id="netroom" type="text" value="test" style="width:120px" class="frm"></div>
+            <div class="btns"><button class="btn" id="netgo" type="button">Connect</button></div>
+            <p class="muted" id="netmsg">Offline: this page runs the fight itself.</p>
+          </div>
+        </details>
+      </section>
       <section class="panel">
         <h2>Enemies</h2>
         <div class="field"><label for="tier">Armor</label>

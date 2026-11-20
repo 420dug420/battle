@@ -1,0 +1,12 @@
+# Free plan only: SQLite-backed Durable Object class, no paid features.
+name = "project-war"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "FightRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["FightRoom"]

@@ -427,7 +427,7 @@ export class Sim {
       this.fx.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 40, life: 0.35 + r() * 0.3, max: 0.65, col, size: r() < 0.3 ? 3 : 2 });
     }
   }
-  text(x, y, text, col, size) { this.texts.push({ x, y, text, col, size: size || 10, life: 0.9, max: 0.9 }); }
+  text(x, y, text, col, size) { const t = { x, y, text, col, size: size || 10, life: 0.9, max: 0.9 }; this.texts.push(t); if (this.textOut) this.textOut.push(Object.assign({}, t)); }   // textOut: a server collects new texts to send
   updateFx(dt) {
     for (const f of this.fx) { f.life -= dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 520 * dt; }
     this.fx = this.fx.filter(f => f.life > 0);
