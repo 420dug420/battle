@@ -1,0 +1,229 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Project War Animator</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;background:#17181d;color:#d8dae0;font:14px/1.4 system-ui,sans-serif;display:flex;min-height:100vh}
+#side{width:330px;padding:14px;border-right:1px solid #2a2c35;overflow:auto;flex:none;height:100vh;position:sticky;top:0}
+#main{flex:1;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+h1{font-size:15px;margin:0 0 8px}h2{font-size:12px;margin:14px 0 4px;color:#9aa0ad;text-transform:uppercase;letter-spacing:.05em}
+label{display:block;margin:6px 0 2px;color:#9aa0ad;font-size:12px}
+select,input[type=text],textarea{width:100%;background:#22242c;color:#e6e8ee;border:1px solid #343743;border-radius:6px;padding:6px;font:inherit}
+textarea{font:11px/1.3 ui-monospace,monospace;height:90px}
+button{background:#2b2e39;color:#e6e8ee;border:1px solid #3d4150;border-radius:6px;padding:7px 11px;cursor:pointer;font:inherit}
+button:hover{background:#363a48}button.pri{background:#8a3b2f;border-color:#b24d3d}button.go{background:#2f6b45;border-color:#40915c}button.sm{padding:4px 8px;font-size:12px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+#alist{border:1px solid #2a2c35;border-radius:6px;max-height:190px;overflow:auto;background:#1b1d23}
+.ai{padding:6px 8px;cursor:pointer;border-bottom:1px solid #23252d;display:flex;justify-content:space-between;gap:6px}.ai:hover{background:#242731}.ai.sel{background:#3a2a28}.ai small{color:#8a90a0}
+#wrap{position:relative;align-self:flex-start;background:#2a2b31;border:1px solid #2a2c35;border-radius:8px;line-height:0}
+#stage,#ov{display:block}#ov{position:absolute;left:0;top:0;cursor:crosshair;touch-action:none}
+#tl{position:relative;height:30px;max-width:900px;background:#1f2128;border:1px solid #2a2c35;border-radius:6px}
+.k{position:absolute;top:6px;width:12px;height:18px;margin-left:-6px;background:#e8b04a;transform:scaleX(.7);border-radius:3px;cursor:pointer}
+.hbbar{position:absolute;top:0;bottom:0;background:rgba(214,72,58,.28);border-left:1px solid #d6483a;border-right:1px solid #d6483a;pointer-events:none}.k.sel{background:#fff}.ct{position:absolute;top:0;bottom:0;width:2px;background:#d6483a}.ph{position:absolute;top:0;bottom:0;width:2px;background:#6aa7ff}
+#fr{width:100%;max-width:900px}#info{font-variant-numeric:tabular-nums}.hint{color:#8a90a0;font-size:12px}
+.sl{display:grid;grid-template-columns:104px 1fr 46px;gap:6px;align-items:center;margin:2px 0;font-size:12px}.sl span:last-child{text-align:right;color:#9aa0ad}
+input[type=range]{width:100%}.leg{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}
+</style></head><body>
+<div id="side">
+<h1>Project War Animator</h1>
+<button id="sync" class="pri" style="width:100%;margin:2px 0 4px">⇪ Sync to Claude</button><div class="hint" id="syncmsg">Press this when you want me to have your animations. Then just tell me which to load.</div>
+<h2>Library</h2>
+<div id="alist"></div>
+<div class="row" style="margin-top:6px"><select id="newtype" style="width:auto"><option value="attack">Attack</option><option value="idle">Idle loop</option><option value="walk">Walk loop</option></select><button id="new" class="go sm">+ New</button><button id="dup" class="sm">Duplicate</button><button id="del" class="sm">Delete</button></div>
+<h2>This animation</h2>
+<label>Name</label><input type="text" id="name">
+<label>Loadout (also decides 1H or 2H in the game)</label>
+<select id="load"><option value="1s">One-hand + shield</option><option value="1">One-hand (no shield)</option><option value="2">Two-hand</option></select>
+<div id="loopbox" style="display:none"><label>One loop takes <span id="lv"></span> s</label><input type="range" id="loop" min="3" max="80" value="30"></div>
+<label>Armor</label><select id="tier"><option>plate</option><option>mail</option><option>leather</option><option>special</option></select>
+<label>Zoom</label><select id="zoom"><option value="3">3x</option><option value="4" selected>4x</option><option value="5">5x</option></select>
+<div id="durbox"><label>Swing length <span id="dv">0.9</span> s</label><input type="range" id="dur" min="4" max="20" value="9"></div>
+<div class="row" style="margin-top:6px"><label style="margin:0"><input type="checkbox" id="onion" checked> ghost previous key</label><label style="margin:0"><input type="checkbox" id="handles" checked> handles</label></div>
+<h2>Drag on the figure</h2>
+<div class="hint"><span class="leg" style="background:#ff9d3c"></span>sword hand · <span class="leg" style="background:#46d6ff"></span>sword tip (pull it toward the hand to aim at the screen, Shift flips toward/away) · <span class="leg" style="background:#ffd84a"></span>shield hand · <span class="leg" style="background:#5be37d"></span>hips (sideways = forward, up/down = crouch) · <span class="leg" style="background:#d58cff"></span>front foot · <span class="leg" style="background:#ff8ccf"></span>rear foot (if both feet sit on the same spot, drag right for the front foot or left for the rear one)</div>
+<h2>This frame</h2><div id="sliders"></div>
+<h2>Hitbox</h2>
+<label>Shape</label>
+<select id="hbtype"><option value="blade">Blade sweep (follows the sword)</option><option value="box">Box in front of the fighter</option><option value="circle">Circle around the body</option><option value="none">None</option></select>
+<div id="hbsl"></div>
+<div class="row" style="margin-top:6px"><button class="sm" id="hbs">Starts here</button><button class="sm" id="hbe">Ends here</button><label style="margin:0"><input type="checkbox" id="hbshow" checked> show</label></div>
+<div class="hint" id="hbinfo"></div>
+<h2>Share</h2>
+<div class="row"><button id="copyall" class="pri">Copy whole library</button><button id="copy1">Copy this one</button></div>
+<div class="row" style="margin-top:6px"><button id="loadbox">Load from box</button></div>
+<textarea id="json" spellcheck="false" placeholder="Paste a library or animation here, then press Load from box."></textarea>
+<p class="hint" id="msg"></p>
+</div>
+<div id="main">
+<div id="wrap"><canvas id="stage"></canvas><canvas id="ov"></canvas></div>
+<div id="tl"></div><input type="range" id="fr" min="0" max="89" value="0">
+<div class="row"><button id="b1">⏮</button><button id="bm">◀ 1</button><button id="play">▶ Play</button><button id="bp">1 ▶</button><button id="be">⏭</button>
+<select id="spd" style="width:auto"><option value="0.1">0.1x</option><option value="0.25" selected>0.25x</option><option value="0.5">0.5x</option><option value="1">1x</option></select>
+<button id="addk" class="go">◆ Key here (K)</button><button id="delk">Delete key (Del)</button><button id="ctk">Hit lands here</button><button id="endk" title="Adds a key that returns the fighter to the idle stance">End → idle stance</button></div>
+<div id="info"></div>
+<div class="hint" id="help"></div>
+</div>
+<script>/*MODEL3D*/</script>
+<script>
+const $=id=>document.getElementById(id),M=window.Model3D,PXU=54,D2R=Math.PI/180;
+const stage=$('stage'),ctx=stage.getContext('2d'),ov=$('ov'),oc=ov.getContext('2d');
+const DEF0={hy:-0.1,hz:0.4,ba:20,bx:0,br:0,pp:10,py:-30,hp:0,hw:0,rz:0,nh:-50,nk:60,fh:35,fk:20,fx:0.1,fy:-0.05,fz:0.3};
+const DEFL=Object.assign({},DEF0,{hy:0.25,hz:0.3,ba:70,pp:4,nh:-30,nk:35,fh:25,fk:25});
+const SL=[['ba','Sword up/down',-180,180,1],['bx','Sword turn to screen',-180,180,1],['br','Blade roll',-180,180,1],['hy','Hand up/down',-0.6,0.8,0.01],['hz','Hand forward',-0.6,0.8,0.01],
+ ['fx','Shield arm out',-0.4,0.5,0.01,1],['fy','Shield arm up/down',-0.5,0.5,0.01,1],['fz','Shield arm forward',-0.4,0.55,0.01,1],
+ ['pp','Torso lean',-30,45,1],['py','Torso turn',-90,90,1],['hp','Head nod',-40,40,1],['hw','Head turn',-60,60,1],['rz','Body forward',-0.4,1,0.01],
+ ['nh','Front hip',-100,70,1],['nk','Front knee',0,150,1],['fh','Rear hip',-60,70,1],['fk','Rear knee',0,150,1]];
+const clone=o=>JSON.parse(JSON.stringify(o));
+const HBSL=[['w','Blade thickness',0.03,0.4,0.01,'blade'],['reach','Reach forward',0.2,1.8,0.01,'box'],['h','Box height',0.2,1.8,0.01,'box'],['y','Box centre height',0,1.8,0.01,'box'],['r','Radius',0.2,1.2,0.01,'circle']];
+function hitOf(a){if(!a.hit)a.hit={shape:'blade',w:0.12,reach:0.9,h:0.5,y:1.0,r:0.6,f0:Math.max(0,a.contact-2),f1:Math.min(88,a.contact+3)};return a.hit}
+const uid=()=>'a'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+let lib={anims:[],sel:null},frame=0,playing=false,last=0,drag=null,handlesPx=[];
+function mkAnim(type,load,name){return{id:uid(),name:name||({attack:'New attack',idle:'New idle',walk:'New walk'})[type],type,load:load||'1s',contact:36,loop:type==='idle'?3:0.55,keys:[]}}
+function cur(){return lib.anims.find(a=>a.id===lib.sel)}
+const isLoop=a=>a.type!=='attack',NF=a=>isLoop(a)?60:90,twoOf=a=>a.load==='2',shieldOf=a=>a.load==='1s';
+function dur(){return +$('dur').value/10}
+function reg(){M.clearCustom();const c=cur();for(const a of lib.anims)if(a!==c&&a.keys.length)M.registerAnim(regDef(a));if(c&&c.keys.length)M.registerAnim(regDef(c));save()}
+function regDef(a){return{id:a.id,type:a.type,two:twoOf(a),contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,keys:a.keys}}
+function fobjBase(){const a=cur();return{role:'p',tier:$('tier').value,two:twoOf(a),shield:shieldOf(a),face:1,broken:false,tabard:'#c2413b',helm:'#98a2ae',moving:false,walkT:0,flash:0,flashMax:.2,t:0}}
+function keyAt(f){return cur().keys.find(k=>k.f===f)}
+function figureAt(fr){const a=cur(),f=fobjBase(),n=NF(a);
+  if(a.type==='attack'){if(!a.keys.length)return M.poseCustom('p',f,DEF0);f.style='c_'+a.id;const d=dur(),h=d*a.contact/(n-1);f.swing={t:fr/(n-1)*d,dur:d,dur0:d,hitAt:h,extra:0};return M.pose('p',f)}
+  if(a.type==='idle'){f.t=fr/n*a.loop;return M.pose('p',f)}
+  f.moving=true;f.walkT=fr/n*2*Math.PI/12;return M.pose('p',f)}
+function paramsHere(){const a=cur(),k=keyAt(frame);if(k)return clone(k);
+  if(!a.keys.length)return Object.assign({f:frame},isLoop(a)?DEFL:DEF0);
+  if(a.type==='attack'&&frame<a.keys[0].f)return Object.assign(clone(a.keys[0]),{f:frame});
+  figureAt(frame);return Object.assign({},DEF0,M.paramsFromP(M.lastP),{f:frame})}
+function ensureKey(){const a=cur();let k=keyAt(frame);if(!k){k=paramsHere();k.f=frame;a.keys.push(k);a.keys.sort((x,y)=>x.f-y.f)}return k}
+function setParams(upd){Object.assign(ensureKey(),upd);reg();draw()}
+function J(prm){return M.joints(M.poseCustom('p',fobjBase(),prm))}
+function dirOf(p){const e=p.ba*D2R,z=p.bx*D2R;return[Math.cos(e)*Math.sin(z),Math.sin(e),Math.cos(e)*Math.cos(z)]}
+function draw(){
+  const Z=+$('zoom').value,a=cur();if(!M||!M.ready||!a){requestAnimationFrame(draw);return}
+  const n=NF(a);$('fr').max=n-1;if(frame>n-1)frame=n-1;
+  const W=Math.min(900,200*Z);if(stage.width!==W||stage.height!==200*Z){stage.width=ov.width=W;stage.height=ov.height=200*Z;stage.style.width=ov.style.width=W+'px'}
+  ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,W,stage.height);const gy=M.oy*Z;
+  ctx.strokeStyle='#4a4c56';ctx.beginPath();ctx.moveTo(0,gy+.5);ctx.lineTo(W,gy+.5);ctx.stroke();ctx.strokeStyle='#363842';ctx.beginPath();ctx.moveTo(M.ox*Z+.5,0);ctx.lineTo(M.ox*Z+.5,stage.height);ctx.stroke();
+  ctx.fillStyle='rgba(0,0,0,.38)';ctx.beginPath();ctx.ellipse(M.ox*Z,gy,17*Z,4.5*Z,0,0,7);ctx.fill();
+  const put=(rig,al)=>{const cv=M.render(rig);ctx.globalAlpha=al;const pf=ctx.filter;ctx.filter='brightness(0)';for(const[ox,oy]of[[1,0],[-1,0],[0,1],[0,-1]])ctx.drawImage(cv,ox*Z,oy*Z,200*Z,200*Z);ctx.filter=pf||'none';ctx.drawImage(cv,0,0,200*Z,200*Z);ctx.globalAlpha=1};
+  if($('onion').checked&&a.keys.length){const pk=[...a.keys].reverse().find(k=>k.f<frame);if(pk)put(M.poseCustom('p',fobjBase(),pk),.28)}
+  const rig=figureAt(frame);put(rig,1);
+  const j=M.joints(rig),prm=paramsHere(),d=dirOf(prm);handlesPx=[];
+  if($('handles').checked){handlesPx=[{id:'tip',p:[j.hand[0]+d[2]*j.tipLen*PXU,j.hand[1]-d[1]*j.tipLen*PXU],c:'#46d6ff'},{id:'hand',p:j.hand,c:'#ff9d3c'},{id:'hips',p:j.pelvis,c:'#5be37d'},{id:'footN',p:j.ankN,c:'#d58cff'},{id:'footF',p:j.ankF,c:'#ff8ccf'}];
+    if(!twoOf(a))handlesPx.push({id:'shield',p:j.farHand,c:'#ffd84a'})}
+  oc.clearRect(0,0,W,stage.height);drawHit(a,j,d,Z,W);for(const h of handlesPx){oc.beginPath();oc.arc(h.p[0]*Z,h.p[1]*Z,9,0,7);oc.fillStyle=h.c+'55';oc.fill();oc.lineWidth=2;oc.strokeStyle=h.c;oc.stroke()}
+  const k=keyAt(frame),tsec=isLoop(a)?frame/n*a.loop:frame/(n-1)*dur();
+  $('info').innerHTML='<b>'+esc(a.name)+'</b> · frame <b>'+(frame+1)+' / '+n+'</b> · '+tsec.toFixed(2)+' s · '+(k?'<b style="color:#e8b04a">KEY</b>':'in-between')+' · keys: '+a.keys.length+(a.type==='attack'?' · hit lands on frame '+(a.contact+1):' · loops')
+  $('help').textContent=a.type==='attack'?'Drag the dots to pose. Moving a dot on a frame without a key creates a key there. The idle stance holds until your first key, then jumps in. The red line is the frame where the hit lands.':'This loops forever in the game while the fighter is '+(a.type==='idle'?'standing':'walking')+'. Put keys around the loop; the last frame blends back to the first.';
+  $('fr').value=frame;renderTL(a,n);
+  for(const[id]of SL){const el=$('s_'+id);if(el&&!(drag&&drag.slider===id)){el.value=prm[id];$('v_'+id).textContent=(+prm[id]).toFixed(Math.abs(el.step)<1?2:0)}}
+  for(const r of document.querySelectorAll('.sl[data-sh]'))r.style.display=twoOf(a)?'none':'';
+  {const hb=hitOf(a);$('hbtype').value=hb.shape;for(const[id,,,,,t]of HBSL){const r=$('hr_'+id);if(r)r.style.display=(hb.shape===t&&!isLoop(a))?'':'none';const el=$('hs_'+id);if(el&&document.activeElement!==el){el.value=hb[id];$('hv_'+id).textContent=(+hb[id]).toFixed(2)}}
+ $('hbtype').parentNode&&0;for(const id of['hbtype','hbs','hbe'])$(id).disabled=isLoop(a);$('hbinfo').textContent=isLoop(a)?'Hitboxes only apply to attacks.':(hb.shape==='none'?'This attack has no hitbox.':'Active on frames '+(hb.f0+1)+' to '+(hb.f1+1)+'. Move to a frame and press Starts here / Ends here.')}
+ $('durbox').style.display=isLoop(a)?'none':'';$('loopbox').style.display=isLoop(a)?'':'none';$('ctk').style.display=isLoop(a)?'none':'';
+  if(document.activeElement!==$('json'))$('json').value=JSON.stringify(exportAnim(a))}
+function drawHit(a,j,d,Z,W){const hb=hitOf(a);if(!$('hbshow').checked||hb.shape==='none'||a.type!=='attack')return;
+  const on=frame>=hb.f0&&frame<=hb.f1,gy=M.oy;oc.save();oc.fillStyle=on?'rgba(214,72,58,.38)':'rgba(214,72,58,.07)';oc.strokeStyle=on?'#ff5a46':'rgba(255,90,70,.35)';oc.lineWidth=2;
+  if(hb.shape==='blade'){const t=[j.hand[0]+d[2]*j.tipLen*PXU,j.hand[1]-d[1]*j.tipLen*PXU];oc.lineCap='round';oc.strokeStyle=on?'rgba(255,90,70,.55)':'rgba(255,90,70,.15)';oc.lineWidth=2*hb.w*PXU*Z;oc.beginPath();oc.moveTo(j.hand[0]*Z,j.hand[1]*Z);oc.lineTo(t[0]*Z,t[1]*Z);oc.stroke()}
+  else if(hb.shape==='box'){const x0=j.pelvis[0],cy=gy-hb.y*PXU;oc.fillRect(x0*Z,(cy-hb.h*PXU/2)*Z,hb.reach*PXU*Z,hb.h*PXU*Z);oc.strokeRect(x0*Z,(cy-hb.h*PXU/2)*Z,hb.reach*PXU*Z,hb.h*PXU*Z)}
+  else{oc.beginPath();oc.arc(j.pelvis[0]*Z,j.pelvis[1]*Z,hb.r*PXU*Z,0,7);oc.fill();oc.stroke()}
+  oc.restore()}
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]);
+function exportAnim(a){return{id:a.id,name:a.name,type:a.type,load:a.load,contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,hit:a.type==='attack'?clone(hitOf(a)):undefined,keys:a.keys.map(k=>{const o={f:k.f};for(const key in DEF0)o[key]=+(+(k[key]==null?DEF0[key]:k[key])).toFixed(3);return o})}}
+function exportLib(){return{v:2,anims:lib.anims.map(exportAnim)}}
+function renderTL(a,n){const tl=$('tl');tl.innerHTML='';const w=tl.clientWidth,X=f=>f/(n-1)*(w-12)+6;
+  for(const k of a.keys){const d=document.createElement('div');d.className='k'+(k.f===frame?' sel':'');d.style.left=X(k.f)+'px';d.title='frame '+(k.f+1);d.onclick=()=>{setPlay(false);go(k.f)};tl.appendChild(d)}
+  if(a.type==='attack'){const hb=hitOf(a);if(hb.shape!=='none'){const b=document.createElement('div');b.className='hbbar';b.style.left=X(hb.f0)+'px';b.style.width=Math.max(3,X(hb.f1)-X(hb.f0))+'px';b.title='hitbox active: frames '+(hb.f0+1)+' to '+(hb.f1+1);tl.appendChild(b)}const c=document.createElement('div');c.className='ct';c.style.left=X(a.contact)+'px';c.title='hit lands';tl.appendChild(c)}
+  const p=document.createElement('div');p.className='ph';p.style.left=X(frame)+'px';tl.appendChild(p)}
+function renderList(){const L=$('alist');L.innerHTML='';for(const a of lib.anims){const d=document.createElement('div');d.className='ai'+(a.id===lib.sel?' sel':'');
+  d.innerHTML='<span>'+esc(a.name)+'</span><small>'+a.type+' · '+(a.load==='2'?'2H':a.load==='1s'?'1H+shield':'1H')+'</small>';d.onclick=()=>select(a.id);L.appendChild(d)}}
+function select(id){lib.sel=id;const a=cur();setPlay(false);$('name').value=a.name;$('load').value=a.load;$('loop').value=Math.round(a.loop*10);$('lv').textContent=a.loop.toFixed(1);frame=a.keys.length?a.keys[0].f:0;renderList();reg();draw()}
+function go(f){frame=Math.max(0,Math.min(NF(cur())-1,f));draw()}
+for(const[id,lab,mn,mx,st,sh]of SL){const r=document.createElement('div');r.className='sl';if(sh)r.dataset.sh=1;r.innerHTML='<span>'+lab+'</span><input type="range" id="s_'+id+'" min="'+mn+'" max="'+mx+'" step="'+st+'"><span id="v_'+id+'"></span>';$('sliders').appendChild(r);
+  $('s_'+id).oninput=e=>{drag={slider:id};setParams({[id]:+e.target.value});$('v_'+id).textContent=(+e.target.value).toFixed(st<1?2:0)};$('s_'+id).onchange=()=>{drag=null;draw()}}
+function pt(e){const r=ov.getBoundingClientRect(),Z=+$('zoom').value;return[(e.clientX-r.left)/Z,(e.clientY-r.top)/Z]}
+ov.onpointerdown=e=>{const[x,y]=pt(e);let best=null,tie=false,bd=23/+$('zoom').value;
+  const cand=handlesPx.map(h=>({h,d:Math.hypot(h.p[0]-x,h.p[1]-y)})).filter(c=>c.d<bd).sort((p,q)=>p.d-q.d);
+  if(cand.length){best=cand[0].h;if(cand.length>1&&cand[1].d-cand[0].d<5/ +$('zoom').value&&/^foot/.test(cand[0].h.id)&&/^foot/.test(cand[1].h.id))tie=true}
+  if(!best)return;setPlay(false);ov.setPointerCapture(e.pointerId);const k=ensureKey();reg();
+  drag={tie:tie,id:best.id,start:clone(k),sx:x,sy:y,c:0,p0:J(k).pelvis,xs:(dirOf(k)[0]<0?-1:1)};draw()};
+ov.onpointermove=e=>{if(!drag||!drag.id)return;const[x,y]=pt(e),k=keyAt(frame),b=drag.start;
+  if(drag.tie){if(Math.hypot(x-drag.sx,y-drag.sy)<3)return;drag.id=(x-drag.sx>=0)?'footN':'footF';drag.tie=false}
+  if(drag.id==='hand'||drag.id==='tip'||drag.id==='shield'){const j=J(k);
+    if(drag.id==='hand'){let hz=(x-j.shoulder[0])/PXU,hy=(j.shoulder[1]-y)/PXU;const L=Math.hypot(hy,hz);if(L>0.57){hy*=0.57/L;hz*=0.57/L}k.hy=hy;k.hz=hz}
+    else if(drag.id==='shield'){let fz=(x-j.farShoulder[0])/PXU,fy=(j.farShoulder[1]-y)/PXU;const L=Math.hypot(fy,fz);if(L>0.57){fy*=0.57/L;fz*=0.57/L}k.fy=fy;k.fz=fz}
+    else{const dz=(x-j.hand[0])/PXU,dy=(j.hand[1]-y)/PXU,L=j.tipLen,m=Math.hypot(dz,dy),r=Math.min(m/L,1);if(m>1e-4){const xs=e.shiftKey?-drag.xs:drag.xs,vx=xs*Math.sqrt(1-r*r),vy=dy/m*r,vz=dz/m*r;
+      k.ba=Math.atan2(vy,Math.hypot(vx,vz))/D2R;k.bx=Math.atan2(vx,vz)/D2R}}}
+  else if(drag.id==='hips'){k.rz=b.rz+(x-drag.sx)/PXU;
+    const at=c=>J(Object.assign({},b,{rz:k.rz,nk:b.nk+c,nh:b.nh-c/2,fk:b.fk+c/2,fh:b.fh+c/3}));
+    let c0=drag.c,c1=c0+4,e0=at(c0).pelvis[1]-y,e1=at(c1).pelvis[1]-y;
+    for(let i=0;i<8&&Math.abs(e1)>0.3;i++){const dc=e1-e0;if(Math.abs(dc)<1e-6)break;const c2=Math.max(-45,Math.min(60,c1-e1*(c1-c0)/dc));c0=c1;e0=e1;c1=c2;e1=at(c1).pelvis[1]-y}
+    drag.c=c1;Object.assign(k,{nk:b.nk+c1,nh:b.nh-c1/2,fk:b.fk+c1/2,fh:b.fh+c1/3})}
+  else{const N_=drag.id==='footN',hk=N_?'nh':'fh',kk=N_?'nk':'fk',tx=x-drag.p0[0],ty=y-drag.p0[1];
+    const ank=(h,kn)=>{const q=Object.assign({},k);q[hk]=h;q[kk]=kn;const j=J(q),p=N_?j.ankN:j.ankF;return[p[0]-j.pelvis[0],p[1]-j.pelvis[1]]};
+    const err=(h,kn)=>{const p=ank(h,kn);return Math.hypot(p[0]-tx,p[1]-ty)};
+    const lm=(h,kn)=>{let lam=1;for(let i=0;i<40;i++){const p0=ank(h,kn),ex=p0[0]-tx,ey=p0[1]-ty,e0=Math.hypot(ex,ey);if(e0<0.3)break;
+      const e2=2,pa=ank(h+e2,kn),pb=ank(h,kn+e2),a=(pa[0]-p0[0])/e2,c=(pa[1]-p0[1])/e2,b2=(pb[0]-p0[0])/e2,d=(pb[1]-p0[1])/e2;
+      let ok=false;for(let t=0;t<6&&!ok;t++){const A=a*a+c*c+lam,B=a*b2+c*d,C=b2*b2+d*d+lam,gx=a*ex+c*ey,gy=b2*ex+d*ey,det=A*C-B*B;
+        let dh=-(C*gx-B*gy)/det,dk=-(-B*gx+A*gy)/det;const m=Math.max(Math.abs(dh),Math.abs(dk));if(m>20){dh*=20/m;dk*=20/m}
+        const nh=Math.max(-100,Math.min(75,h+dh)),nk=Math.max(0,Math.min(150,kn+dk));
+        if(err(nh,nk)<e0-1e-4){h=nh;kn=nk;lam=Math.max(0.05,lam*0.5);ok=true}else lam*=4}
+      if(!ok)break}
+      return[h,kn,err(h,kn)]};
+    // a straight leg is a dead spot for the solver, so also try again from a bent knee and keep the better result
+    let best=lm(k[hk],k[kk]);if(best[2]>1)for(const[sh,sk]of[[k[hk],Math.max(k[kk],30)],[-30,60],[20,40]]){const r=lm(sh,sk);if(r[2]<best[2])best=r;if(best[2]<=1)break}
+    const h=best[0],kn=best[1];
+    k[hk]=h;k[kk]=kn}
+  reg();draw()};
+ov.onpointerup=ov.onpointercancel=()=>{drag=null;draw()};
+function tick(ts){if(!playing)return;const a=cur(),n=NF(a);if(!last)last=ts;const secs=isLoop(a)?a.loop:dur();const adv=(ts-last)/1000*(+$('spd').value)*n/secs;last=ts;tick.a=(tick.a||0)+adv;const k=Math.floor(tick.a);if(k>0){tick.a-=k;frame=(frame+k)%n;draw()}requestAnimationFrame(tick)}
+function setPlay(p){playing=p;last=0;tick.a=0;$('play').textContent=p?'⏸ Pause':'▶ Play';if(p)requestAnimationFrame(tick)}
+$('play').onclick=()=>setPlay(!playing);$('b1').onclick=()=>{setPlay(false);go(0)};$('be').onclick=()=>{setPlay(false);go(NF(cur())-1)};
+$('bm').onclick=()=>{setPlay(false);go(frame-1)};$('bp').onclick=()=>{setPlay(false);go(frame+1)};$('fr').oninput=e=>{setPlay(false);go(+e.target.value)};
+$('addk').onclick=()=>{ensureKey();reg();draw()};
+$('delk').onclick=()=>{const a=cur();a.keys=a.keys.filter(k=>k.f!==frame);reg();draw()};
+$('endk').onclick=()=>{const a=cur();if(a.type!=='attack'){note('End to idle is for attacks. Idle and walk loops already loop.');return}
+  const last=a.keys.length?a.keys[a.keys.length-1].f:0,at=frame>last?frame:Math.min(NF(a)-1,last+10);
+  const f=fobjBase();f.t=0;M.pose('p',f);const prm=Object.assign({},DEF0,M.paramsFromP(M.lastP),{f:at});
+  a.keys=a.keys.filter(k=>k.f!==at);a.keys.push(prm);a.keys.sort((x,y)=>x.f-y.f);frame=at;reg();save();draw();note('Added an idle-stance key at frame '+(at+1)+'.')};
+$('ctk').onclick=()=>{const a=cur();a.contact=Math.max(1,Math.min(88,frame));reg();draw()};
+for(const id of['zoom','onion','handles','tier'])$(id).onchange=()=>draw();
+$('dur').oninput=e=>{$('dv').textContent=(e.target.value/10).toFixed(1);draw()};
+$('loop').oninput=e=>{const a=cur();a.loop=e.target.value/10;$('lv').textContent=a.loop.toFixed(1);reg();draw()};
+$('name').oninput=e=>{cur().name=e.target.value;renderList();save();draw()};
+$('load').onchange=e=>{cur().load=e.target.value;renderList();reg();draw()};
+$('new').onclick=()=>{const a=mkAnim($('newtype').value,cur()?cur().load:'1s');lib.anims.push(a);select(a.id)};
+$('dup').onclick=()=>{const a=clone(cur());a.id=uid();a.name+=' copy';lib.anims.push(a);select(a.id)};
+$('del').onclick=()=>{const a=cur();if(!confirm('Delete "'+a.name+'"?'))return;try{const g=JSON.parse(localStorage.getItem('pwgone')||'[]');g.push(a.id);localStorage.setItem('pwgone',JSON.stringify(g))}catch(e){}lib.anims=lib.anims.filter(x=>x!==a);if(!lib.anims.length)lib.anims.push(mkAnim('attack'));select(lib.anims[0].id)};
+for(const[id,lab,mn,mx,st,t]of HBSL){const r=document.createElement('div');r.className='sl';r.id='hr_'+id;r.innerHTML='<span>'+lab+'</span><input type="range" id="hs_'+id+'" min="'+mn+'" max="'+mx+'" step="'+st+'"><span id="hv_'+id+'"></span>';$('hbsl').appendChild(r);
+  $('hs_'+id).oninput=e=>{hitOf(cur())[id]=+e.target.value;$('hv_'+id).textContent=(+e.target.value).toFixed(2);save();draw()}}
+$('hbtype').onchange=e=>{hitOf(cur()).shape=e.target.value;save();draw()};$('hbshow').onchange=()=>draw();
+$('hbs').onclick=()=>{const h=hitOf(cur());h.f0=frame;if(h.f1<h.f0)h.f1=h.f0;save();draw()};
+$('hbe').onclick=()=>{const h=hitOf(cur());h.f1=frame;if(h.f0>h.f1)h.f0=h.f1;save();draw()};
+const note=t=>$('msg').textContent=t;
+async function copyText(t,ok){try{await navigator.clipboard.writeText(t);note(ok)}catch(e){$('json').value=t;$('json').select();note('Select the box and copy it.')}}
+$('copyall').onclick=()=>copyText(JSON.stringify(exportLib()),'Copied the whole library ('+lib.anims.length+' animations). Paste it to Claude, or into the game test.');
+$('copy1').onclick=()=>copyText(JSON.stringify(exportAnim(cur())),'Copied this animation.');
+function importText(t,merge){try{const o=JSON.parse(t);const arr=o.anims||[o];const out=[];
+  for(const x of arr){if(!x.keys)continue;const a=mkAnim(x.type||'attack',x.load||(x.two?'2':x.shield===false?'1':'1s'),x.name);a.id=x.id||a.id;a.contact=x.contact||36;a.loop=x.loop||a.loop;if(x.hit)a.hit=Object.assign({},x.hit);a.keys=x.keys.map(k=>Object.assign({},DEF0,k));out.push(a)}
+  if(!out.length)throw 0;
+  if(merge){for(const a of out){const i=lib.anims.findIndex(z=>z.id===a.id);if(i>=0)lib.anims[i]=a;else lib.anims.push(a)}}else lib.anims=out;
+  select(out[0].id);note('Loaded '+out.length+' animation'+(out.length>1?'s':'')+'.')}catch(e){note('That is not a valid animation file.')}}
+$('loadbox').onclick=()=>importText($('json').value,true);
+$('sync').onclick=async()=>{const m=$('syncmsg');
+  try{const db=(typeof claude!=='undefined'&&claude.use)?await claude.use('db'):null;if(!db){m.textContent='Sync is not available in this view. Use Copy whole library instead.';return}
+    await db.doc('library/main').set({text:JSON.stringify(exportLib()),count:lib.anims.length,names:lib.anims.map(a=>a.name).join(', '),at:new Date().toISOString()});
+    m.textContent='Synced '+lib.anims.length+' animation'+(lib.anims.length>1?'s':'')+' at '+new Date().toLocaleTimeString()+'. Tell me which to load.'}
+  catch(e){m.textContent='Sync failed: '+(e&&e.message||e)+'. Use Copy whole library instead.'}};
+function save(){try{localStorage.setItem('pwlib2',JSON.stringify(lib))}catch(e){}}
+try{const s=JSON.parse(localStorage.getItem('pwlib2')||'null');if(s&&s.anims&&s.anims.length)lib=s;
+  else{const o=JSON.parse(localStorage.getItem('pwanim1')||'null');if(o&&o.def){const a=mkAnim('attack',o.def.two?'2':(o.def.shield?'1s':'1'),o.name||'My attack');a.contact=o.def.contact||36;a.keys=o.def.keys.map(k=>Object.assign({},DEF0,k));lib.anims.push(a)}}}catch(e){}
+const SEED=[{"id":"amwmwsy65ugd","name":"quick side","type":"attack","load":"1s","contact":11,"loop":0.55,"len":90,"end":89,"keys":[{"f":0,"hy":-0.376,"hz":0.146,"ba":20,"bx":0,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":0.019,"nh":19.386,"nk":36.466,"fh":-47.997,"fk":79.044,"fx":0.1,"fy":-0.252,"fz":0.153},{"f":1,"hy":-0.208,"hz":0.165,"ba":70.017,"bx":0,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":0,"nh":-42.075,"nk":63.44,"fh":15.677,"fk":40.885,"fx":0.1,"fy":-0.252,"fz":0.153},{"f":2,"hy":0.366,"hz":-0.312,"ba":20,"bx":0,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":0,"nh":-58.091,"nk":51.908,"fh":7.776,"fk":56.483,"fx":0.1,"fy":-0.252,"fz":0.153},{"f":3,"hy":0.375,"hz":-0.312,"ba":20,"bx":0,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":0,"nh":-58.091,"nk":51.908,"fh":-10.678,"fk":73.719,"fx":0.1,"fy":-0.252,"fz":0.153},{"f":4,"hy":0.439,"hz":-0.27,"ba":20,"bx":0,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":-0.046,"nh":-63.779,"nk":63.284,"fh":-6.99,"fk":79.505,"fx":0.1,"fy":-0.252,"fz":0.153},{"f":5,"hy":0.308,"hz":-0.308,"ba":28.318,"bx":68.416,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":-0.05,"nh":-64.228,"nk":64.182,"fh":-6.699,"fk":79.962,"fx":0.1,"fy":-0.252,"fz":0.153},{"f":6,"hy":0.155,"hz":-0.291,"ba":36.454,"bx":126.72,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":-0.049,"nh":-64.078,"nk":63.882,"fh":-6.796,"fk":79.809,"fx":0.1,"fy":-0.252,"fz":0.153},{"f":7,"hy":-0.231,"hz":0.305,"ba":0.523,"bx":-92.091,"br":0,"pp":10,"py":-30,"hp":10,"hw":0,"rz":-0.047,"nh":-63.873,"nk":63.471,"fh":-6.93,"fk":79.6,"fx":0.1,"fy":-0.252,"fz":0.153},{"f":9,"hy":-0.259,"hz":0.485,"ba":0.131,"bx":-91.762,"br":0,"pp":10,"py":-30,"hp":10.116,"hw":0,"rz":-0.047,"nh":-63.87,"nk":63.466,"fh":-6.931,"fk":79.597,"fx":0.1,"fy":-0.252,"fz":0.153},{"f":10,"hy":-0.237,"hz":0.519,"ba":-1.001,"bx":-53.374,"br":0,"pp":10,"py":-30,"hp":10.117,"hw":0,"rz":-0.047,"nh":-63.87,"nk":63.466,"fh":-6.931,"fk":79.597,"fx":0.1,"fy":-0.252,"fz":0.153},{"f":11,"hy":-0.16,"hz":0.547,"ba":-0.065,"bx":0,"br":-63,"pp":10,"py":-30,"hp":10.117,"hw":0,"rz":-0.047,"nh":-63.87,"nk":63.466,"fh":-6.931,"fk":79.597,"fx":0.1,"fy":-0.252,"fz":0.153},{"f":12,"hy":-0.16,"hz":0.547,"ba":-0.059,"bx":0.286,"br":-63.394,"pp":10,"py":-30,"hp":10.117,"hw":0,"rz":-0.047,"nh":-63.87,"nk":63.466,"fh":-6.931,"fk":79.597,"fx":0.1,"fy":-0.252,"fz":0.153}]},{"id":"amwo3xbolg76","name":"stab","type":"attack","load":"1s","contact":12,"loop":0.55,"len":90,"end":89,"keys":[{"f":0,"hy":-0.1,"hz":0.4,"ba":20,"bx":0,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":0.005,"nh":-40.521,"nk":41.043,"fh":28.681,"fk":10.521,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":1,"hy":-0.477,"hz":0.244,"ba":20,"bx":0,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":0.005,"nh":-40.521,"nk":41.043,"fh":28.681,"fk":10.521,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":2,"hy":-0.56,"hz":0.104,"ba":11.068,"bx":11.151,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":0.005,"nh":-40.521,"nk":41.043,"fh":28.681,"fk":10.521,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":3,"hy":-0.565,"hz":-0.072,"ba":2.66,"bx":14.284,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":0.005,"nh":-40.521,"nk":41.043,"fh":28.681,"fk":10.521,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":4,"hy":-0.43,"hz":-0.073,"ba":3,"bx":14.302,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":0.005,"nh":-40.521,"nk":41.043,"fh":28.681,"fk":10.521,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":5,"hy":-0.429,"hz":-0.19,"ba":3.002,"bx":14.302,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":0.005,"nh":-40.521,"nk":41.043,"fh":28.681,"fk":10.521,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":6,"hy":-0.429,"hz":-0.191,"ba":3.002,"bx":14.302,"br":0,"pp":10,"py":-30,"hp":0,"hw":0,"rz":-0.019,"nh":-50.047,"nk":60.094,"fh":25.633,"fk":23.984,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":8,"hy":-0.43,"hz":-0.191,"ba":3.002,"bx":14.302,"br":0,"pp":10,"py":-30,"hp":11,"hw":0,"rz":-0.019,"nh":-50.156,"nk":60.312,"fh":25.598,"fk":24.138,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":9,"hy":-0.43,"hz":-0.191,"ba":3.002,"bx":14.302,"br":0,"pp":10,"py":-30,"hp":25,"hw":0,"rz":-0.019,"nh":-50.157,"nk":60.314,"fh":25.598,"fk":24.139,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":10,"hy":-0.458,"hz":0.128,"ba":3.002,"bx":14.302,"br":0,"pp":10,"py":-30,"hp":25.085,"hw":0,"rz":-0.019,"nh":-50.157,"nk":60.314,"fh":25.598,"fk":24.139,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":11,"hy":-0.458,"hz":0.323,"ba":3.002,"bx":14.302,"br":0,"pp":10,"py":-30,"hp":25.086,"hw":0,"rz":-0.019,"nh":-50.157,"nk":60.314,"fh":25.598,"fk":24.139,"fx":0.1,"fy":-0.233,"fz":0.199},{"f":12,"hy":-0.15,"hz":0.55,"ba":3.002,"bx":14.302,"br":0,"pp":10,"py":-30,"hp":25.086,"hw":-22,"rz":-0.019,"nh":-50.157,"nk":60.314,"fh":25.598,"fk":24.139,"fx":0.1,"fy":-0.552,"fz":0.144},{"f":13,"hy":-0.148,"hz":0.551,"ba":3.002,"bx":14.302,"br":0,"pp":10,"py":-30,"hp":25.086,"hw":-22.139,"rz":-0.019,"nh":-50.157,"nk":60.314,"fh":25.598,"fk":24.139,"fx":0.1,"fy":-0.554,"fz":0.143},{"f":14,"hy":-0.547,"hz":0.068,"ba":3.002,"bx":14.302,"br":0,"pp":10,"py":-30,"hp":25.086,"hw":9,"rz":0.023,"nh":-41.619,"nk":43.238,"fh":19.906,"fk":15.602,"fx":0.1,"fy":-0.132,"fz":0.311}]},{"id":"amwo45w0yhhl","name":"turn stab","type":"attack","load":"1s","contact":10,"loop":0.55,"len":90,"end":89,"keys":[{"f":0,"hy":-0.283,"hz":0.09,"ba":20,"bx":-30,"br":-50,"pp":1,"py":-30,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":40.333,"fk":0,"fx":0.03,"fy":-0.18,"fz":0.3},{"f":1,"hy":-0.306,"hz":-0.053,"ba":20,"bx":-67,"br":-17,"pp":10,"py":-30,"hp":0,"hw":0,"rz":-0.042,"nh":-49.309,"nk":67.111,"fh":23.441,"fk":32.757,"fx":0.03,"fy":-0.18,"fz":0.3},{"f":2,"hy":-0.316,"hz":-0.293,"ba":19.979,"bx":-110,"br":-16.817,"pp":10,"py":-30,"hp":0,"hw":0,"rz":0,"nh":-42.38,"nk":58.776,"fh":34,"fk":4,"fx":0.03,"fy":-0.18,"fz":0.3},{"f":3,"hy":-0.265,"hz":-0.505,"ba":19.951,"bx":-180,"br":-87,"pp":1,"py":-30,"hp":0,"hw":0,"rz":0,"nh":-45.755,"nk":66.126,"fh":13.799,"fk":44.058,"fx":0.03,"fy":-0.18,"fz":0.3},{"f":4,"hy":-0.291,"hz":-0.351,"ba":22.693,"bx":-155.972,"br":-126.361,"pp":-9,"py":-30,"hp":0,"hw":0,"rz":0,"nh":-43.357,"nk":60.535,"fh":12.24,"fk":38.797,"fx":0.03,"fy":-0.18,"fz":0.3},{"f":5,"hy":-0.329,"hz":-0.131,"ba":19.817,"bx":-120,"br":-157,"pp":-17,"py":-30,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":11.115,"fk":39.792,"fx":0.03,"fy":-0.18,"fz":0.3},{"f":6,"hy":-0.371,"hz":0.188,"ba":9.451,"bx":-96.105,"br":-157.407,"pp":-8,"py":-30,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":9.125,"fk":43.092,"fx":0.03,"fy":-0.18,"fz":0.3},{"f":7,"hy":-0.376,"hz":0.35,"ba":4.185,"bx":-73.528,"br":-157.409,"pp":2,"py":-30,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":7.86,"fk":40.586,"fx":0.03,"fy":-0.18,"fz":0.3},{"f":8,"hy":-0.379,"hz":0.426,"ba":-0.597,"bx":-52.425,"br":-157.409,"pp":22,"py":-30,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":3.284,"fk":49.755,"fx":0.03,"fy":-0.18,"fz":0.3},{"f":9,"hy":-0.379,"hz":0.426,"ba":-7.674,"bx":-38.268,"br":-70,"pp":26,"py":-30,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":-1.007,"fk":43.303,"fx":0.03,"fy":-0.18,"fz":0.3},{"f":10,"hy":-0.303,"hz":0.483,"ba":-7.716,"bx":-38.182,"br":-69.467,"pp":21,"py":20,"hp":0,"hw":0,"rz":0.116,"nh":-51.401,"nk":76.724,"fh":4.083,"fk":57.758,"fx":0.03,"fy":-0.317,"fz":0.065},{"f":11,"hy":-0.303,"hz":0.483,"ba":-7.716,"bx":-38.182,"br":-69.464,"pp":33,"py":90,"hp":0,"hw":0,"rz":0.116,"nh":-42,"nk":49,"fh":30,"fk":0,"fx":0.03,"fy":-0.318,"fz":0.063}]},{"id":"amwo4ervj502","name":"body rotate slash","type":"attack","load":"1s","contact":8,"loop":0.55,"len":90,"end":89,"keys":[{"f":0,"hy":-0.1,"hz":0.4,"ba":20,"bx":27,"br":0,"pp":10,"py":20,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":1,"hy":-0.176,"hz":0.195,"ba":20,"bx":70,"br":0,"pp":10,"py":73,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":2,"hy":-0.17,"hz":0.062,"ba":20,"bx":63,"br":30,"pp":10,"py":85,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":3,"hy":-0.114,"hz":0.145,"ba":20,"bx":107,"br":0,"pp":10,"py":90,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":4,"hy":-0.087,"hz":-0.253,"ba":23.765,"bx":180,"br":87,"pp":10,"py":77.519,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":5,"hy":-0.03,"hz":-0.164,"ba":17.102,"bx":-180,"br":48.938,"pp":10,"py":61.292,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":6,"hy":-0.002,"hz":-0.172,"ba":16.414,"bx":180,"br":0,"pp":10,"py":40,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":7,"hy":-0.1,"hz":0.4,"ba":12.525,"bx":92.348,"br":0,"pp":10,"py":-13,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":8,"hy":-0.111,"hz":0.559,"ba":15.072,"bx":0,"br":-90,"pp":10,"py":-55,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.05,"fz":0.3},{"f":9,"hy":-0.046,"hz":0.568,"ba":10.572,"bx":0,"br":-90,"pp":10,"py":-90,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.295,"fz":0.182},{"f":10,"hy":-0.176,"hz":0.067,"ba":10.545,"bx":-53,"br":-13,"pp":10,"py":-90.213,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.296,"fz":0.181},{"f":11,"hy":-0.245,"hz":-0.28,"ba":10.519,"bx":-90,"br":-12.525,"pp":10,"py":-90.215,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.296,"fz":0.181},{"f":12,"hy":-0.189,"hz":-0.538,"ba":10.506,"bx":-180,"br":-93,"pp":10,"py":-90.215,"hp":0,"hw":0,"rz":0,"nh":-50,"nk":60,"fh":35,"fk":20,"fx":0.1,"fy":-0.296,"fz":0.181}]}];
+function seedLib(){let gone=[];try{gone=JSON.parse(localStorage.getItem('pwgone')||'[]')}catch(e){}
+  for(const x of SEED){if(lib.anims.some(z=>z.id===x.id)||gone.includes(x.id))continue;const a=mkAnim(x.type,x.load,x.name);a.id=x.id;a.contact=x.contact;a.loop=x.loop||a.loop;a.keys=x.keys.map(k=>Object.assign({},DEF0,k));lib.anims.push(a)}}
+seedLib();
+if(!lib.anims.length)lib.anims.push(mkAnim('attack'));
+addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'&&e.target.type==='text'||e.target.tagName==='TEXTAREA')return;
+  if(e.key==='ArrowRight'){setPlay(false);go(frame+(e.shiftKey?5:1));e.preventDefault()}else if(e.key==='ArrowLeft'){setPlay(false);go(frame-(e.shiftKey?5:1));e.preventDefault()}
+  else if(e.key===' '){setPlay(!playing);e.preventDefault()}else if(e.key==='k'||e.key==='K')$('addk').click();else if(e.key==='Delete'||e.key==='Backspace')$('delk').click()});
+addEventListener('resize',draw);
+(function boot(){if(!M||!M.ready){requestAnimationFrame(boot);return}select(lib.sel&&cur()?lib.sel:lib.anims[0].id)})();
+</script></body></html>

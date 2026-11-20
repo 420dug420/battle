@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project War Combat Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&amp;family=Spline+Sans+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Test rig for a medieval brawler: dusk ink panels, bone text, one gold accent. Stage left, tuning rack right. */
+  --ink: #120e19;
+  --panel: #1b1526;
+  --line: #43385a;
+  --bone: #f4ecd8;
+  --muted: #b7ab9a;
+  --gold: #f0c35a;
+  --crimson: #c2413b;
+  --good: #8fd68a;
+  --bad: #ff8f7a;
+  --display: "Pixelify Sans", ui-monospace, monospace;
+  --body: "Spline Sans Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--ink); color: var(--bone); font-family: var(--body); font-size: 13px; line-height: 1.45; }
+.wrap { max-width: 1400px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+h1 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 30px; letter-spacing: 1px; text-wrap: balance; }
+h1 span { color: var(--gold); }
+.sub { color: var(--muted); font-size: 12px; }
+.main { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.stagecol { flex: 1 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+#stage { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; image-rendering: pixelated; border: 2px solid var(--line); background: #000; outline: none; }
+#stage:focus-visible { border-color: var(--gold); }
+.under { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+.under b { color: var(--bone); font-weight: 600; }
+#status { color: var(--gold); }
+.side { flex: 1 1 340px; max-width: 440px; min-width: 300px; display: flex; flex-direction: column; gap: 12px; }
+.panel { background: var(--panel); border: 2px solid var(--line); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 9px; }
+.panel h2 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 16px; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); }
+.field { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.field label { color: var(--bone); }
+input[type=number], select { background: var(--ink); color: var(--bone); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; font: inherit; min-height: 32px; }
+input[type=number] { width: 84px; text-align: right; }
+select { max-width: 190px; }
+input[type=range] { width: 170px; accent-color: var(--gold); }
+input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--gold); }
+.val { min-width: 34px; text-align: right; color: var(--gold); font-weight: 600; }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { background: var(--ink); color: var(--bone); border: 1px solid var(--line); border-radius: 4px; padding: 7px 12px; font: inherit; min-height: 36px; cursor: pointer; }
+.btn:hover { border-color: var(--gold); }
+.btn.primary { background: var(--gold); color: var(--ink); border-color: var(--gold); font-weight: 600; }
+:is(.btn, input, select):focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.rrow { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+.rrow:last-child { border-bottom: 0; }
+.rrow span { color: var(--muted); }
+.rrow b { font-weight: 600; text-align: right; }
+.ok { color: var(--good); } .bad { color: var(--bad); }
+.muted { color: var(--muted); margin: 4px 0 0; font-size: 12px; }
+details > summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 16px; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); }
+details[open] > summary { margin-bottom: 9px; }
+ol#log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; max-height: 280px; overflow-y: auto; }
+#log li { padding-left: 8px; border-left: 3px solid var(--line); overflow-wrap: anywhere; }
+#log i { color: var(--muted); font-style: normal; margin-right: 6px; }
+#log .k-wound { border-color: #ffd27a; } #log .k-break { border-color: #ff9a6a; }
+#log .k-kill { border-color: var(--crimson); } #log .k-flee { border-color: #9fd0ff; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+.sheetbody { display: flex; flex-direction: column; gap: 9px; }
+.pair { display: flex; gap: 6px; align-items: center; }
+.pair input[type=number] { width: 70px; }
+table.anims { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.anims th { text-align: left; color: var(--muted); font-weight: 400; padding: 2px 4px; }
+table.anims td { padding: 2px 4px; border-top: 1px dashed var(--line); }
+table.anims input[type=number] { width: 54px; min-height: 28px; padding: 3px 6px; }
+table.anims input.frm { width: 128px; min-height: 28px; padding: 3px 6px; background: var(--ink); color: var(--bone); border: 1px solid var(--line); border-radius: 4px; font: inherit; }
+canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid var(--line); background: #2a2336; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Project <span>War</span> · Combat Test</h1>
+    <div class="sub">Side view, depth band, auto-attack, Wounded and Armor Break. Fighters are live 3D models drawn as pixel art.</div>
+  </header>
+
+  <div class="main">
+    <section class="stagecol" aria-label="Test arena">
+      <canvas id="stage" width="640" height="360" tabindex="0" aria-label="Combat arena. Move with W A S D or the arrow keys."></canvas>
+      <div class="under">
+        <span><b>W A S D</b> or arrows to move. Attacks are automatic when an enemy is in reach and in your lane. <b>P</b> pauses.</span>
+        <span id="status" aria-live="off">Chain step 1</span>
+      </div>
+      <div class="sub">Tuning guesses, not design: swing speed, how DEX shortens it, two-hander damage, armor durability, flee SAN. Everything else follows the style guide.</div>
+    </section>
+
+    <aside class="side" aria-label="Test menu">
+      <section class="panel">
+        <h2>Player</h2>
+        <div class="field"><label for="weapon">Weapon</label>
+          <select id="weapon"><option value="longsword">Longsword (level 1)</option><option value="greatsword">Two-hander</option><option value="axe">Hand axe</option><option value="mace">Mace</option><option value="spear">Spear</option></select></div>
+        <div class="field"><label for="art3d">Fighter art</label>
+          <select id="art3d"><option value="3d">3D models (humantest)</option><option value="sprite">Sprite sheets</option></select></div>
+        <div class="field"><label for="atkstyle">Attack style</label>
+          <select id="atkstyle"><option value="horiz">Horizontal Slash</option><option value="chop">Overhead Chop (big wind-up)</option><option value="lunge">Heavy Lunge (two-hander only)</option><option value="cut">Longsword Cut (diagonal)</option></select></div>
+        <div class="field"><details><summary>Animation library (from the Animator)</summary><textarea id="customjson" rows="5" style="width:100%;font:11px monospace" placeholder="Paste the library JSON here, or open the file"></textarea><div style="display:flex;gap:8px;align-items:center;margin-top:4px"><button id="customload" type="button">Load and use it</button><input type="file" id="customfile" accept=".json,application/json" style="max-width:150px;font-size:11px"><span id="custommsg" style="font-size:12px"></span></div></details></div>
+        <div class="field"><label for="dex">DEX (5 is the minimum)</label>
+          <span style="display:flex;gap:8px;align-items:center"><input type="range" id="dex" min="5" max="30" step="1" value="5"><span class="val" id="dexv">5</span></span></div>
+        <div class="field"><label for="dmgov">Damage override</label><input type="number" id="dmgov" min="1" step="1" placeholder="weapon"></div>
+        <div class="field"><label for="inv">Invulnerable</label><input type="checkbox" id="inv" checked></div>
+        <div id="readout"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Look</h2>
+        <div class="field"><label for="ptier">Armor set</label><select id="ptier"><option value="leather">Leather / cloth</option><option value="mail">Mail</option><option value="plate">Plate</option><option value="special">Special</option></select></div>
+        <div class="field"><label for="lkhead">Head</label><select id="lkhead"></select></div>
+        <div class="field"><label for="lkbody">Body</label><select id="lkbody"></select></div>
+        <div class="field"><label for="lkliv">Livery</label><select id="lkliv"></select></div>
+        <div class="field"><label for="lkmetal">Metal</label><select id="lkmetal"></select></div>
+        <p class="muted">The set picks all four; any part set here overrides it. Looks only: the player has no armor rule yet.</p>
+      </section>
+      <section class="panel">
+        <details><summary>2D sprite sheets (old art)</summary>
+        <div id="sheet-p"></div>
+        <div id="sheet-e"></div></details>
+      </section>
+
+      <section class="panel">
+        <h2>Enemies</h2>
+        <div class="field"><label for="tier">Armor</label>
+          <select id="tier"><option value="leather">Leather / cloth, 0%</option><option value="mail">Mail / scale, 25%</option><option value="plate">Plate, 50%</option><option value="special">Special unit, 75%</option></select></div>
+        <div class="field"><label for="dur">Armor durability</label><input type="number" id="dur" min="1" step="1" value="6"></div>
+        <div class="field"><label for="ai">Behavior</label>
+          <select id="ai"><option value="stand">Stand still (dummy)</option><option value="advance">Advance and attack</option></select></div>
+        <div class="field"><label for="count">Count</label><input type="number" id="count" min="1" max="5" step="1" value="1"></div>
+        <div class="btns">
+          <button class="btn primary" id="spawn" type="button">Spawn man-at-arms</button>
+          <button class="btn" id="clear" type="button">Clear</button>
+          <button class="btn" id="heal" type="button">Heal all</button>
+          <button class="btn" id="repair" type="button">Repair armor</button>
+          <button class="btn" id="resetp" type="button">Reset player</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <details>
+          <summary>Rules</summary>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div class="field"><label for="thr">Wounded threshold</label><input type="number" id="thr" min="0" step="1" value="3"></div>
+            <div class="field"><label for="chance">Wounded chance %</label><input type="number" id="chance" min="0" max="100" step="5" value="100"></div>
+            <div class="field"><label for="wdur">Wounded window (s)</label><input type="number" id="wdur" min="0.1" step="0.1" value="1"></div>
+            <div class="field"><label for="critorder">Crit doubles</label>
+              <select id="critorder"><option value="before">before armor</option><option value="after">after armor</option></select></div>
+            <div class="field"><label for="flee">Flee at SAN at or below</label><input type="number" id="flee" step="0.5" value="3"></div>
+            <div class="field"><label for="esan">Enemy SAN (new spawns)</label><input type="number" id="esan" step="0.5" value="5"></div>
+            <div class="field"><label for="ts">Time scale</label>
+              <span style="display:flex;gap:8px;align-items:center"><input type="range" id="ts" min="0.1" max="1" step="0.05" value="1"><span class="val" id="tsv">1.00x</span></span></div>
+            <div class="field"><label for="dbg">Show reach, lane and swing timing</label><input type="checkbox" id="dbg"></div>
+            <div class="btns"><button class="btn" id="pause" type="button" aria-pressed="false">Pause (P)</button></div>
+          </div>
+        </details>
+      </section>
+
+      <section class="panel"><h2>Last hit</h2><div id="last"></div></section>
+      <section class="panel"><h2>Combat log</h2><ol id="log"></ol></section>
+    </aside>
+  </div>
+</div>
+<script>
+/*SIM*/
+/*SPRITES*/
+/*PRESETS*/
+/*MODEL3D*/
+/*APP*/
+</script>
+</body>
+</html>
