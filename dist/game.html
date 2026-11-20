@@ -15197,10 +15197,7 @@ void main(){
       free = true;
       if (viol) aux.lift = Math.sin(Math.min(1, u * 1.1) * Math.PI) * 0.5;
     } else if (f.swing) {
-      const sw = f.swing, sf2 = f.two ? "2" : "1";
-      let st0 = f.style === "attack2" ? "attack2" : f.style || "cut";
-      let st = KT[st0 + sf2] ? st0 + sf2 : KT[st0] ? st0 : "cut" + sf2;
-      if (typeof f.style === "string" && f.style.slice(0, 2) === "c_") st = KT[f.style] && KT[f.style].two === !!f.two ? f.style : "cut" + sf2;
+      const sw = f.swing, st = M3.moveKey(f.style, f.two);
       const keys = KEYS[st], cf2 = KT[st].c, n = keys.length;
       const t = sw.t, h = sw.hitAt, ex2 = sw.extra || 0;
       let pos;
@@ -15263,6 +15260,33 @@ void main(){
     rig.g.rotation.set(0, 0, 0);
     rig.g.position.set(0, 0, 0);
   }
+  M3.moveKey = function(style, two) {
+    const sf2 = two ? "2" : "1";
+    if (typeof style === "string" && style.slice(0, 2) === "c_") return KT[style] && KT[style].two === !!two ? style : "cut" + sf2;
+    const st0 = style || "cut";
+    return KT[st0 + sf2] ? st0 + sf2 : KT[st0] ? st0 : "cut" + sf2;
+  };
+  M3.bakeMove = function(key, f, n) {
+    const kt2 = KT[key];
+    if (!kt2) return null;
+    n = n || 48;
+    const rig = M3.getRig("p", Object.assign({ tier: "leather", two: !!kt2.two || key.slice(-1) === "2" }, f || {}));
+    const T = kt2.t, t02 = T[0], end = T[T.length - 1], seg = [], hp2 = new V3(), tp2 = new V3();
+    const lead = kt2.lead != null ? idleLead({ two: rig.opts.two }) : null;
+    for (let i15 = 0; i15 <= n; i15++) {
+      const tau = t02 + (end - t02) * i15 / n;
+      const p = lead && tau < kt2.lead ? lead : sampleT(KEYS[key], T, tau);
+      applyPose(rig, p, {});
+      groundLock(rig, 0);
+      rig.g.updateMatrixWorld(true);
+      rig.near.wg.getWorldPosition(hp2);
+      tp2.set(0, rig.sword._tipY, 0);
+      rig.sword.localToWorld(tp2);
+      seg.push([+hp2.z.toFixed(3), +hp2.y.toFixed(3), +tp2.z.toFixed(3), +tp2.y.toFixed(3)]);
+    }
+    const hit = kt2.hit || { shape: "blade", w: 0.12, f0: Math.max(t02, kt2.c - 2), f1: Math.min(end, kt2.c + 3) };
+    return { key, t0: t02, c: kt2.c, end, n, seg, hit };
+  };
   M3.render = function(rig) {
     if (!rig) return null;
     if (visRig !== rig) {
@@ -15385,7 +15409,7 @@ void main(){
       }
       const id = "c_" + (def.id || "x");
       KEYS[id] = keys;
-      KT[id] = { t: T, c: Math.max(1, Math.min(END - 1, def.contact || 36)), lead: ks2[0].f > 0 ? ks2[0].f : null, two };
+      KT[id] = { t: T, c: Math.max(1, Math.min(END - 1, def.contact || 36)), lead: ks2[0].f > 0 ? ks2[0].f : null, two, hit: def.hit || null };
     } else {
       const L = def.len || 60;
       for (const k of ks2) add(k, k.f);
@@ -15463,6 +15487,10 @@ void main(){
     },
     abreak: { sanMult: 0.5, speedMult: 1.25 },
     // design
+    pxPerM: 54,
+    // sim pixels per metre (the 3D render scale)
+    body: { height: 1.7, radius: 0.2 },
+    // PLACEHOLDER: a fighter's hit capsule, metres (side view)
     enemy: { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1, atkHitAt: 0.45, atkCool: 0.8, reach: 38 },
     rallyPerChr: 4e-3,
     // PLACEHOLDER: chance per second, per CHR point, that a fleeing enemy rallies (CHR 5 = 2%/s)
@@ -15502,6 +15530,41 @@ void main(){
       t ^= t + Math.imul(t ^ t >>> 7, t | 61);
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
     };
+  }
+  function moveTau(m, s, t) {
+    const h = s.hitAt, ex2 = s.extra || 0;
+    if (t < h) return m.t0 + (m.c - m.t0) * Math.max(0, t / h);
+    if (t < h + ex2) return m.c;
+    return m.c + (m.end - m.c) * Math.min(1, (t - h - ex2) / Math.max(0.05, s.dur - h - ex2));
+  }
+  function segAt(m, tau) {
+    const u = Math.max(0, Math.min(1, (tau - m.t0) / Math.max(1e-6, m.end - m.t0))) * m.n, i15 = Math.min(m.n - 1, Math.floor(u)), f = u - i15, a = m.seg[i15], b = m.seg[i15 + 1];
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f];
+  }
+  function ptSeg(px, py, ax2, ay, bx, by) {
+    const dx2 = bx - ax2, dy = by - ay, L = dx2 * dx2 + dy * dy;
+    let t = L ? ((px - ax2) * dx2 + (py - ay) * dy) / L : 0;
+    t = Math.max(0, Math.min(1, t));
+    const qx = ax2 + dx2 * t - px, qy = ay + dy * t - py;
+    return Math.sqrt(qx * qx + qy * qy);
+  }
+  function cross(ax2, ay, bx, by, cx2, cy) {
+    return (bx - ax2) * (cy - ay) - (by - ay) * (cx2 - ax2);
+  }
+  function segSegDist(a, b) {
+    const d1 = cross(a[0], a[1], a[2], a[3], b[0], b[1]), d2 = cross(a[0], a[1], a[2], a[3], b[2], b[3]), d3 = cross(b[0], b[1], b[2], b[3], a[0], a[1]), d4 = cross(b[0], b[1], b[2], b[3], a[2], a[3]);
+    if (d1 > 0 !== d2 > 0 && d3 > 0 !== d4 > 0) return 0;
+    return Math.min(ptSeg(a[0], a[1], b[0], b[1], b[2], b[3]), ptSeg(a[2], a[3], b[0], b[1], b[2], b[3]), ptSeg(b[0], b[1], a[0], a[1], a[2], a[3]), ptSeg(b[2], b[3], a[0], a[1], a[2], a[3]));
+  }
+  function moveTouches(cfg, m, tau, ax2, face, ex2) {
+    const P2 = cfg.pxPerM, R = cfg.body.radius * P2, Hb = cfg.body.height * P2, hb = m.hit, sg2 = segAt(m, tau);
+    const X = (z) => ax2 + face * z * P2, axis = [ex2, 0, ex2, Hb];
+    if (hb.shape === "box") {
+      const x02 = Math.min(ax2, X(hb.reach)), x1 = Math.max(ax2, X(hb.reach)), y02 = (hb.y - hb.h / 2) * P2, y1 = (hb.y + hb.h / 2) * P2;
+      return ex2 >= x02 - R && ex2 <= x1 + R && y1 >= 0 && y02 <= Hb;
+    }
+    if (hb.shape === "circle") return ptSeg(X(sg2[0]), sg2[1] * P2, ex2, 0, ex2, Hb) <= hb.r * P2 + R;
+    return segSegDist([X(sg2[0]), sg2[1] * P2, X(sg2[2]), sg2[3] * P2], axis) <= R + (hb.w || 0.12) * P2 / 2;
   }
   var Sim = class {
     // rng: rules (wounded chance). fxRng: particles only, so cosmetic effects never shift the rules' random sequence
@@ -15544,6 +15607,7 @@ void main(){
       this.log = [];
       this.logVer = 0;
       this.lastHit = null;
+      this.moves = this.moves || {};
       this.input = { x: 0, y: 0 };
     }
     clearEnemies() {
@@ -15701,9 +15765,12 @@ void main(){
       }
       if (p.cooldown > 0) p.cooldown -= dt;
       if (p.swing) {
-        const s = p.swing;
+        const s = p.swing, t02 = s.t;
         s.t += dt;
-        if (!s.hit && s.t >= s.hitAt) {
+        const m = s.move && this.moves[s.move];
+        if (m && m.seg) {
+          if (!s.hit) this.bladeCheck(s, m, t02, w);
+        } else if (!s.hit && s.t >= s.hitAt) {
           s.hit = true;
           this.playerStrike(s, w);
         }
@@ -15721,8 +15788,33 @@ void main(){
         const tgt = this.findTarget(w);
         if (tgt) {
           p.face = tgt.x >= p.x ? 1 : -1;
-          p.swing = { t: 0, dur: w.interval, dur0: w.interval, hitAt: w.interval * 0.45, hit: false, target: tgt.id, whiff: false, dramatic: false, extra: 0 };
+          p.swing = { t: 0, dur: w.interval, dur0: w.interval, hitAt: w.interval * 0.45, hit: false, target: tgt.id, whiff: false, dramatic: false, extra: 0, move: p.move || null };
           p.moved = false;
+        }
+      }
+    }
+    // the blade's path between the last step and this one, inside the move's hit window, against every enemy in the lane
+    bladeCheck(s, m, tPrev, w) {
+      const p = this.player, c = this.cfg, f02 = m.hit.f0, f1 = m.hit.f1;
+      const a = moveTau(m, s, tPrev), b = moveTau(m, s, s.t);
+      if (a > f1) {
+        s.hit = true;
+        s.whiff = true;
+        this.text(p.x + p.face * 40, p.y - 70, "MISS", "#b7ab9a", 10);
+        return;
+      }
+      const lo2 = Math.max(a, f02), hi = Math.min(b, f1);
+      if (hi < lo2) return;
+      for (let k = 0; k <= 3; k++) {
+        const tau = lo2 + (hi - lo2) * k / 3;
+        for (const e of this.enemies) {
+          if (e.state !== "alive" || Math.abs(e.y - p.y) > c.laneTol) continue;
+          if (moveTouches(c, m, tau, p.x, p.face, e.x)) {
+            s.hit = true;
+            s.target = e.id;
+            this.applyHit(e, w.dmg, s);
+            return;
+          }
         }
       }
     }
@@ -16063,6 +16155,12 @@ void main(){
       look.liv = $("lkliv").value;
       look.metal = $("lkmetal").value;
       look.style = { horiz: "attack2", chop: "chop", lunge: "lunge", cut: "cut" }[v2] || (v2.slice(0, 2) === "c_" ? v2 : "cut");
+      const key = model3d_default.moveKey(look.style, w.twoHanded), id = key + "|" + (w.kind || "sword");
+      if (!sim.moves[id]) {
+        const m = model3d_default.bakeMove(key, { two: w.twoHanded, wkind: w.kind || "sword" });
+        if (m) sim.moves[id] = m;
+      }
+      sim.player.move = sim.moves[id] ? id : null;
     }, applySettings = function() {
       sim.player.weapon = $("weapon").value;
       sim.player.dex = Math.max(5, num("dex", 5));
@@ -16253,6 +16351,18 @@ void main(){
       ctx.fillRect(p.x - 15, p.y - 84, 30, 5);
       ctx.fillStyle = "#6fd07a";
       ctx.fillRect(p.x - 14, p.y - 83, Math.round(28 * p.hp / p.maxHp), 3);
+      if (dbg && p.swing && p.swing.move && sim.moves[p.swing.move]) {
+        const m = sim.moves[p.swing.move], s = p.swing, tau = moveTau(m, s, s.t), g = segAt(m, tau), P2 = CFG.pxPerM, live = tau >= m.hit.f0 && tau <= m.hit.f1;
+        ctx.strokeStyle = live ? "#ff5a4a" : "rgba(255,255,255,.5)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(p.x + p.face * g[0] * P2, p.y - g[1] * P2);
+        ctx.lineTo(p.x + p.face * g[2] * P2, p.y - g[3] * P2);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(127,176,217,.6)";
+        ctx.lineWidth = 1;
+        for (const e of sim.enemies) if (e.state === "alive") ctx.strokeRect(Math.round(e.x - CFG.body.radius * P2) + 0.5, Math.round(e.y - CFG.body.height * P2) + 0.5, Math.round(CFG.body.radius * 2 * P2), Math.round(CFG.body.height * P2));
+      }
       if (dbg && p.swing) {
         const s = p.swing;
         ctx.fillStyle = "#14101c";
@@ -16284,6 +16394,7 @@ void main(){
         const o = JSON.parse(txt), user = o.anims || [o];
         const arr = BUILTIN_ANIMS.filter((b) => !user.some((u) => u.id === b.id)).concat(user);
         model3d_default.clearCustom();
+        for (const k in sim.moves) if (k.slice(0, 2) === "c_") delete sim.moves[k];
         const sel = $("atkstyle");
         sel.querySelectorAll("option[data-custom]").forEach((x) => x.remove());
         const info = [];
@@ -16291,7 +16402,7 @@ void main(){
         for (const x of arr) {
           if (!x.keys || !x.keys.length) continue;
           const two = x.load ? x.load === "2" : !!x.two, typ = x.type || "attack";
-          if (!model3d_default.registerAnim({ id: x.id || "legacy", type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys })) continue;
+          if (!model3d_default.registerAnim({ id: x.id || "legacy", type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit })) continue;
           if (typ === "attack") {
             const op2 = document.createElement("option");
             op2.value = "c_" + (x.id || "legacy");

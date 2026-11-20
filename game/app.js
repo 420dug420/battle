@@ -3,7 +3,7 @@
    Fighters are live 3D models (rig/model3d.js) drawn into the 2D stage.
    ============================================================ */
 import M3 from '../rig/model3d.js';
-import { CFG, Sim, fitsWindow, minDexForWindow } from './sim.js';
+import { CFG, Sim, fitsWindow, minDexForWindow, moveTau, segAt } from './sim.js';
 {
   const $ = id => document.getElementById(id);
   const cv = $('stage');
@@ -119,6 +119,10 @@ import { CFG, Sim, fitsWindow, minDexForWindow } from './sim.js';
     const v = sel.value;
     look.tier = $('ptier').value; look.head = $('lkhead').value; look.body = $('lkbody').value; look.liv = $('lkliv').value; look.metal = $('lkmetal').value;
     look.style = ({ horiz: 'attack2', chop: 'chop', lunge: 'lunge', cut: 'cut' })[v] || (v.slice(0, 2) === 'c_' ? v : 'cut');
+    // the move the player's swings use, with its weapon path baked from the 3D rig for blade-contact hits
+    const key = M3.moveKey(look.style, w.twoHanded), id = key + '|' + (w.kind || 'sword');
+    if (!sim.moves[id]) { const m = M3.bakeMove(key, { two: w.twoHanded, wkind: w.kind || 'sword' }); if (m) sim.moves[id] = m; }
+    sim.player.move = sim.moves[id] ? id : null;
   }
   ['ptier', 'lkhead', 'lkbody', 'lkliv', 'lkmetal', 'atkstyle'].forEach(id => $(id).addEventListener('change', readLook));
   function applySettings() {
@@ -251,6 +255,13 @@ import { CFG, Sim, fitsWindow, minDexForWindow } from './sim.js';
     // player hp + swing
     label('YOU', p.x, p.y - 88, '#f4ecd8', 10);
     ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 15, p.y - 84, 30, 5); ctx.fillStyle = '#6fd07a'; ctx.fillRect(p.x - 14, p.y - 83, Math.round(28 * p.hp / p.maxHp), 3);
+    if (dbg && p.swing && p.swing.move && sim.moves[p.swing.move]) {
+      const m = sim.moves[p.swing.move], s = p.swing, tau = moveTau(m, s, s.t), g = segAt(m, tau), P = CFG.pxPerM, live = tau >= m.hit.f0 && tau <= m.hit.f1;
+      ctx.strokeStyle = live ? '#ff5a4a' : 'rgba(255,255,255,.5)'; ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(p.x + p.face * g[0] * P, p.y - g[1] * P); ctx.lineTo(p.x + p.face * g[2] * P, p.y - g[3] * P); ctx.stroke();
+      ctx.strokeStyle = 'rgba(127,176,217,.6)'; ctx.lineWidth = 1;
+      for (const e of sim.enemies) if (e.state === 'alive') ctx.strokeRect(Math.round(e.x - CFG.body.radius * P) + .5, Math.round(e.y - CFG.body.height * P) + .5, Math.round(CFG.body.radius * 2 * P), Math.round(CFG.body.height * P));
+    }
     if (dbg && p.swing) {
       const s = p.swing; ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 20, p.y - 100, 40, 4);
       ctx.fillStyle = '#f0c35a'; ctx.fillRect(p.x - 19, p.y - 99, Math.round(38 * Math.min(1, s.t / s.dur)), 2);
@@ -281,13 +292,13 @@ import { CFG, Sim, fitsWindow, minDexForWindow } from './sim.js';
     try {
       const o = JSON.parse(txt), user = o.anims || [o];
       const arr = BUILTIN_ANIMS.filter(b => !user.some(u => u.id === b.id)).concat(user);
-      M3.clearCustom();
+      M3.clearCustom(); for (const k in sim.moves) if (k.slice(0, 2) === 'c_') delete sim.moves[k];
       const sel = $('atkstyle'); sel.querySelectorAll('option[data-custom]').forEach(x => x.remove());
       const info = []; let first = null;
       for (const x of arr) {
         if (!x.keys || !x.keys.length) continue;
         const two = x.load ? x.load === '2' : !!x.two, typ = x.type || 'attack';
-        if (!M3.registerAnim({ id: x.id || 'legacy', type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys })) continue;
+        if (!M3.registerAnim({ id: x.id || 'legacy', type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit })) continue;
         if (typ === 'attack') {
           const op = document.createElement('option'); op.value = 'c_' + (x.id || 'legacy'); op.dataset.custom = 1;
           op.textContent = 'Custom: ' + (x.name || 'attack') + (two ? ' (2H)' : ' (1H)'); sel.appendChild(op); first = first || op.value;

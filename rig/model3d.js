@@ -580,10 +580,7 @@ M3.pose = function (role, f) {
     free = true;
     if (viol) aux.lift = Math.sin(Math.min(1, u * 1.1) * Math.PI) * 0.5;
   } else if (f.swing) {
-    const sw = f.swing, sf = f.two ? '2' : '1';
-    let st0 = f.style === 'attack2' ? 'attack2' : (f.style || 'cut');
-    let st = KT[st0 + sf] ? st0 + sf : (KT[st0] ? st0 : 'cut' + sf);
-    if (typeof f.style === 'string' && f.style.slice(0, 2) === 'c_') st = (KT[f.style] && KT[f.style].two === !!f.two) ? f.style : 'cut' + sf;
+    const sw = f.swing, st = M3.moveKey(f.style, f.two);
     const keys = KEYS[st], cf = KT[st].c, n = keys.length;
     const t = sw.t, h = sw.hitAt, ex = sw.extra || 0; let pos;
     if (KT[st]) {
@@ -627,6 +624,30 @@ function applyRun(rig, p) {
   if (rig.shield) rig.shield.visible = true;
   rig.g.rotation.set(0, 0, 0); rig.g.position.set(0, 0, 0);
 }
+/* which animation a style plays for a one- or two-handed fighter (the sim uses the same key to look up the blade path) */
+M3.moveKey = function (style, two) {
+  const sf = two ? '2' : '1';
+  if (typeof style === 'string' && style.slice(0, 2) === 'c_') return (KT[style] && KT[style].two === !!two) ? style : 'cut' + sf;
+  const st0 = style || 'cut';
+  return KT[st0 + sf] ? st0 + sf : (KT[st0] ? st0 : 'cut' + sf);
+};
+/* bake a move's weapon path: hand and tip (metres; z forward, y up from the feet) at n+1 even steps of animation time,
+   plus its hit window. Pure data, so the sim (and the server) can test real blade contact without a 3D rig. */
+M3.bakeMove = function (key, f, n) {
+  const kt = KT[key]; if (!kt) return null; n = n || 48;
+  const rig = M3.getRig('p', Object.assign({ tier: 'leather', two: !!kt.two || key.slice(-1) === '2' }, f || {}));
+  const T = kt.t, t0 = T[0], end = T[T.length - 1], seg = [], hp = new V3(), tp = new V3();
+  const lead = kt.lead != null ? idleLead({ two: rig.opts.two }) : null;
+  for (let i = 0; i <= n; i++) {
+    const tau = t0 + (end - t0) * i / n;
+    const p = (lead && tau < kt.lead) ? lead : sampleT(KEYS[key], T, tau);
+    applyPose(rig, p, {}); groundLock(rig, 0); rig.g.updateMatrixWorld(true);
+    rig.near.wg.getWorldPosition(hp); tp.set(0, rig.sword._tipY, 0); rig.sword.localToWorld(tp);
+    seg.push([+hp.z.toFixed(3), +hp.y.toFixed(3), +tp.z.toFixed(3), +tp.y.toFixed(3)]);
+  }
+  const hit = kt.hit || { shape: 'blade', w: 0.12, f0: Math.max(t0, kt.c - 2), f1: Math.min(end, kt.c + 3) };
+  return { key, t0, c: kt.c, end, n, seg, hit };
+};
 M3.render = function (rig) {
   if (!rig) return null;
   if (visRig !== rig) { if (visRig) visRig.g.visible = false; rig.g.visible = true; visRig = rig; }
@@ -675,7 +696,7 @@ M3.registerAnim = function (def) {
     if (T[T.length - 1] < END) add(ks[ks.length - 1], END);
     if (keys.length < 2) { keys.push(keys[0]); T.push(END); }
     const id = 'c_' + (def.id || 'x');
-    KEYS[id] = keys; KT[id] = { t: T, c: Math.max(1, Math.min(END - 1, def.contact || 36)), lead: ks[0].f > 0 ? ks[0].f : null, two: two };
+    KEYS[id] = keys; KT[id] = { t: T, c: Math.max(1, Math.min(END - 1, def.contact || 36)), lead: ks[0].f > 0 ? ks[0].f : null, two: two, hit: def.hit || null };
   } else {
     const L = def.len || 60;
     for (const k of ks) add(k, k.f);

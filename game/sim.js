@@ -44,6 +44,8 @@ export const CFG = {
     spear:      { label: 'Spear',      cls: 'spear2', kind: 'spear' },
   },
   abreak: { sanMult: 0.5, speedMult: 1.25 },   // design
+  pxPerM: 54,                             // sim pixels per metre (the 3D render scale)
+  body: { height: 1.7, radius: 0.2 },     // PLACEHOLDER: a fighter's hit capsule, metres (side view)
   enemy:  { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1.0, atkHitAt: 0.45, atkCool: 0.8, reach: 38 },
   rallyPerChr: 0.004,                     // PLACEHOLDER: chance per second, per CHR point, that a fleeing enemy rallies (CHR 5 = 2%/s)
   player: { hp: 30, speed: 90 },
@@ -74,6 +76,37 @@ export function makeRng(seed) {
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
+/* ---------- blade contact: baked weapon paths (rig/model3d.js bakeMove) tested against body capsules ---------- */
+// animation time ("tau") for a swing at time t: the same mapping the renderer uses, so the blade you see is the blade that hits
+export function moveTau(m, s, t) {
+  const h = s.hitAt, ex = s.extra || 0;
+  if (t < h) return m.t0 + (m.c - m.t0) * Math.max(0, t / h);
+  if (t < h + ex) return m.c;
+  return m.c + (m.end - m.c) * Math.min(1, (t - h - ex) / Math.max(0.05, s.dur - h - ex));
+}
+export function segAt(m, tau) {                                   // [handZ, handY, tipZ, tipY] in metres
+  const u = Math.max(0, Math.min(1, (tau - m.t0) / Math.max(1e-6, m.end - m.t0))) * m.n, i = Math.min(m.n - 1, Math.floor(u)), f = u - i, a = m.seg[i], b = m.seg[i + 1];
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f];
+}
+function ptSeg(px, py, ax, ay, bx, by) { const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy; let t = L ? ((px - ax) * dx + (py - ay) * dy) / L : 0; t = Math.max(0, Math.min(1, t)); const qx = ax + dx * t - px, qy = ay + dy * t - py; return Math.sqrt(qx * qx + qy * qy); }
+function cross(ax, ay, bx, by, cx, cy) { return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax); }
+export function segSegDist(a, b) {                               // a, b: [x1, y1, x2, y2]
+  const d1 = cross(a[0], a[1], a[2], a[3], b[0], b[1]), d2 = cross(a[0], a[1], a[2], a[3], b[2], b[3]), d3 = cross(b[0], b[1], b[2], b[3], a[0], a[1]), d4 = cross(b[0], b[1], b[2], b[3], a[2], a[3]);
+  if (((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0))) return 0;
+  return Math.min(ptSeg(a[0], a[1], b[0], b[1], b[2], b[3]), ptSeg(a[2], a[3], b[0], b[1], b[2], b[3]), ptSeg(b[0], b[1], a[0], a[1], a[2], a[3]), ptSeg(b[2], b[3], a[0], a[1], a[2], a[3]));
+}
+// does the move's hit shape at animation time tau touch a body standing at ex? (attacker at ax facing face; side view, px)
+export function moveTouches(cfg, m, tau, ax, face, ex) {
+  const P = cfg.pxPerM, R = cfg.body.radius * P, Hb = cfg.body.height * P, hb = m.hit, sg = segAt(m, tau);
+  const X = z => ax + face * z * P, axis = [ex, 0, ex, Hb];
+  if (hb.shape === 'box') {
+    const x0 = Math.min(ax, X(hb.reach)), x1 = Math.max(ax, X(hb.reach)), y0 = (hb.y - hb.h / 2) * P, y1 = (hb.y + hb.h / 2) * P;
+    return ex >= x0 - R && ex <= x1 + R && y1 >= 0 && y0 <= Hb;
+  }
+  if (hb.shape === 'circle') return ptSeg(X(sg[0]), sg[1] * P, ex, 0, ex, Hb) <= hb.r * P + R;
+  return segSegDist([X(sg[0]), sg[1] * P, X(sg[2]), sg[3] * P], axis) <= R + (hb.w || 0.12) * P / 2;
+}
+
 export class Sim {
   // rng: rules (wounded chance). fxRng: particles only, so cosmetic effects never shift the rules' random sequence
   constructor(cfg, seed) { this.cfg = cfg; this.seed = seed == null ? (Date.now() >>> 0) : seed; this.rng = makeRng(this.seed); this.fxRng = makeRng(this.seed ^ 0x9E3779B9); this.resetAll(); }
@@ -88,6 +121,7 @@ export class Sim {
     };
     this.enemies = []; this.fx = []; this.texts = []; this.routed = 0;
     this.log = []; this.logVer = 0; this.lastHit = null;
+    this.moves = this.moves || {};                                // baked weapon paths by move id; a move without one uses the reach rule
     this.input = { x: 0, y: 0 };
   }
   clearEnemies() { this.enemies = []; this.fx = []; this.texts = []; }
@@ -190,8 +224,10 @@ export class Sim {
     if (p.cooldown > 0) p.cooldown -= dt;
 
     if (p.swing) {
-      const s = p.swing; s.t += dt;
-      if (!s.hit && s.t >= s.hitAt) { s.hit = true; this.playerStrike(s, w); }
+      const s = p.swing, t0 = s.t; s.t += dt;
+      const m = s.move && this.moves[s.move];
+      if (m && m.seg) { if (!s.hit) this.bladeCheck(s, m, t0, w); }
+      else if (!s.hit && s.t >= s.hitAt) { s.hit = true; this.playerStrike(s, w); }
       if (s.t >= s.dur) {
         if (s.whiff) { this.breakChain('missed'); }
         else if (p.moved) { this.breakChain('you moved'); p.cooldown = c.moveBreakDelay; }
@@ -203,8 +239,23 @@ export class Sim {
       const tgt = this.findTarget(w);
       if (tgt) {
         p.face = tgt.x >= p.x ? 1 : -1;
-        p.swing = { t: 0, dur: w.interval, dur0: w.interval, hitAt: w.interval * 0.45, hit: false, target: tgt.id, whiff: false, dramatic: false, extra: 0 };
+        p.swing = { t: 0, dur: w.interval, dur0: w.interval, hitAt: w.interval * 0.45, hit: false, target: tgt.id, whiff: false, dramatic: false, extra: 0, move: p.move || null };
         p.moved = false;
+      }
+    }
+  }
+
+  // the blade's path between the last step and this one, inside the move's hit window, against every enemy in the lane
+  bladeCheck(s, m, tPrev, w) {
+    const p = this.player, c = this.cfg, f0 = m.hit.f0, f1 = m.hit.f1;
+    const a = moveTau(m, s, tPrev), b = moveTau(m, s, s.t);
+    if (a > f1) { s.hit = true; s.whiff = true; this.text(p.x + p.face * 40, p.y - 70, 'MISS', '#b7ab9a', 10); return; }
+    const lo = Math.max(a, f0), hi = Math.min(b, f1); if (hi < lo) return;
+    for (let k = 0; k <= 3; k++) {
+      const tau = lo + (hi - lo) * k / 3;
+      for (const e of this.enemies) {
+        if (e.state !== 'alive' || Math.abs(e.y - p.y) > c.laneTol) continue;
+        if (moveTouches(c, m, tau, p.x, p.face, e.x)) { s.hit = true; s.target = e.id; this.applyHit(e, w.dmg, s); return; }
       }
     }
   }

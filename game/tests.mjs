@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { CFG, Sim, makeRng, weaponStats, swingInterval, minDexForWindow, fitsWindow } from './sim.js';
+import { CFG, Sim, makeRng, weaponStats, swingInterval, minDexForWindow, fitsWindow, segSegDist, moveTouches } from './sim.js';
 
 function fresh(weapon, dex) {
   const s = new Sim(CFG); s.rng = () => 0; // always passes chance rolls
@@ -129,6 +129,32 @@ console.log('PASS shrug off after surviving crit');
   assert.strictEqual(z.reach, 66); assert.strictEqual(z.dmg, a.dmg);
   assert.strictEqual(swingInterval(c, 'claymore', 15), swingInterval(c, 'greatsword', 15));
   console.log('PASS weapon classes share stats; overrides apply');
+}
+
+// 12. blade contact from a baked weapon path
+{
+  assert.strictEqual(segSegDist([0, 0, 10, 0], [5, -5, 5, 5]), 0, 'crossing segments');
+  assert(Math.abs(segSegDist([0, 0, 10, 0], [15, -5, 15, 5]) - 5) < 1e-9, 'gap of 5');
+  // a level blade at 1 m, hand 0.2 m and tip 1.0 m in front, for the whole move
+  const flat = { t0: 0, c: 36, end: 89, n: 2, seg: [[0.2, 1, 1, 1], [0.2, 1, 1, 1], [0.2, 1, 1, 1]], hit: { shape: 'blade', w: 0.12, f0: 30, f1: 40 } };
+  assert(moveTouches(CFG, flat, 36, 100, 1, 140), 'body 0.74 m away is cut');
+  assert(!moveTouches(CFG, flat, 36, 100, 1, 175), 'body 1.39 m away is out of reach');
+  assert(!moveTouches(CFG, flat, 36, 100, -1, 140), 'facing away');
+  const sweepFight = (dist) => {
+    const s = fresh('longsword', 5); s.moves.flat = flat; s.player.move = 'flat';
+    const e = s.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); e.hp = 99; e.maxHp = 99; e.x = s.player.x + dist; e.y = s.player.y;
+    let misses = 0; const t0 = s.texts.length; run(s, 0.8, () => {}); for (const x of s.texts) if (x.text === 'MISS') misses++;
+    return { hp: e.hp, misses };
+  };
+  const near = sweepFight(40), far = sweepFight(52);
+  assert.strictEqual(near.hp, 96, 'blade lands at 40 px'); assert.strictEqual(near.misses, 0);
+  // at 52 px the reach rule starts the swing (44 + 8) and the tip (54 px + body 10.8 + edge 3.2) still reaches
+  assert.strictEqual(far.hp, 96, 'blade reaches 52 px');
+  const shortMove = JSON.parse(JSON.stringify(flat)); shortMove.seg = shortMove.seg.map(() => [0.1, 1, 0.5, 1]);
+  const s2 = fresh('longsword', 5); s2.moves.short = shortMove; s2.player.move = 'short';
+  const e2 = s2.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); e2.hp = 99; e2.maxHp = 99; e2.x = s2.player.x + 50; e2.y = s2.player.y;
+  run(s2, 0.8); assert.strictEqual(e2.hp, 99, 'short blade whiffs at 50 px'); assert(s2.texts.some(x => x.text === 'MISS'));
+  console.log('PASS blade sweep: contact, reach and whiffs');
 }
 
 console.log('\nALL SIM TESTS PASSED');
