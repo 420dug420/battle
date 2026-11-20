@@ -1,5 +1,5 @@
-const assert = require('assert');
-const { CFG, Sim, swingInterval, minDexForWindow, fitsWindow } = require('./sim.js');
+import assert from 'node:assert';
+import { CFG, Sim, makeRng, swingInterval, minDexForWindow, fitsWindow } from './sim.js';
 
 function fresh(weapon, dex) {
   const s = new Sim(CFG); s.rng = () => 0; // always passes chance rolls
@@ -93,7 +93,6 @@ console.log('PASS shrug off after surviving crit');
 
 // 9. determinism: same seed and inputs give the same fight, and particles do not shift the rules' rolls
 {
-  const { makeRng } = require('./sim.js');
   const c2 = JSON.parse(JSON.stringify(CFG)); c2.woundedChance = 0.5;
   const fight = (seed, extraFx) => { const s = new Sim(c2, seed); s.player.weapon = 'longsword';
     const e = s.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); e.hp = 999; e.maxHp = 999; e.x = s.player.x + 40; e.y = s.player.y;

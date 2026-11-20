@@ -1,14 +1,16 @@
-/* ===== Project War 3D fighters: glue code (runs inside the humantest bundle scope) ===== */
+import { HT } from './humantest.js';
+const { Vector3, Mesh, Group, BoxGeometry, litMaterial, paintTexture, loftGeometry, setLights } = HT;
+/* ===== Project War 3D fighters: glue code (humantest internals come from ./humantest.js, under readable names) ===== */
 const M3 = {};
-const V3 = W, Q4 = new we().quaternion.constructor, M4 = new we().matrix.constructor;
+const V3 = Vector3, Q4 = new Group().quaternion.constructor, M4 = new Group().matrix.constructor;
 const SZ = 200, PXU = 54, CZ = 0.2, CY = 1.45;       // render size, pixels per world unit, window centre (z forward, y up)
-const cvs = wr.domElement; cvs.style.display = 'none';
+const cvs = HT.renderer.domElement; cvs.style.display = 'none';
 if (!document.getElementById('tris')) { const s = document.createElement('span'); s.id = 'tris'; s.style.display = 'none'; document.body.appendChild(s); }
-wr.setSize(SZ, SZ, false); wr.setClearColor(0x000000, 0);
-Un.uSnap.value = 0; Un.uRes.value.set(SZ, SZ);
-ln.fog = null; ln.background = null; di.visible = false;
-gc([[-2.6, 2.4, 1.2, 3.6, 1, .95, .85], [1.6, 2.2, -1.6, 2.0, .5, .6, 1], [-1.8, .5, -1.4, 1.0, .8, .6, .5]], [.46, .47, .52], [.22, .2, .2]);
-const cam = $n; cam.position.set(-4, CY, CZ); cam.lookAt(0, CY, CZ); cam.updateMatrixWorld(true);
+HT.renderer.setSize(SZ, SZ, false); HT.renderer.setClearColor(0x000000, 0);
+HT.uniforms.uSnap.value = 0; HT.uniforms.uRes.value.set(SZ, SZ);
+HT.scene.fog = null; HT.scene.background = null; HT.world.visible = false;
+setLights([[-2.6, 2.4, 1.2, 3.6, 1, .95, .85], [1.6, 2.2, -1.6, 2.0, .5, .6, 1], [-1.8, .5, -1.4, 1.0, .8, .6, .5]], [.46, .47, .52], [.22, .2, .2]);
+const cam = HT.camera; cam.position.set(-4, CY, CZ); cam.lookAt(0, CY, CZ); cam.updateMatrixWorld(true);
 { const hh = SZ / PXU / 2; cam.projectionMatrix.makeOrthographic(-hh, hh, hh, -hh, 0.1, 20); cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert(); }
 M3.SZ = SZ; M3.ox = SZ / 2 - CZ * PXU; M3.oy = SZ / 2 + CY * PXU;   // pixel column of world z=0, pixel row of world y=0
 
@@ -49,10 +51,10 @@ function wristWorldToPelvis(arm, atLocalY) {                            // point
 /* ---------- build a fighter ---------- */
 const BASE = { outfit: 1, build: 2, skin: 0, hair: 0, hairStyle: 0, face: 0, beard: 0, helmet: 1, visor: 1, armor: 1, shieldDev: 0, gear: 0, walk: 0, spin: 0, ps1: 0, wire: 0 };
 function box(w, h, d, col, parent, x, y, z) {
-  const m = new Ae(new cn(w, h, d), mat('box' + col, () => _e(8, 8, T => T.fill(col)))); m.position.set(x, y, z); parent.add(m); return m;
+  const m = new Mesh(new BoxGeometry(w, h, d), mat('box' + col, () => paintTexture(8, 8, T => T.fill(col)))); m.position.set(x, y, z); parent.add(m); return m;
 }
 function addSword(wg, two, big, handle, kind) {
-  const g = new we(); wg.add(g); g.position.set(0, -0.02, 0.012);
+  const g = new Group(); wg.add(g); g.position.set(0, -0.02, 0.012);
   const W = '#dfe5ec', WD = '#8d97a3', WOOD = '#6b4a2b';
   if (kind === 'axe' || kind === 'mace') {                                                    // one-handed hafted weapons: same grip point, different head
     const gl = handle || 0.14, L = kind === 'axe' ? 0.72 : 0.68, y0 = 0.04 - gl - 0.02;
@@ -93,12 +95,12 @@ function addSword(wg, two, big, handle, kind) {
   return g;
 }
 /* ===== medieval kit: gambeson, mail, plate, helms, tabards and heater shields ===== */
-Xu[0] = Object.assign({}, Xu[0], { coat: '#6b5238', lining: '#3a2a1a', shirt: '#9a8a6a', pants: '#4b3b2b', boots: '#2a2018', gloves: '#3a2a1c', bootH: .17, skirt: true, collar: false, pads: false });
-Xu[2] = Object.assign({}, Xu[2], { coat: '#6e5a40', lining: '#3a2a1a', shirt: '#a09070', pants: '#43372a', boots: '#2a2018', gloves: '#3a2a1c', bootH: .2, skirt: false, collar: false, pads: false, sleeves: 'long' });
-Xu[1] = Object.assign({}, Xu[1], { coat: '#6e5a40', lining: '#3a2a1a', shirt: '#a09070', pants: '#43372a', boots: '#2a2018', gloves: '#3a2a1c', bootH: .2, skirt: true, collar: false, pads: false });
-const TX = (w, h, fn) => _e(w, h, fn);
+HT.outfits[0] = Object.assign({}, HT.outfits[0], { coat: '#6b5238', lining: '#3a2a1a', shirt: '#9a8a6a', pants: '#4b3b2b', boots: '#2a2018', gloves: '#3a2a1c', bootH: .17, skirt: true, collar: false, pads: false });
+HT.outfits[2] = Object.assign({}, HT.outfits[2], { coat: '#6e5a40', lining: '#3a2a1a', shirt: '#a09070', pants: '#43372a', boots: '#2a2018', gloves: '#3a2a1c', bootH: .2, skirt: false, collar: false, pads: false, sleeves: 'long' });
+HT.outfits[1] = Object.assign({}, HT.outfits[1], { coat: '#6e5a40', lining: '#3a2a1a', shirt: '#a09070', pants: '#43372a', boots: '#2a2018', gloves: '#3a2a1c', bootH: .2, skirt: true, collar: false, pads: false });
+const TX = (w, h, fn) => paintTexture(w, h, fn);
 const MAT = {};
-function mat(name, mk) { return MAT[name] || (MAT[name] = Qi(mk(), {})); }
+function mat(name, mk) { return MAT[name] || (MAT[name] = litMaterial(mk(), {})); }
 const steel = (hi, base, lo, gold) => TX(64, 64, T => {
   T.fill(base); T.speckle(500, [lo, hi], .03, .12, 1.4);
   T.rect(.46, 0, .54, 1, hi); T.rect(0, 0, .04, 1, lo); T.rect(.96, 0, 1, 1, lo); T.rect(0, 0, 1, .03, lo);
@@ -108,7 +110,7 @@ const mailtex = (base, hi, lo) => TX(64, 64, T => { T.fill(base); T.speckle(1800
 const quilt = (base, line) => TX(64, 64, T => { T.fill(base); T.speckle(300, ['#000', '#fff'], .02, .06, 1.4); for (let i = 0; i <= 8; i++) { T.line([[i / 8, 0], [i / 8, 1]], line, 1.2); T.line([[0, i / 8], [1, i / 8]], line, 1.2); } });
 const cloth = (c, c2) => TX(32, 32, T => { T.fill(c); T.speckle(160, ['#000', '#fff'], .02, .06, 1.2); if (c2) { T.rect(0, 0, 1, .06, c2); T.rect(0, .94, 1, 1, c2); } });
 function loft(rings, segs, m, parent, x, y, z, ymin, ymax) {
-  const mesh = new Ae(ce(rings, segs, { sub: 0, ymin, ymax }), m); mesh.position.set(x || 0, y || 0, z || 0); parent.add(mesh); return mesh;
+  const mesh = new Mesh(loftGeometry(rings, segs, { sub: 0, ymin, ymax }), m); mesh.position.set(x || 0, y || 0, z || 0); parent.add(mesh); return mesh;
 }
 function ringsOf(list) { return list.map(([y, rx, rz, cz]) => ({ y, rx, rz, cz: cz || 0 })); }
 function tube(parent, y0, y1, r0, r1, m, segs) {
@@ -232,27 +234,27 @@ function dressMedieval(rig, role, tier, broken, lo) {
 }
 
 function makeRig(cfg, opts) {
-  Object.assign(Jt, BASE, cfg, { helmet: 0, visor: 0, armor: 0, shieldDev: 0 });
-  No(); const rig = Ri; Ri = null; Ci.remove(rig.g);
-  if (Tr) Tr.visible = false;
+  Object.assign(HT.character, BASE, cfg, { helmet: 0, visor: 0, armor: 0, shieldDev: 0 });
+  HT.buildCharacter(); const rig = HT.rig; HT.rig = null; HT.figureRoot.remove(rig.g);
+  if (HT.gun) HT.gun.visible = false;
   const nearArm = rig.arms.find(a => a.s < 0), farArm = rig.arms.find(a => a.s > 0);
   rig.near = nearArm; rig.far = farArm; rig.legN = rig.legs.find(l => l.s < 0); rig.legF = rig.legs.find(l => l.s > 0);
   dressMedieval(rig, opts.role, opts.tier, opts.broken, opts.look);
   rig.sword = addSword(nearArm.wg, !!opts.two, !!opts.big, opts.handle, opts.kind);
   if (opts.shield) {
-    rig.shield = new we(); farArm.eg.add(rig.shield); rig.shield.position.set(0.0, -0.16, 0.1); rig.shield.rotation.y = 0;
+    rig.shield = new Group(); farArm.eg.add(rig.shield); rig.shield.position.set(0.0, -0.16, 0.1); rig.shield.rotation.y = 0;
     const col = opts.shield, c2 = '#d9cfa8';
     const steps = [[.36, .1, .08], [.33, .1, .0], [.27, .1, -.08], [.19, .1, -.16], [.1, .09, -.23], [.03, .08, -.29]];
     for (const [w, h, y] of steps) { box(0.035, h, w, col, rig.shield, 0, y, 0); box(0.043, h * .8, w * .22, c2, rig.shield, 0, y, 0); }
     box(0.046, 0.026, 0.32, c2, rig.shield, 0, 0.06, 0); box(0.05, 0.05, 0.05, '#c9a24a', rig.shield, 0, 0.0, 0);
   }
-  ln.add(rig.g); rig.g.visible = false; rig.opts = opts; rig.ankle0 = 0.07;
+  HT.scene.add(rig.g); rig.g.visible = false; rig.opts = opts; rig.ankle0 = 0.07;
   return rig;
 }
 M3.rigs = {};
 const RIG_CAP = 24; let rigClock = 0, visRig = null;
 function dropRig(key) {                                                 // geometry is per rig; materials are shared through MAT and stay
-  const r = M3.rigs[key]; if (!r) return; ln.remove(r.g); if (visRig === r) visRig = null;
+  const r = M3.rigs[key]; if (!r) return; HT.scene.remove(r.g); if (visRig === r) visRig = null;
   r.g.traverse(o => { if (o.geometry && o.geometry.dispose) o.geometry.dispose(); }); delete M3.rigs[key];
 }
 M3.make = (key, cfg, opts) => {
@@ -557,8 +559,8 @@ M3.pose = function (role, f) {
     const cw = CLOOP['walk' + (f.two ? 2 : 1)]; p = loopSample(cw, (f.walkT || 0) * 12 / (2 * Math.PI) * cw.period);
   } else if (f.moving) {
     // legs from the humantest run; the weapon hand rides forward
-    ot.wW = 0; ot.wR = 1; Jt.walk = 2; ot.ph = (f.walkT || 0) * 12;
-    const wp = ot.ph; p = P({ hand: [f.two ? -0.14 : -0.2, (f.two ? 0.16 : 0.3) + 0.025 * Math.sin(wp * 2 - 0.6), (f.two ? 0.26 : 0.32) + 0.04 * Math.sin(wp - 0.4)], blade: [0, (f.two ? 0.55 : 0.2) + 0.18 * Math.sin(wp * 2 - 1.2), 1], far: [0.22, 0.12 + 0.03 * Math.sin(wp * 2), 0.14 - 0.1 * Math.sin(wp)], two: !!f.two, grip: 0.12 });
+    HT.locomotion.wW = 0; HT.locomotion.wR = 1; HT.character.walk = 2; HT.locomotion.ph = (f.walkT || 0) * 12;
+    const wp = HT.locomotion.ph; p = P({ hand: [f.two ? -0.14 : -0.2, (f.two ? 0.16 : 0.3) + 0.025 * Math.sin(wp * 2 - 0.6), (f.two ? 0.26 : 0.32) + 0.04 * Math.sin(wp - 0.4)], blade: [0, (f.two ? 0.55 : 0.2) + 0.18 * Math.sin(wp * 2 - 1.2), 1], far: [0.22, 0.12 + 0.03 * Math.sin(wp * 2), 0.14 - 0.1 * Math.sin(wp)], two: !!f.two, grip: 0.12 });
     applyRun(rig, p); groundLock(rig); return rig;
   } else {
     { const ci = CLOOP['idle' + (f.two ? 2 : 1)]; p = ci ? loopSample(ci, f.t || 0) : sample(f.two ? KEYS.idleTwo : KEYS.idle, (f.t * 0.8) % 4, true); }
@@ -569,7 +571,7 @@ M3.pose = function (role, f) {
 };
 function applyRun(rig, p) {
   // hx wrote the run onto Ri; we need it on this rig instead: run hx against the rig by swapping Ri
-  Ri = rig; hx(0.0001); Ri = null;
+  HT.rig = rig; HT.poseRun(0.0001); HT.rig = null;
   const { pelvis, near, far } = rig;
   pelvis.updateMatrix();
   near._T = new V3(...p.hand); if (p.w) near._T = near.sg.position.clone().add(new V3(...p.hand).applyQuaternion(pelvis.quaternion.clone().invert())); armIK(near, near._T, new V3(-0.5, -1, -0.3)); wristAim(near, new V3(...p.blade));
@@ -580,7 +582,7 @@ function applyRun(rig, p) {
 M3.render = function (rig) {
   if (!rig) return null;
   if (visRig !== rig) { if (visRig) visRig.g.visible = false; rig.g.visible = true; visRig = rig; }
-  wr.render(ln, cam);
+  HT.renderer.render(HT.scene, cam);
   return cvs;
 };
 
@@ -637,5 +639,6 @@ M3.registerAnim = function (def) {
 };
 M3.registerCustom = function (def) { return M3.registerAnim({ id: 'legacy', type: 'attack', two: def.two, contact: def.contact, end: def.end, keys: def.keys }); };
 M3.ready = true;
-M3.debug = { KEYS, P, applyPose, groundLock, sample, wr, cam, ln };
-return M3;
+M3.debug = { KEYS, P, applyPose, groundLock, sample, wr: HT.renderer, cam, ln: HT.scene };
+
+export default M3;

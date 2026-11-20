@@ -1,0 +1,11 @@
+<!DOCTYPE html><meta charset=utf-8><body style="margin:0;background:#2a2b31"><canvas id=c></canvas>
+<script>/*MODEL3D*/</script><script>
+const M=window.Model3D,TIERS=['leather','mail','plate','special','jack','brigandine','lamellar','crusader','gothic','warlord'];
+function go(){if(!M||!M.ready){requestAnimationFrame(go);return}
+ const S=3,W=200*S,c=document.getElementById('c');c.width=W*4;c.height=W*3*Math.ceil(TIERS.length/2)/1; 
+ const ctx=c.getContext('2d');ctx.imageSmoothingEnabled=false;
+ window.drawAll=(tiers,poses)=>{};
+ window.R=(tier,two,swing,role)=>{const f={role:role||'p',tier,two,shield:!two,face:1,broken:false,tabard:'#c2413b',helm:'#98a2ae',moving:false,walkT:0,flash:0,t:0.3,wkind:'sword'};
+   if(swing){f.style='chop';f.swing={t:swing*0.9,dur:0.9,hitAt:0.36,extra:0}} const rg=M.pose(f.role,f);return M.render(rg)};
+ window.READY=1}
+go();</script>

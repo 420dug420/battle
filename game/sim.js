@@ -1,11 +1,10 @@
-'use strict';
 /* ============================================================
    PROJECT WAR · COMBAT SIM  (no DOM, no drawing)
-   Keep this block free of browser APIs so it can later run
-   unchanged inside the Durable Object that owns a contract room.
+   No browser APIs: the same file runs in the page and in the
+   Durable Object that owns a contract room (server/).
    All numbers marked PLACEHOLDER are tuning guesses, not design.
    ============================================================ */
-const CFG = {
+export const CFG = {
   W: 640, H: 360,
   band:  { top: 244, bottom: 322 },       // walkable depth band, feet y
   arena: { left: 24, right: 616 },
@@ -39,26 +38,26 @@ const CFG = {
   player: { hp: 30, speed: 90 },
 };
 
-function swingInterval(cfg, weaponKey, dex) {
+export function swingInterval(cfg, weaponKey, dex) {
   const w = cfg.weapons[weaponKey];
   return w.baseInterval * Math.max(0.35, 1 - cfg.dexStep * (dex - 5));
 }
-const WINDOW_MARGIN = 0.05; // s of safety: frame quantization and hit-stop must not decide the kill
-function fitsWindow(cfg, weaponKey, dex) {
+export const WINDOW_MARGIN = 0.05; // s of safety: frame quantization and hit-stop must not decide the kill
+export function fitsWindow(cfg, weaponKey, dex) {
   return swingInterval(cfg, weaponKey, dex) <= cfg.woundedDur - WINDOW_MARGIN + 1e-9;
 }
-function minDexForWindow(cfg, weaponKey) {
+export function minDexForWindow(cfg, weaponKey) {
   for (let d = 5; d <= 99; d++) if (fitsWindow(cfg, weaponKey, d)) return d;
   return null;
 }
 
 /* small seeded generator: the same seed and inputs give the same fight, which a server-run sim needs */
-function makeRng(seed) {
+export function makeRng(seed) {
   let a = (seed >>> 0) || 1;
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
-class Sim {
+export class Sim {
   // rng: rules (wounded chance). fxRng: particles only, so cosmetic effects never shift the rules' random sequence
   constructor(cfg, seed) { this.cfg = cfg; this.seed = seed == null ? (Date.now() >>> 0) : seed; this.rng = makeRng(this.seed); this.fxRng = makeRng(this.seed ^ 0x9E3779B9); this.resetAll(); }
 
@@ -359,4 +358,3 @@ class Sim {
   }
 }
 
-if (typeof module !== 'undefined') module.exports = { CFG, Sim, makeRng, swingInterval, minDexForWindow, fitsWindow, WINDOW_MARGIN };

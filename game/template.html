@@ -100,8 +100,6 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
         <h2>Player</h2>
         <div class="field"><label for="weapon">Weapon</label>
           <select id="weapon"><option value="longsword">Longsword (level 1)</option><option value="greatsword">Two-hander</option><option value="axe">Hand axe</option><option value="mace">Mace</option><option value="spear">Spear</option></select></div>
-        <div class="field"><label for="art3d">Fighter art</label>
-          <select id="art3d"><option value="3d">3D models (humantest)</option><option value="sprite">Sprite sheets</option></select></div>
         <div class="field"><label for="atkstyle">Attack style</label>
           <select id="atkstyle"><option value="horiz">Horizontal Slash</option><option value="chop">Overhead Chop (big wind-up)</option><option value="lunge">Heavy Lunge (two-hander only)</option><option value="cut">Longsword Cut (diagonal)</option></select></div>
         <div class="field"><details><summary>Animation library (from the Animator)</summary><textarea id="customjson" rows="5" style="width:100%;font:11px monospace" placeholder="Paste the library JSON here, or open the file"></textarea><div style="display:flex;gap:8px;align-items:center;margin-top:4px"><button id="customload" type="button">Load and use it</button><input type="file" id="customfile" accept=".json,application/json" style="max-width:150px;font-size:11px"><span id="custommsg" style="font-size:12px"></span></div></details></div>
@@ -120,11 +118,6 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
         <div class="field"><label for="lkliv">Livery</label><select id="lkliv"></select></div>
         <div class="field"><label for="lkmetal">Metal</label><select id="lkmetal"></select></div>
         <p class="muted">The set picks all four; any part set here overrides it. Looks only: the player has no armor rule yet.</p>
-      </section>
-      <section class="panel">
-        <details><summary>2D sprite sheets (old art)</summary>
-        <div id="sheet-p"></div>
-        <div id="sheet-e"></div></details>
       </section>
 
       <section class="panel">
@@ -168,12 +161,9 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
     </aside>
   </div>
 </div>
+<script>window.addEventListener('error', e => { const s = document.getElementById('status'); if (s) s.textContent = 'Could not start: ' + (e.message || 'error') + '. The 3D fighters need WebGL.'; });</script>
 <script>
-/*SIM*/
-/*SPRITES*/
-/*PRESETS*/
-/*MODEL3D*/
-/*APP*/
+/*BUNDLE*/
 </script>
 </body>
 </html>
