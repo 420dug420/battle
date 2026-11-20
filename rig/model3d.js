@@ -209,33 +209,33 @@ BODIES.warlord = { label: 'Spiked harness', f: k => { const { P, A, rig, belt, b
   for (const s of [-1, 1]) { dome(P, s * .27, .5, 0, .15, .125, .12, metal, 0, -s * .6); loft(ringsOf([[0, .05, .05], [.22, .004, .004]]), 8, metal, P, s * .29, .56, 0, 0, .22); loft(ringsOf([[0, .035, .035], [.14, .004, .004]]), 8, metal, P, s * .31, .5, .05, 0, .14); }
   armsLegs(k, metal); box(.3, .95, .012, A, P, 0, -.34, -.145); belt(); } };
 
-/* ----- low-tier clothing and mail (draft: shown in the armor mock page only until approved) ----- */
+/* ----- low-tier clothing and mail ----- */
 const leatherTex = (base, hi, lo) => TX(64, 64, T => { T.fill(base); T.speckle(420, [lo, hi], .02, .08, 1.3); T.rect(0, 0, 1, .035, lo); T.rect(0, .965, 1, 1, lo); });
 const tunicMat = (A, B) => mat('tunic' + A + B, () => TX(64, 64, T => { clothBase(T, A, B); T.rect(0, .05, 1, .065, shade(A, -.25)); }));
 const tunicSkirt = (k, lo) => loft(ringsOf([[lo, .24, .17], [lo + .12, .225, .155], [-.1, .205, .135], [.06, .19, .118], [.3, .205, .126], [.5, .2, .12], [.57, .15, .1]]), 16, tunicMat(k.A, k.B), k.P, 0, 0, 0, lo, .57);
 const sleeves = (k, m, long) => k.bothArms(a => { tube(a.sg, -.02, -.29, .068, .058, m, 10); if (long) tube(a.eg, -.01, -.19, .054, .046, m, 10); });
-HEADS.bare = { label: 'Bare head', draft: true, f: k => { } };
-HEADS.cap = { label: 'Arming cap', draft: true, f: k => { const { H } = k, m = mat('cap' + k.B, () => quilt(shade(k.B, -.15), shade(k.B, -.45)));
+HEADS.bare = { label: 'Bare head', f: k => { } };
+HEADS.cap = { label: 'Arming cap', f: k => { const { H } = k, m = mat('cap' + k.B, () => quilt(shade(k.B, -.15), shade(k.B, -.45)));
   loft(ringsOf([[.06, .104, .126], [.16, .106, .128], [.23, .088, .108], [.27, .05, .062], [.285, .006, .008]]), 14, m, H, 0, 0, 0, .06, .285);
   for (const s of [-1, 1]) box(.012, .1, .05, shade(k.B, -.15), H, s * .1, .05, .04); } };
-HEADS.leathercap = { label: 'Leather cap', draft: true, f: k => { const { H } = k, m = mat('lcap', () => leatherTex('#5a3f27', '#7a5a3a', '#2c1d10'));
+HEADS.leathercap = { label: 'Leather cap', f: k => { const { H } = k, m = mat('lcap', () => leatherTex('#5a3f27', '#7a5a3a', '#2c1d10'));
   loft(ringsOf([[.13, .108, .13], [.19, .106, .127], [.25, .084, .1], [.285, .04, .048], [.295, .005, .006]]), 14, m, H, 0, 0, 0, .13, .295);
   loft(ringsOf([[.12, .118, .14], [.15, .118, .14]]), 14, m, H, 0, 0, 0, .12, .15); } };
-HEADS.coif = { label: 'Mail coif', draft: true, f: k => { const { H, mail } = k;
+HEADS.coif = { label: 'Mail coif', f: k => { const { H, mail } = k;
   loft(ringsOf([[-.16, .2, .15, -.03], [-.08, .15, .125, -.03], [0, .118, .12, -.035], [.1, .112, .12, -.035], [.2, .104, .118, -.025], [.25, .082, .094, -.015], [.285, .032, .036], [.29, .004, .005]]), 16, mail, H, 0, 0, 0, -.16, .29); } };
-HEADS.coifhelm = { label: 'Skullcap over coif', draft: true, f: k => { HEADS.coif.f(k); const { H, metal } = k;
+HEADS.coifhelm = { label: 'Skullcap over coif', f: k => { HEADS.coif.f(k); const { H, metal } = k;
   loft(ringsOf([[.15, .116, .136], [.21, .108, .128], [.26, .082, .098], [.29, .036, .044], [.3, .004, .005]]), 16, metal, H, 0, 0, 0, .15, .3);
   box(.016, .1, .012, '#8f98a2', H, 0, .1, .138); } };
-BODIES.tunic = { label: 'Tunic', draft: true, f: k => { tunicSkirt(k, -.34); sleeves(k, tunicMat(k.A, k.B), true); k.belt(); } };
-BODIES.jerkin = { label: 'Leather jerkin', draft: true, f: k => { const { P } = k, lth = mat('jerkin', () => leatherTex('#6a4a2c', '#8a6a44', '#33220f'));
+BODIES.tunic = { label: 'Tunic', f: k => { tunicSkirt(k, -.34); sleeves(k, tunicMat(k.A, k.B), true); k.belt(); } };
+BODIES.jerkin = { label: 'Leather jerkin', f: k => { const { P } = k, lth = mat('jerkin', () => leatherTex('#6a4a2c', '#8a6a44', '#33220f'));
   tunicSkirt(k, -.3); sleeves(k, tunicMat(k.A, k.B), true);
   loft(ringsOf([[-.14, .22, .15], [-.02, .21, .138], [.1, .2, .128], [.3, .214, .134], [.5, .208, .126], [.56, .16, .104]]), 16, lth, P, 0, 0, 0, -.14, .56);
   k.bothArms(a => dome(a.sg, 0, -.02, 0, .085, .08, .07, lth)); k.belt(); } };
-BODIES.haubergeon = { label: 'Mail shirt over tunic', draft: true, f: k => { const { P, mail } = k;
+BODIES.haubergeon = { label: 'Mail shirt over tunic', f: k => { const { P, mail } = k;
   tunicSkirt(k, -.36); sleeves(k, tunicMat(k.A, k.B), true);
   loft(ringsOf([[-.16, .222, .152], [-.05, .208, .136], [.08, .198, .124], [.3, .212, .132], [.5, .206, .124], [.57, .155, .1]]), 16, mail, P, 0, 0, 0, -.16, .57);
   k.bothArms(a => tube(a.sg, -.0, -.16, .074, .068, mail, 10)); k.belt(); } };
-BODIES.mailjerkin = { label: 'Mail under leather', draft: true, f: k => { const { P, mail } = k, lth = mat('jerkin', () => leatherTex('#6a4a2c', '#8a6a44', '#33220f'));
+BODIES.mailjerkin = { label: 'Mail under leather', f: k => { const { P, mail } = k, lth = mat('jerkin', () => leatherTex('#6a4a2c', '#8a6a44', '#33220f'));
   loft(ringsOf([[-.24, .225, .155], [-.1, .208, .136], [.05, .196, .122], [.3, .21, .13], [.5, .204, .124], [.57, .155, .1]]), 16, mail, P, 0, 0, 0, -.24, .57);
   k.bothArms(a => tube(a.sg, -.02, -.3, .064, .056, mail, 10));
   loft(ringsOf([[-.06, .228, .16], [.06, .214, .144], [.3, .224, .142], [.5, .218, .134], [.555, .17, .11]]), 16, lth, P, 0, 0, 0, -.06, .555);
@@ -244,6 +244,7 @@ BODIES.mailjerkin = { label: 'Mail under leather', draft: true, f: k => { const 
 // presets: the old tiers and the new designs. Each is just a choice of head, body, livery and metal
 const ARMOR_PRESETS = {
   leather: { label: 'Leather / cloth', head: 'hood', body: 'quilted', metal: 'steel' }, mail: { label: 'Mail', head: 'helm', body: 'mail', metal: 'steel' }, plate: { label: 'Plate', head: 'bascinet', body: 'plate', metal: 'steel' }, special: { label: 'Special (gilded)', head: 'crested', body: 'plate', metal: 'gilded' },
+  militia: { label: 'Militia (cap, tunic)', head: 'cap', body: 'tunic', metal: 'steel' }, sergeant: { label: 'Sergeant (coif, mail shirt)', head: 'coifhelm', body: 'haubergeon', metal: 'steel' },
   jack: { label: 'Jack and kettle hat', head: 'kettlehat', body: 'jack', metal: 'steel' }, brigandine: { label: 'Brigandine and sallet', head: 'sallet', body: 'brigandine', metal: 'steel' }, lamellar: { label: 'Lamellar', head: 'cone', body: 'lamellar', metal: 'steel' },
   komtur: { label: 'Komtur (mantle, great helm)', head: 'greathelm', body: 'komtur', metal: 'steel', liv: 'white' }, spire: { label: 'Spire (black lancet)', head: 'spire', body: 'spire', metal: 'black', liv: 'black' }, deco: { label: 'Deco plate', head: 'domed', body: 'deco', metal: 'silver', liv: 'azure' },
   griffon: { label: 'Griffon (per fess)', head: 'beaked', body: 'griffon', metal: 'steel', liv: 'azure' }, sun: { label: 'Sunburst', head: 'domed', body: 'sun', metal: 'silver', liv: 'red' }, stag: { label: 'Stag (bend tabard)', head: 'beaked', body: 'stag', metal: 'steel', liv: 'green' }, warlord: { label: 'Warlord (black spiked)', head: 'blackhelm', body: 'warlord', metal: 'black', liv: 'red' }
@@ -324,8 +325,8 @@ M3.getRig = function (role, f) {
 };
 /* enemy looks: random per enemy, from pools set by rank (armor class). The sim hands each enemy a lookSeed, so every client draws the same man. */
 const RANK_POOLS = {
-  leather: { heads: ['hood'], bodies: ['quilted', 'jack'], metals: ['steel'] },
-  mail:    { heads: ['helm', 'cone', 'sallet', 'kettlehat'], bodies: ['mail', 'brigandine', 'lamellar'], metals: ['steel', 'black'] },
+  leather: { heads: ['bare', 'cap', 'leathercap', 'hood'], bodies: ['tunic', 'jerkin', 'quilted', 'jack'], metals: ['steel'] },
+  mail:    { heads: ['coif', 'coifhelm', 'helm', 'cone', 'sallet', 'kettlehat'], bodies: ['haubergeon', 'mailjerkin', 'mail', 'brigandine', 'lamellar'], metals: ['steel', 'black'] },
   plate:   { heads: ['bascinet', 'sallet', 'greathelm', 'beaked', 'domed'], bodies: ['plate', 'komtur', 'griffon', 'stag', 'sun'], metals: ['steel', 'silver', 'black'] },
   special: { heads: ['crested', 'spire', 'blackhelm', 'greathelm', 'domed'], bodies: ['spire', 'warlord', 'deco', 'plate'], metals: ['gilded', 'black', 'silver', 'bronze'] }
 };
@@ -635,7 +636,7 @@ M3.moveKey = function (style, two) {
    plus its hit window. Pure data, so the sim (and the server) can test real blade contact without a 3D rig. */
 M3.bakeMove = function (key, f, n) {
   const kt = KT[key]; if (!kt) return null; n = n || 48;
-  const rig = M3.getRig('p', Object.assign({ tier: 'leather', two: !!kt.two || key.slice(-1) === '2' }, f || {}));
+  const rig = M3.getRig((f && f.role) || 'p', Object.assign({ tier: 'leather', two: !!kt.two || key.slice(-1) === '2' }, f || {}));
   const T = kt.t, t0 = T[0], end = T[T.length - 1], seg = [], hp = new V3(), tp = new V3();
   const lead = kt.lead != null ? idleLead({ two: rig.opts.two }) : null;
   for (let i = 0; i <= n; i++) {

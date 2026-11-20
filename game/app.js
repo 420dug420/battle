@@ -264,6 +264,12 @@ import { applySnapshot } from '../server/protocol.js';
       ctx.strokeStyle = live ? '#ff5a4a' : 'rgba(255,255,255,.5)'; ctx.lineWidth = 2; ctx.beginPath();
       ctx.moveTo(p.x + p.face * g[0] * P, p.y - g[1] * P); ctx.lineTo(p.x + p.face * g[2] * P, p.y - g[3] * P); ctx.stroke();
       ctx.strokeStyle = 'rgba(127,176,217,.6)'; ctx.lineWidth = 1;
+      for (const e of sim.enemies) if (e.state === 'alive' && e.atk && sim.moves[CFG.enemy.move]) {
+        const em = sim.moves[CFG.enemy.move], es = { t: e.atk.t, dur: CFG.enemy.atkDur, hitAt: CFG.enemy.atkHitAt, extra: 0 }, et = moveTau(em, es, es.t), eg = segAt(em, et);
+        ctx.strokeStyle = et >= em.hit.f0 && et <= em.hit.f1 ? '#ff5a4a' : 'rgba(255,255,255,.4)'; ctx.lineWidth = 2; ctx.beginPath();
+        ctx.moveTo(e.x + e.face * eg[0] * P, e.y - eg[1] * P); ctx.lineTo(e.x + e.face * eg[2] * P, e.y - eg[3] * P); ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgba(127,176,217,.6)'; ctx.lineWidth = 1;
       for (const e of sim.enemies) if (e.state === 'alive') ctx.strokeRect(Math.round(e.x - CFG.body.radius * P) + .5, Math.round(e.y - CFG.body.height * P) + .5, Math.round(CFG.body.radius * 2 * P), Math.round(CFG.body.height * P));
     }
     if (dbg && p.swing) {
@@ -279,7 +285,7 @@ import { applySnapshot } from '../server/protocol.js';
   const send = m => { if (net && net.ws.readyState === 1 && net.role === 'player') net.ws.send(JSON.stringify(m)); };
   function netSync() {                                           // weapon, DEX and the move (with its baked blade path) to the room
     if (!net) return; const p = sim.player;
-    if (p.move && sim.moves[p.move] && !net.sentMoves.has(p.move)) { send({ t: 'move', id: p.move, data: sim.moves[p.move] }); net.sentMoves.add(p.move); }
+    for (const id in sim.moves) if (!net.sentMoves.has(id)) { send({ t: 'move', id, data: sim.moves[id] }); net.sentMoves.add(id); }   // player and enemy blade paths
     send({ t: 'set', weapon: p.weapon, dex: p.dex, move: p.move });
   }
   function netConnect() {
@@ -357,6 +363,7 @@ import { applySnapshot } from '../server/protocol.js';
     fill('lkhead', P ? P.heads : [], 'from armor'); fill('lkbody', P ? P.bodies : [], 'from armor'); fill('lkliv', P ? P.liveries : [], 'from armor'); fill('lkmetal', P ? P.metals : [], 'from armor'); }
   function boot(saved) {
     saved = saved || {};
+    { const m = M3.bakeMove('cut1', { role: 'e', two: false, wkind: 'sword', shield: true }); if (m) sim.moves[CFG.enemy.move] = m; }   // enemy swing path
     IDS.forEach(id => { if (saved[id] != null) $(id).value = saved[id]; });
     if (saved.inv != null) $('inv').checked = !!saved.inv;
     if (saved.dbg != null) $('dbg').checked = !!saved.dbg;

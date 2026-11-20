@@ -14704,34 +14704,34 @@ void main(){
     tube(a.sg, -0.02, -0.29, 0.068, 0.058, m, 10);
     if (long) tube(a.eg, -0.01, -0.19, 0.054, 0.046, m, 10);
   });
-  HEADS.bare = { label: "Bare head", draft: true, f: (k) => {
+  HEADS.bare = { label: "Bare head", f: (k) => {
   } };
-  HEADS.cap = { label: "Arming cap", draft: true, f: (k) => {
+  HEADS.cap = { label: "Arming cap", f: (k) => {
     const { H } = k, m = mat("cap" + k.B, () => quilt(shade(k.B, -0.15), shade(k.B, -0.45)));
     loft(ringsOf([[0.06, 0.104, 0.126], [0.16, 0.106, 0.128], [0.23, 0.088, 0.108], [0.27, 0.05, 0.062], [0.285, 6e-3, 8e-3]]), 14, m, H, 0, 0, 0, 0.06, 0.285);
     for (const s of [-1, 1]) box(0.012, 0.1, 0.05, shade(k.B, -0.15), H, s * 0.1, 0.05, 0.04);
   } };
-  HEADS.leathercap = { label: "Leather cap", draft: true, f: (k) => {
+  HEADS.leathercap = { label: "Leather cap", f: (k) => {
     const { H } = k, m = mat("lcap", () => leatherTex("#5a3f27", "#7a5a3a", "#2c1d10"));
     loft(ringsOf([[0.13, 0.108, 0.13], [0.19, 0.106, 0.127], [0.25, 0.084, 0.1], [0.285, 0.04, 0.048], [0.295, 5e-3, 6e-3]]), 14, m, H, 0, 0, 0, 0.13, 0.295);
     loft(ringsOf([[0.12, 0.118, 0.14], [0.15, 0.118, 0.14]]), 14, m, H, 0, 0, 0, 0.12, 0.15);
   } };
-  HEADS.coif = { label: "Mail coif", draft: true, f: (k) => {
+  HEADS.coif = { label: "Mail coif", f: (k) => {
     const { H, mail } = k;
     loft(ringsOf([[-0.16, 0.2, 0.15, -0.03], [-0.08, 0.15, 0.125, -0.03], [0, 0.118, 0.12, -0.035], [0.1, 0.112, 0.12, -0.035], [0.2, 0.104, 0.118, -0.025], [0.25, 0.082, 0.094, -0.015], [0.285, 0.032, 0.036], [0.29, 4e-3, 5e-3]]), 16, mail, H, 0, 0, 0, -0.16, 0.29);
   } };
-  HEADS.coifhelm = { label: "Skullcap over coif", draft: true, f: (k) => {
+  HEADS.coifhelm = { label: "Skullcap over coif", f: (k) => {
     HEADS.coif.f(k);
     const { H, metal } = k;
     loft(ringsOf([[0.15, 0.116, 0.136], [0.21, 0.108, 0.128], [0.26, 0.082, 0.098], [0.29, 0.036, 0.044], [0.3, 4e-3, 5e-3]]), 16, metal, H, 0, 0, 0, 0.15, 0.3);
     box(0.016, 0.1, 0.012, "#8f98a2", H, 0, 0.1, 0.138);
   } };
-  BODIES.tunic = { label: "Tunic", draft: true, f: (k) => {
+  BODIES.tunic = { label: "Tunic", f: (k) => {
     tunicSkirt(k, -0.34);
     sleeves(k, tunicMat(k.A, k.B), true);
     k.belt();
   } };
-  BODIES.jerkin = { label: "Leather jerkin", draft: true, f: (k) => {
+  BODIES.jerkin = { label: "Leather jerkin", f: (k) => {
     const { P: P2 } = k, lth = mat("jerkin", () => leatherTex("#6a4a2c", "#8a6a44", "#33220f"));
     tunicSkirt(k, -0.3);
     sleeves(k, tunicMat(k.A, k.B), true);
@@ -14739,7 +14739,7 @@ void main(){
     k.bothArms((a) => dome(a.sg, 0, -0.02, 0, 0.085, 0.08, 0.07, lth));
     k.belt();
   } };
-  BODIES.haubergeon = { label: "Mail shirt over tunic", draft: true, f: (k) => {
+  BODIES.haubergeon = { label: "Mail shirt over tunic", f: (k) => {
     const { P: P2, mail } = k;
     tunicSkirt(k, -0.36);
     sleeves(k, tunicMat(k.A, k.B), true);
@@ -14747,7 +14747,7 @@ void main(){
     k.bothArms((a) => tube(a.sg, -0, -0.16, 0.074, 0.068, mail, 10));
     k.belt();
   } };
-  BODIES.mailjerkin = { label: "Mail under leather", draft: true, f: (k) => {
+  BODIES.mailjerkin = { label: "Mail under leather", f: (k) => {
     const { P: P2, mail } = k, lth = mat("jerkin", () => leatherTex("#6a4a2c", "#8a6a44", "#33220f"));
     loft(ringsOf([[-0.24, 0.225, 0.155], [-0.1, 0.208, 0.136], [0.05, 0.196, 0.122], [0.3, 0.21, 0.13], [0.5, 0.204, 0.124], [0.57, 0.155, 0.1]]), 16, mail, P2, 0, 0, 0, -0.24, 0.57);
     k.bothArms((a) => tube(a.sg, -0.02, -0.3, 0.064, 0.056, mail, 10));
@@ -14759,6 +14759,8 @@ void main(){
     mail: { label: "Mail", head: "helm", body: "mail", metal: "steel" },
     plate: { label: "Plate", head: "bascinet", body: "plate", metal: "steel" },
     special: { label: "Special (gilded)", head: "crested", body: "plate", metal: "gilded" },
+    militia: { label: "Militia (cap, tunic)", head: "cap", body: "tunic", metal: "steel" },
+    sergeant: { label: "Sergeant (coif, mail shirt)", head: "coifhelm", body: "haubergeon", metal: "steel" },
     jack: { label: "Jack and kettle hat", head: "kettlehat", body: "jack", metal: "steel" },
     brigandine: { label: "Brigandine and sallet", head: "sallet", body: "brigandine", metal: "steel" },
     lamellar: { label: "Lamellar", head: "cone", body: "lamellar", metal: "steel" },
@@ -14897,8 +14899,8 @@ void main(){
     return r;
   };
   var RANK_POOLS = {
-    leather: { heads: ["hood"], bodies: ["quilted", "jack"], metals: ["steel"] },
-    mail: { heads: ["helm", "cone", "sallet", "kettlehat"], bodies: ["mail", "brigandine", "lamellar"], metals: ["steel", "black"] },
+    leather: { heads: ["bare", "cap", "leathercap", "hood"], bodies: ["tunic", "jerkin", "quilted", "jack"], metals: ["steel"] },
+    mail: { heads: ["coif", "coifhelm", "helm", "cone", "sallet", "kettlehat"], bodies: ["haubergeon", "mailjerkin", "mail", "brigandine", "lamellar"], metals: ["steel", "black"] },
     plate: { heads: ["bascinet", "sallet", "greathelm", "beaked", "domed"], bodies: ["plate", "komtur", "griffon", "stag", "sun"], metals: ["steel", "silver", "black"] },
     special: { heads: ["crested", "spire", "blackhelm", "greathelm", "domed"], bodies: ["spire", "warlord", "deco", "plate"], metals: ["gilded", "black", "silver", "bronze"] }
   };
@@ -15281,7 +15283,7 @@ void main(){
     const kt2 = KT[key];
     if (!kt2) return null;
     n = n || 48;
-    const rig = M3.getRig("p", Object.assign({ tier: "leather", two: !!kt2.two || key.slice(-1) === "2" }, f || {}));
+    const rig = M3.getRig(f && f.role || "p", Object.assign({ tier: "leather", two: !!kt2.two || key.slice(-1) === "2" }, f || {}));
     const T = kt2.t, t02 = T[0], end = T[T.length - 1], seg = [], hp2 = new V3(), tp2 = new V3();
     const lead = kt2.lead != null ? idleLead({ two: rig.opts.two }) : null;
     for (let i15 = 0; i15 <= n; i15++) {
@@ -15502,7 +15504,8 @@ void main(){
     // sim pixels per metre (the 3D render scale)
     body: { height: 1.7, radius: 0.2 },
     // PLACEHOLDER: a fighter's hit capsule, metres (side view)
-    enemy: { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1, atkHitAt: 0.45, atkCool: 0.8, reach: 38 },
+    enemy: { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1, atkHitAt: 0.45, atkCool: 0.8, reach: 38, move: "cut1|sword" },
+    // move: the baked path its swing uses, if the client provided one
     rallyPerChr: 4e-3,
     // PLACEHOLDER: chance per second, per CHR point, that a fleeing enemy rallies (CHR 5 = 2%/s)
     player: { hp: 30, speed: 90 }
@@ -15576,6 +15579,17 @@ void main(){
     }
     if (hb.shape === "circle") return ptSeg(X(sg2[0]), sg2[1] * P2, ex2, 0, ex2, Hb) <= hb.r * P2 + R;
     return segSegDist([X(sg2[0]), sg2[1] * P2, X(sg2[2]), sg2[3] * P2], axis) <= R + (hb.w || 0.12) * P2 / 2;
+  }
+  function sweepHit(cfg, m, s, tPrev, ax2, ay, face, targets) {
+    const a = moveTau(m, s, tPrev), b = moveTau(m, s, s.t);
+    if (a > m.hit.f1) return "past";
+    const lo2 = Math.max(a, m.hit.f0), hi = Math.min(b, m.hit.f1);
+    if (hi < lo2) return null;
+    for (let k = 0; k <= 3; k++) {
+      const tau = lo2 + (hi - lo2) * k / 3;
+      for (const e of targets) if (Math.abs(e.y - ay) <= cfg.laneTol && moveTouches(cfg, m, tau, ax2, face, e.x)) return e;
+    }
+    return null;
   }
   var Sim = class {
     // rng: rules (wounded chance). fxRng: particles only, so cosmetic effects never shift the rules' random sequence
@@ -15806,27 +15820,15 @@ void main(){
     }
     // the blade's path between the last step and this one, inside the move's hit window, against every enemy in the lane
     bladeCheck(s, m, tPrev, w) {
-      const p = this.player, c = this.cfg, f02 = m.hit.f0, f1 = m.hit.f1;
-      const a = moveTau(m, s, tPrev), b = moveTau(m, s, s.t);
-      if (a > f1) {
+      const p = this.player, r = sweepHit(this.cfg, m, s, tPrev, p.x, p.y, p.face, this.enemies.filter((e) => e.state === "alive"));
+      if (r === "past") {
         s.hit = true;
         s.whiff = true;
         this.text(p.x + p.face * 40, p.y - 70, "MISS", "#b7ab9a", 10);
-        return;
-      }
-      const lo2 = Math.max(a, f02), hi = Math.min(b, f1);
-      if (hi < lo2) return;
-      for (let k = 0; k <= 3; k++) {
-        const tau = lo2 + (hi - lo2) * k / 3;
-        for (const e of this.enemies) {
-          if (e.state !== "alive" || Math.abs(e.y - p.y) > c.laneTol) continue;
-          if (moveTouches(c, m, tau, p.x, p.face, e.x)) {
-            s.hit = true;
-            s.target = e.id;
-            this.applyHit(e, w.dmg, s);
-            return;
-          }
-        }
+      } else if (r) {
+        s.hit = true;
+        s.target = r.id;
+        this.applyHit(r, w.dmg, s);
       }
     }
     breakChain(why) {
@@ -16019,8 +16021,20 @@ void main(){
       e.face = dx2 >= 0 ? 1 : -1;
       if (e.ai !== "advance") return;
       if (e.atk) {
+        const t02 = e.atk.t;
         e.atk.t += dt;
-        if (!e.atk.hit && e.atk.t >= c.enemy.atkHitAt) {
+        const m = this.moves[c.enemy.move];
+        if (m && m.seg) {
+          if (!e.atk.hit) {
+            const s = { t: e.atk.t, dur: c.enemy.atkDur, hitAt: c.enemy.atkHitAt, extra: 0 };
+            const r = sweepHit(c, m, s, t02, e.x, e.y, e.face, [p]);
+            if (r === "past") e.atk.hit = true;
+            else if (r) {
+              e.atk.hit = true;
+              this.enemyHitsPlayer(e);
+            }
+          }
+        } else if (!e.atk.hit && e.atk.t >= c.enemy.atkHitAt) {
           e.atk.hit = true;
           if (Math.abs(dx2) <= c.enemy.reach + 8 && Math.abs(dy) <= c.laneTol) this.enemyHitsPlayer(e);
         }
@@ -17467,6 +17481,17 @@ void main(){
         ctx.stroke();
         ctx.strokeStyle = "rgba(127,176,217,.6)";
         ctx.lineWidth = 1;
+        for (const e of sim.enemies) if (e.state === "alive" && e.atk && sim.moves[CFG.enemy.move]) {
+          const em2 = sim.moves[CFG.enemy.move], es2 = { t: e.atk.t, dur: CFG.enemy.atkDur, hitAt: CFG.enemy.atkHitAt, extra: 0 }, et = moveTau(em2, es2, es2.t), eg2 = segAt(em2, et);
+          ctx.strokeStyle = et >= em2.hit.f0 && et <= em2.hit.f1 ? "#ff5a4a" : "rgba(255,255,255,.4)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(e.x + e.face * eg2[0] * P2, e.y - eg2[1] * P2);
+          ctx.lineTo(e.x + e.face * eg2[2] * P2, e.y - eg2[3] * P2);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = "rgba(127,176,217,.6)";
+        ctx.lineWidth = 1;
         for (const e of sim.enemies) if (e.state === "alive") ctx.strokeRect(Math.round(e.x - CFG.body.radius * P2) + 0.5, Math.round(e.y - CFG.body.height * P2) + 0.5, Math.round(CFG.body.radius * 2 * P2), Math.round(CFG.body.height * P2));
       }
       if (dbg && p.swing) {
@@ -17482,9 +17507,9 @@ void main(){
     }, netSync = function() {
       if (!net) return;
       const p = sim.player;
-      if (p.move && sim.moves[p.move] && !net.sentMoves.has(p.move)) {
-        send({ t: "move", id: p.move, data: sim.moves[p.move] });
-        net.sentMoves.add(p.move);
+      for (const id in sim.moves) if (!net.sentMoves.has(id)) {
+        send({ t: "move", id, data: sim.moves[id] });
+        net.sentMoves.add(id);
       }
       send({ t: "set", weapon: p.weapon, dex: p.dex, move: p.move });
     }, netConnect = function() {
@@ -17591,6 +17616,10 @@ void main(){
       }
     }, boot = function(saved) {
       saved = saved || {};
+      {
+        const m = model3d_default.bakeMove("cut1", { role: "e", two: false, wkind: "sword", shield: true });
+        if (m) sim.moves[CFG.enemy.move] = m;
+      }
       IDS.forEach((id) => {
         if (saved[id] != null) $(id).value = saved[id];
       });

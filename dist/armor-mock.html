@@ -14529,34 +14529,34 @@ void main(){
     tube(a.sg, -0.02, -0.29, 0.068, 0.058, m, 10);
     if (long) tube(a.eg, -0.01, -0.19, 0.054, 0.046, m, 10);
   });
-  HEADS.bare = { label: "Bare head", draft: true, f: (k) => {
+  HEADS.bare = { label: "Bare head", f: (k) => {
   } };
-  HEADS.cap = { label: "Arming cap", draft: true, f: (k) => {
+  HEADS.cap = { label: "Arming cap", f: (k) => {
     const { H } = k, m = mat("cap" + k.B, () => quilt(shade(k.B, -0.15), shade(k.B, -0.45)));
     loft(ringsOf([[0.06, 0.104, 0.126], [0.16, 0.106, 0.128], [0.23, 0.088, 0.108], [0.27, 0.05, 0.062], [0.285, 6e-3, 8e-3]]), 14, m, H, 0, 0, 0, 0.06, 0.285);
     for (const s of [-1, 1]) box(0.012, 0.1, 0.05, shade(k.B, -0.15), H, s * 0.1, 0.05, 0.04);
   } };
-  HEADS.leathercap = { label: "Leather cap", draft: true, f: (k) => {
+  HEADS.leathercap = { label: "Leather cap", f: (k) => {
     const { H } = k, m = mat("lcap", () => leatherTex("#5a3f27", "#7a5a3a", "#2c1d10"));
     loft(ringsOf([[0.13, 0.108, 0.13], [0.19, 0.106, 0.127], [0.25, 0.084, 0.1], [0.285, 0.04, 0.048], [0.295, 5e-3, 6e-3]]), 14, m, H, 0, 0, 0, 0.13, 0.295);
     loft(ringsOf([[0.12, 0.118, 0.14], [0.15, 0.118, 0.14]]), 14, m, H, 0, 0, 0, 0.12, 0.15);
   } };
-  HEADS.coif = { label: "Mail coif", draft: true, f: (k) => {
+  HEADS.coif = { label: "Mail coif", f: (k) => {
     const { H, mail } = k;
     loft(ringsOf([[-0.16, 0.2, 0.15, -0.03], [-0.08, 0.15, 0.125, -0.03], [0, 0.118, 0.12, -0.035], [0.1, 0.112, 0.12, -0.035], [0.2, 0.104, 0.118, -0.025], [0.25, 0.082, 0.094, -0.015], [0.285, 0.032, 0.036], [0.29, 4e-3, 5e-3]]), 16, mail, H, 0, 0, 0, -0.16, 0.29);
   } };
-  HEADS.coifhelm = { label: "Skullcap over coif", draft: true, f: (k) => {
+  HEADS.coifhelm = { label: "Skullcap over coif", f: (k) => {
     HEADS.coif.f(k);
     const { H, metal } = k;
     loft(ringsOf([[0.15, 0.116, 0.136], [0.21, 0.108, 0.128], [0.26, 0.082, 0.098], [0.29, 0.036, 0.044], [0.3, 4e-3, 5e-3]]), 16, metal, H, 0, 0, 0, 0.15, 0.3);
     box(0.016, 0.1, 0.012, "#8f98a2", H, 0, 0.1, 0.138);
   } };
-  BODIES.tunic = { label: "Tunic", draft: true, f: (k) => {
+  BODIES.tunic = { label: "Tunic", f: (k) => {
     tunicSkirt(k, -0.34);
     sleeves(k, tunicMat(k.A, k.B), true);
     k.belt();
   } };
-  BODIES.jerkin = { label: "Leather jerkin", draft: true, f: (k) => {
+  BODIES.jerkin = { label: "Leather jerkin", f: (k) => {
     const { P: P2 } = k, lth = mat("jerkin", () => leatherTex("#6a4a2c", "#8a6a44", "#33220f"));
     tunicSkirt(k, -0.3);
     sleeves(k, tunicMat(k.A, k.B), true);
@@ -14564,7 +14564,7 @@ void main(){
     k.bothArms((a) => dome(a.sg, 0, -0.02, 0, 0.085, 0.08, 0.07, lth));
     k.belt();
   } };
-  BODIES.haubergeon = { label: "Mail shirt over tunic", draft: true, f: (k) => {
+  BODIES.haubergeon = { label: "Mail shirt over tunic", f: (k) => {
     const { P: P2, mail } = k;
     tunicSkirt(k, -0.36);
     sleeves(k, tunicMat(k.A, k.B), true);
@@ -14572,7 +14572,7 @@ void main(){
     k.bothArms((a) => tube(a.sg, -0, -0.16, 0.074, 0.068, mail, 10));
     k.belt();
   } };
-  BODIES.mailjerkin = { label: "Mail under leather", draft: true, f: (k) => {
+  BODIES.mailjerkin = { label: "Mail under leather", f: (k) => {
     const { P: P2, mail } = k, lth = mat("jerkin", () => leatherTex("#6a4a2c", "#8a6a44", "#33220f"));
     loft(ringsOf([[-0.24, 0.225, 0.155], [-0.1, 0.208, 0.136], [0.05, 0.196, 0.122], [0.3, 0.21, 0.13], [0.5, 0.204, 0.124], [0.57, 0.155, 0.1]]), 16, mail, P2, 0, 0, 0, -0.24, 0.57);
     k.bothArms((a) => tube(a.sg, -0.02, -0.3, 0.064, 0.056, mail, 10));
@@ -14584,6 +14584,8 @@ void main(){
     mail: { label: "Mail", head: "helm", body: "mail", metal: "steel" },
     plate: { label: "Plate", head: "bascinet", body: "plate", metal: "steel" },
     special: { label: "Special (gilded)", head: "crested", body: "plate", metal: "gilded" },
+    militia: { label: "Militia (cap, tunic)", head: "cap", body: "tunic", metal: "steel" },
+    sergeant: { label: "Sergeant (coif, mail shirt)", head: "coifhelm", body: "haubergeon", metal: "steel" },
     jack: { label: "Jack and kettle hat", head: "kettlehat", body: "jack", metal: "steel" },
     brigandine: { label: "Brigandine and sallet", head: "sallet", body: "brigandine", metal: "steel" },
     lamellar: { label: "Lamellar", head: "cone", body: "lamellar", metal: "steel" },
@@ -14722,8 +14724,8 @@ void main(){
     return r;
   };
   var RANK_POOLS = {
-    leather: { heads: ["hood"], bodies: ["quilted", "jack"], metals: ["steel"] },
-    mail: { heads: ["helm", "cone", "sallet", "kettlehat"], bodies: ["mail", "brigandine", "lamellar"], metals: ["steel", "black"] },
+    leather: { heads: ["bare", "cap", "leathercap", "hood"], bodies: ["tunic", "jerkin", "quilted", "jack"], metals: ["steel"] },
+    mail: { heads: ["coif", "coifhelm", "helm", "cone", "sallet", "kettlehat"], bodies: ["haubergeon", "mailjerkin", "mail", "brigandine", "lamellar"], metals: ["steel", "black"] },
     plate: { heads: ["bascinet", "sallet", "greathelm", "beaked", "domed"], bodies: ["plate", "komtur", "griffon", "stag", "sun"], metals: ["steel", "silver", "black"] },
     special: { heads: ["crested", "spire", "blackhelm", "greathelm", "domed"], bodies: ["spire", "warlord", "deco", "plate"], metals: ["gilded", "black", "silver", "bronze"] }
   };
@@ -15106,7 +15108,7 @@ void main(){
     const kt2 = KT[key];
     if (!kt2) return null;
     n = n || 48;
-    const rig = M3.getRig("p", Object.assign({ tier: "leather", two: !!kt2.two || key.slice(-1) === "2" }, f || {}));
+    const rig = M3.getRig(f && f.role || "p", Object.assign({ tier: "leather", two: !!kt2.two || key.slice(-1) === "2" }, f || {}));
     const T = kt2.t, t02 = T[0], end = T[T.length - 1], seg = [], hp2 = new V3(), tp2 = new V3();
     const lead = kt2.lead != null ? idleLead({ two: rig.opts.two }) : null;
     for (let i15 = 0; i15 <= n; i15++) {

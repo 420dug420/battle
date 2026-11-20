@@ -157,4 +157,17 @@ console.log('PASS shrug off after surviving crit');
   console.log('PASS blade sweep: contact, reach and whiffs');
 }
 
+// 13. enemy swings use a baked path too
+{
+  const flat = { t0: 0, c: 36, end: 89, n: 2, seg: [[0.2, 1, 1, 1], [0.2, 1, 1, 1], [0.2, 1, 1, 1]], hit: { shape: 'blade', w: 0.12, f0: 30, f1: 40 } };
+  const short = { t0: 0, c: 36, end: 89, n: 2, seg: [[0.05, 1, 0.1, 1], [0.05, 1, 0.1, 1], [0.05, 1, 0.1, 1]], hit: { shape: 'blade', w: 0.12, f0: 30, f1: 40 } };
+  const duel = mv => { const c = JSON.parse(JSON.stringify(CFG)); const s = new Sim(c, 9); s.moves[c.enemy.move] = mv; s.player.inv = false; s.player.weapon = 'longsword';
+    s.player.x = 600; const e = s.spawn({ tier: 'leather', dur: 99, ai: 'advance' }); e.x = s.player.x - 40; e.y = s.player.y; s.player.x = 300; e.x = 330;
+    s.player.cooldown = 99;                                      // the player never swings back
+    for (let i = 0; i < 60 * 3; i++) s.step(1 / 60); return s.player.maxHp - s.player.hp; };
+  assert(duel(flat) > 0, 'enemy blade lands');
+  assert.strictEqual(duel(short), 0, 'enemy blade too short to reach');
+  console.log('PASS enemy blade sweep');
+}
+
 console.log('\nALL SIM TESTS PASSED');

@@ -46,7 +46,7 @@ export const CFG = {
   abreak: { sanMult: 0.5, speedMult: 1.25 },   // design
   pxPerM: 54,                             // sim pixels per metre (the 3D render scale)
   body: { height: 1.7, radius: 0.2 },     // PLACEHOLDER: a fighter's hit capsule, metres (side view)
-  enemy:  { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1.0, atkHitAt: 0.45, atkCool: 0.8, reach: 38 },
+  enemy:  { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1.0, atkHitAt: 0.45, atkCool: 0.8, reach: 38, move: 'cut1|sword' },   // move: the baked path its swing uses, if the client provided one
   rallyPerChr: 0.004,                     // PLACEHOLDER: chance per second, per CHR point, that a fleeing enemy rallies (CHR 5 = 2%/s)
   player: { hp: 30, speed: 90 },
 };
@@ -105,6 +105,18 @@ export function moveTouches(cfg, m, tau, ax, face, ex) {
   }
   if (hb.shape === 'circle') return ptSeg(X(sg[0]), sg[1] * P, ex, 0, ex, Hb) <= hb.r * P + R;
   return segSegDist([X(sg[0]), sg[1] * P, X(sg[2]), sg[3] * P], axis) <= R + (hb.w || 0.12) * P / 2;
+}
+
+// first of the targets ({x, y}) the move touches between swing times tPrev and t; 'past' once the hit window is over
+export function sweepHit(cfg, m, s, tPrev, ax, ay, face, targets) {
+  const a = moveTau(m, s, tPrev), b = moveTau(m, s, s.t);
+  if (a > m.hit.f1) return 'past';
+  const lo = Math.max(a, m.hit.f0), hi = Math.min(b, m.hit.f1); if (hi < lo) return null;
+  for (let k = 0; k <= 3; k++) {
+    const tau = lo + (hi - lo) * k / 3;
+    for (const e of targets) if (Math.abs(e.y - ay) <= cfg.laneTol && moveTouches(cfg, m, tau, ax, face, e.x)) return e;
+  }
+  return null;
 }
 
 export class Sim {
@@ -247,17 +259,9 @@ export class Sim {
 
   // the blade's path between the last step and this one, inside the move's hit window, against every enemy in the lane
   bladeCheck(s, m, tPrev, w) {
-    const p = this.player, c = this.cfg, f0 = m.hit.f0, f1 = m.hit.f1;
-    const a = moveTau(m, s, tPrev), b = moveTau(m, s, s.t);
-    if (a > f1) { s.hit = true; s.whiff = true; this.text(p.x + p.face * 40, p.y - 70, 'MISS', '#b7ab9a', 10); return; }
-    const lo = Math.max(a, f0), hi = Math.min(b, f1); if (hi < lo) return;
-    for (let k = 0; k <= 3; k++) {
-      const tau = lo + (hi - lo) * k / 3;
-      for (const e of this.enemies) {
-        if (e.state !== 'alive' || Math.abs(e.y - p.y) > c.laneTol) continue;
-        if (moveTouches(c, m, tau, p.x, p.face, e.x)) { s.hit = true; s.target = e.id; this.applyHit(e, w.dmg, s); return; }
-      }
-    }
+    const p = this.player, r = sweepHit(this.cfg, m, s, tPrev, p.x, p.y, p.face, this.enemies.filter(e => e.state === 'alive'));
+    if (r === 'past') { s.hit = true; s.whiff = true; this.text(p.x + p.face * 40, p.y - 70, 'MISS', '#b7ab9a', 10); }
+    else if (r) { s.hit = true; s.target = r.id; this.applyHit(r, w.dmg, s); }
   }
 
   breakChain(why) {
@@ -391,8 +395,15 @@ export class Sim {
     if (e.ai !== 'advance') return;
 
     if (e.atk) {
-      e.atk.t += dt;
-      if (!e.atk.hit && e.atk.t >= c.enemy.atkHitAt) {
+      const t0 = e.atk.t; e.atk.t += dt;
+      const m = this.moves[c.enemy.move];
+      if (m && m.seg) {                                            // blade path: the swing lands only if the sword reaches you
+        if (!e.atk.hit) {
+          const s = { t: e.atk.t, dur: c.enemy.atkDur, hitAt: c.enemy.atkHitAt, extra: 0 };
+          const r = sweepHit(c, m, s, t0, e.x, e.y, e.face, [p]);
+          if (r === 'past') e.atk.hit = true; else if (r) { e.atk.hit = true; this.enemyHitsPlayer(e); }
+        }
+      } else if (!e.atk.hit && e.atk.t >= c.enemy.atkHitAt) {
         e.atk.hit = true;
         if (Math.abs(dx) <= c.enemy.reach + 8 && Math.abs(dy) <= c.laneTol) this.enemyHitsPlayer(e);
       }
