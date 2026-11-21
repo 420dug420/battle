@@ -112,6 +112,13 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
       </section>
 
       <section class="panel">
+        <h2>Replays</h2>
+        <div class="field"><label for="rkills">Kill cam</label><span style="display:flex;gap:6px"><select id="rkills"><option>No kills yet</option></select><button class="btn" id="rcam" type="button">Play</button></span></div>
+        <div class="btns" style="margin-top:8px"><button class="btn" id="rwatch" type="button">Watch this fight</button><button class="btn" id="rstop" type="button" disabled>Stop</button></div>
+        <div class="btns" style="margin-top:8px"><button class="btn" id="rsave" type="button">Save replay</button><label class="btn" style="cursor:pointer">Load replay<input id="rload" type="file" accept=".json,application/json" hidden></label></div>
+        <p class="muted" id="rmsg">Recording since the page opened or the arena was last cleared.</p>
+      </section>
+      <section class="panel">
         <h2>Company logo</h2>
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
           <canvas id="logo" width="36" height="36" style="width:216px;height:216px;image-rendering:pixelated;border:1px solid var(--line);background:#0d0e12;cursor:crosshair;touch-action:none"></canvas>
@@ -15586,13 +15593,59 @@ void main(){
   }
   function makeRng(seed) {
     let a = seed >>> 0 || 1;
-    return () => {
+    const f = () => {
       a = a + 1831565813 >>> 0;
       let t = a;
       t = Math.imul(t ^ t >>> 15, t | 1);
       t ^= t + Math.imul(t ^ t >>> 7, t | 61);
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
     };
+    f.get = () => a;
+    f.set = (v2) => {
+      a = v2 >>> 0;
+    };
+    return f;
+  }
+  var SIM_VERSION = 1;
+  var NOT_STATE = ["cfg", "rng", "fxRng", "moves", "fx", "texts", "textOut"];
+  function applyCmd(sim, c) {
+    switch (c.t) {
+      case "input":
+        sim.input = { x: c.x, y: c.y, act: !!c.act };
+        break;
+      case "spawn":
+        for (const o of c.list) sim.spawn(Object.assign({}, o, { index: sim.enemies.filter((e) => e.state === "alive").length % 5 }));
+        if (c.say) sim.say("info", c.say);
+        break;
+      case "clear":
+        sim.clearEnemies();
+        sim.say("info", "Arena cleared.");
+        break;
+      case "heal":
+        sim.healAll();
+        break;
+      case "repair":
+        sim.repairAll();
+        break;
+      case "resetp":
+        sim.resetPlayer();
+        sim.say("info", "Player reset.");
+        break;
+      case "set":
+        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move"]) if (k in c) sim.player[k] = c[k];
+        break;
+      case "cfg": {
+        const d = JSON.parse(JSON.stringify(c.cfg));
+        for (const k in d) sim.cfg[k] = d[k];
+        break;
+      }
+      case "move":
+        sim.moves[c.id] = c.data;
+        break;
+      case "say":
+        sim.say(c.kind || "info", c.text);
+        break;
+    }
   }
   function moveTau(m, s, t) {
     const h = s.hitAt, ex2 = s.extra || 0;
@@ -15640,14 +15693,39 @@ void main(){
     }
     return null;
   }
-  var Sim = class {
+  var Sim = class _Sim {
     // rng: rules (wounded chance). fxRng: particles only, so cosmetic effects never shift the rules' random sequence
     constructor(cfg, seed) {
       this.cfg = cfg;
       this.seed = seed == null ? Date.now() >>> 0 : seed;
       this.rng = makeRng(this.seed);
       this.fxRng = makeRng(this.seed ^ 2654435769);
+      this.stepN = 0;
+      this.events = [];
       this.resetAll();
+    }
+    // the whole fight as plain data (no rules, no blade paths); fromState() rebuilds an identical sim
+    saveState() {
+      const o = {};
+      for (const k in this) if (!NOT_STATE.includes(k) && typeof this[k] !== "function") o[k] = this[k];
+      const st = JSON.parse(JSON.stringify(o, (k, v2) => k[0] === "_" ? void 0 : v2));
+      st.rngState = this.rng.get ? this.rng.get() : null;
+      st.fxRngState = this.fxRng.get ? this.fxRng.get() : null;
+      return st;
+    }
+    static fromState(st, cfg, moves) {
+      const s = new _Sim(cfg, st.seed);
+      const d = JSON.parse(JSON.stringify(st));
+      const r = d.rngState, fr2 = d.fxRngState;
+      delete d.rngState;
+      delete d.fxRngState;
+      Object.assign(s, d);
+      if (r != null) s.rng.set(r);
+      if (fr2 != null) s.fxRng.set(fr2);
+      s.moves = moves || {};
+      s.fx = [];
+      s.texts = [];
+      return s;
     }
     resetAll() {
       const c = this.cfg;
@@ -15790,6 +15868,7 @@ void main(){
     }
     /* ---------- main step ---------- */
     step(dtReal) {
+      this.stepN++;
       const act = !!this.input.act, pressed = act && !this.actPrev;
       this.actPrev = act;
       if (this.hitstop > 0) {
@@ -16060,6 +16139,8 @@ void main(){
       e.wounded = 0;
       e.atk = null;
       e.flee = false;
+      this.events.push({ kind: dramatic ? "dramatic" : "kill", step: this.stepN, x: e.x, y: e.y, id: e.id });
+      if (this.events.length > 20) this.events.shift();
       const dir = Math.sign(e.x - p.x) || 1;
       if (dramatic) {
         e.vx = dir * 230;
@@ -17324,7 +17405,14 @@ void main(){
 
   // game/app.js
   {
-    let prep3D = function(cv3, flash) {
+    let startRec = function() {
+      rec = { v: SIM_VERSION, cfg: clone(live.cfg), moves: Object.assign({}, live.moves), state: live.saveState(), cmds: [] };
+      snaps = [];
+    }, cmd = function(c) {
+      if (pb) return;
+      if (rec) rec.cmds.push({ s: live.stepN, c: clone(c) });
+      applyCmd(live, c);
+    }, prep3D = function(cv3, flash) {
       const S = cv3.width;
       if (oc.width !== S || oc.height !== cv3.height) {
         oc.width = sil.width = S;
@@ -17391,7 +17479,7 @@ void main(){
       const killsIn2 = fits && w.dmg + w.dmg * CFG.critMult >= CFG.enemy.hp;
       $("readout").innerHTML = '<div class="rrow"><span>Swing to swing</span><b>' + w.interval.toFixed(2) + ' s</b></div><div class="rrow"><span>Wounded window</span><b>' + CFG.woundedDur.toFixed(2) + ' s</b></div><div class="rrow"><span>Follow-up lands in window</span><b class="' + (fits ? "ok" : "bad") + '">' + (fits ? "yes" : "no") + '</b></div><div class="rrow"><span>DEX needed for this weapon</span><b>' + (need == null ? "never" : need) + '</b></div><div class="rrow"><span>Damage per hit / Wounded crit</span><b>' + w.dmg + " / " + w.dmg * CFG.critMult + '</b></div><div class="rrow"><span>Two-hit kill on 9 HP, no armor</span><b class="' + (killsIn2 ? "ok" : "bad") + '">' + (killsIn2 ? "yes" : "no") + "</b></div>";
     }, readLook = function() {
-      const w = sim.weaponInfo(), sel = $("atkstyle"), lg3 = sel.querySelector("option[value=lunge]");
+      const w = live.weaponInfo(), sel = $("atkstyle"), lg3 = sel.querySelector("option[value=lunge]");
       if (lg3) {
         lg3.disabled = !w.twoHanded;
         if (!w.twoHanded && sel.value === "lunge") sel.value = "chop";
@@ -17404,25 +17492,26 @@ void main(){
       look.metal = $("lkmetal").value;
       look.style = { horiz: "attack2", chop: "chop", lunge: "lunge", cut: "cut" }[v2] || (v2.slice(0, 2) === "c_" ? v2 : "cut");
       const key = model3d_default.moveKey(look.style, w.twoHanded), id = key + "|" + (w.kind || "sword");
-      if (!sim.moves[id]) {
+      if (!live.moves[id]) {
         const m = model3d_default.bakeMove(key, { two: w.twoHanded, wkind: w.kind || "sword" });
-        if (m) sim.moves[id] = m;
+        if (m) cmd({ t: "move", id, data: m });
       }
-      sim.player.move = sim.moves[id] ? id : null;
+      const mv = live.moves[id] ? id : null;
+      if (live.player.move !== mv) cmd({ t: "set", move: mv });
       netSync();
     }, applySettings = function() {
-      sim.player.weapon = $("weapon").value;
-      sim.player.dex = Math.max(5, num("dex", 5));
-      $("dexv").textContent = sim.player.dex;
       const ov = $("dmgov").value.trim();
-      sim.player.dmgOverride = ov === "" ? null : Math.max(1, parseInt(ov, 10) || 1);
-      sim.player.inv = $("inv").checked;
-      CFG.woundedThreshold = Math.max(0, num("thr", 3));
-      CFG.woundedChance = Math.min(1, Math.max(0, num("chance", 100) / 100));
-      CFG.woundedDur = Math.max(0.1, num("wdur", 1));
-      CFG.critOrder = $("critorder").value;
-      CFG.fleeSan = num("flee", 3);
-      CFG.enemy.san = num("esan", 5);
+      const set = { t: "set", weapon: $("weapon").value, dex: Math.max(5, num("dex", 5)), dmgOverride: ov === "" ? null : Math.max(1, parseInt(ov, 10) || 1), inv: $("inv").checked };
+      if (["weapon", "dex", "dmgOverride", "inv"].some((k) => live.player[k] !== set[k])) cmd(set);
+      $("dexv").textContent = live.player.dex;
+      const nc2 = clone(CFG);
+      nc2.woundedThreshold = Math.max(0, num("thr", 3));
+      nc2.woundedChance = Math.min(1, Math.max(0, num("chance", 100) / 100));
+      nc2.woundedDur = Math.max(0.1, num("wdur", 1));
+      nc2.critOrder = $("critorder").value;
+      nc2.fleeSan = num("flee", 3);
+      nc2.enemy.san = num("esan", 5);
+      if (JSON.stringify(nc2) !== JSON.stringify(CFG)) cmd({ t: "cfg", cfg: nc2 });
       timeScale = num("ts", 1);
       $("tsv").textContent = timeScale.toFixed(2) + "x";
       readout();
@@ -17458,6 +17547,12 @@ void main(){
     }, render = function() {
       ctx.imageSmoothingEnabled = false;
       ctx.save();
+      if (pb && pb.zoom) {
+        const W2 = cv.width, H = cv.height, z = 2, zx = Math.max(W2 / z / 2, Math.min(W2 - W2 / z / 2, pb.zoom.x)), zy = Math.max(H / z / 2, Math.min(H - H / z / 2, pb.zoom.y));
+        ctx.translate(W2 / 2, H / 2);
+        ctx.scale(z, z);
+        ctx.translate(-zx, -zy);
+      }
       if (sim.shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * 5), Math.round((Math.random() - 0.5) * 3));
       ctx.drawImage(bg2, 0, 0);
       const p = sim.player, w = sim.weaponInfo();
@@ -17615,8 +17710,8 @@ void main(){
       ctx.fillStyle = "#6fd07a";
       ctx.fillRect(p.x - 14, p.y - 83, Math.round(28 * p.hp / p.maxHp), 3);
       if (dbg && p.swing && p.swing.move && sim.moves[p.swing.move]) {
-        const m = sim.moves[p.swing.move], s = p.swing, tau = moveTau(m, s, s.t), g = segAt(m, tau), P2 = CFG.pxPerM, live = tau >= m.hit.f0 && tau <= m.hit.f1;
-        ctx.strokeStyle = live ? "#ff5a4a" : "rgba(255,255,255,.5)";
+        const m = sim.moves[p.swing.move], s = p.swing, tau = moveTau(m, s, s.t), g = segAt(m, tau), P2 = CFG.pxPerM, live2 = tau >= m.hit.f0 && tau <= m.hit.f1;
+        ctx.strokeStyle = live2 ? "#ff5a4a" : "rgba(255,255,255,.5)";
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(p.x + p.face * g[0] * P2, p.y - g[1] * P2);
@@ -17647,6 +17742,11 @@ void main(){
         ctx.fillRect(p.x - 19 + Math.round(38 * s.hitAt / s.dur), p.y - 101, 1, 6);
       }
       ctx.restore();
+      if (pb) {
+        ctx.fillStyle = "rgba(0,0,0,.55)";
+        ctx.fillRect(8, 8, 74, 14);
+        label(pb.label + (pb.speed < 1 ? " " + pb.speed + "x" : ""), 45, 19, "#ffd27a", 9);
+      }
     }, flood = function(x, y, col) {
       const id = lg2.getImageData(0, 0, 36, 36), d = id.data, at = (x2, y2) => (y2 * 36 + x2) * 4, t02 = d.slice(at(x, y), at(x, y) + 4);
       const c = col ? [parseInt(col.slice(1, 3), 16), parseInt(col.slice(3, 5), 16), parseInt(col.slice(5, 7), 16), 255] : [0, 0, 0, 0];
@@ -17781,6 +17881,37 @@ void main(){
       ws2.onerror = () => {
         $("netmsg").textContent = "Could not reach the server.";
       };
+    }, pbStep = function() {
+      const c = pb.cmds;
+      while (pb.i < c.length && c[pb.i].s <= pb.sim.stepN) applyCmd(pb.sim, c[pb.i++].c);
+      pb.sim.step(STEP);
+    }, play = function(state, cfg, moves, cmds, from, end, speed, zoom, label2) {
+      const s = Sim.fromState(state, clone(cfg), Object.assign({}, moves));
+      pb = { sim: s, cmds, i: from, end, speed, zoom, acc: 0, label: label2 };
+      while (pb.i < cmds.length && cmds[pb.i].s < state.stepN) pb.i++;
+      sim = s;
+      $("rstop").disabled = false;
+    }, fastForward = function(to2) {
+      while (pb.sim.stepN < to2) pbStep();
+      pb.sim.fx = [];
+      pb.sim.texts = [];
+    }, stopReplay = function() {
+      pb = null;
+      sim = live;
+      $("rstop").disabled = true;
+    }, killCam = function(ev) {
+      if (!rec) return;
+      const from = Math.max(0, ev.step - 90), sn2 = [...snaps].reverse().find((x) => x.step <= from);
+      const base = sn2 || { state: rec.state, cfg: rec.cfg, moves: rec.moves, at: 0 };
+      if (base.state.stepN > ev.step) return;
+      play(base.state, base.cfg, Object.assign({}, rec.moves, base.moves, live.moves), rec.cmds, base.at, ev.step + 90, 0.5, { x: ev.x, y: ev.y - 40 }, "KILL CAM");
+      fastForward(from);
+    }, refreshKills = function() {
+      const ks2 = live.events.filter((e) => e.kind === "dramatic" || e.kind === "kill").slice(-6).reverse(), sel = $("rkills"), key = ks2.map((k) => k.step).join();
+      if (sel.dataset.k === key) return;
+      sel.dataset.k = key;
+      sel.innerHTML = ks2.length ? ks2.map((k, i15) => '<option value="' + i15 + '">' + (k.kind === "dramatic" ? "Dramatic kill" : "Kill") + " at " + (k.step / 60).toFixed(1) + " s</option>").join("") : "<option>No kills yet</option>";
+      sel._ks = ks2;
     }, frame = function(now) {
       const real = Math.min(0.05, (now - last) / 1e3);
       last = now;
@@ -17792,12 +17923,24 @@ void main(){
         }
         for (const t of sim.texts) t.life -= real;
         sim.texts = sim.texts.filter((t) => t.life > 0);
+      } else if (pb) {
+        pb.acc += real * pb.speed;
+        while (pb.acc >= STEP && pb.sim.stepN < pb.end) {
+          pbStep();
+          pb.acc -= STEP;
+        }
+        if (pb.sim.stepN >= pb.end) stopReplay();
       } else if (!paused) {
         acc += real * timeScale;
         while (acc >= STEP) {
-          sim.input = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act };
-          sim.step(STEP);
+          const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act }, s02 = live.input;
+          if (inp.x !== s02.x || inp.y !== s02.y || inp.act !== !!s02.act) cmd(Object.assign({ t: "input" }, inp));
+          live.step(STEP);
           acc -= STEP;
+          if (rec && live.stepN % 300 === 0) {
+            snaps.push({ step: live.stepN, state: live.saveState(), cfg: clone(live.cfg), moves: Object.assign({}, live.moves), at: rec.cmds.length });
+            if (snaps.length > 8) snaps.shift();
+          }
         }
       }
       render();
@@ -17849,9 +17992,10 @@ void main(){
       }
     }, boot = function(saved) {
       saved = saved || {};
+      startRec();
       {
         const m = model3d_default.bakeMove("cut1", { role: "e", two: false, wkind: "sword", shield: true });
-        if (m) sim.moves[CFG.enemy.move] = m;
+        if (m) cmd({ t: "move", id: CFG.enemy.move, data: m });
       }
       IDS.forEach((id) => {
         if (saved[id] != null) $(id).value = saved[id];
@@ -17864,15 +18008,52 @@ void main(){
         if (saved.atkstyle && saved.atkstyle.slice(0, 2) === "c_") $("atkstyle").value = saved.atkstyle;
       } catch (e) {
       }
-      sim.say("info", "Test arena ready. Walk into range; attacks are automatic.");
-      sim.spawn({ tier: "leather", dur: CFG.tiers.leather.dur, ai: "stand", index: 0 });
+      cmd({ t: "say", text: "Test arena ready. Walk into range; attacks are automatic." });
+      cmd({ t: "spawn", list: [{ tier: "leather", dur: CFG.tiers.leather.dur, ai: "stand" }] });
       requestAnimationFrame(frame);
     };
     const $ = (id) => document.getElementById(id);
     const cv = $("stage");
     let ctx = cv.getContext("2d");
-    const sim = new Sim(CFG);
-    window.PW = { sim, M3: model3d_default, CFG };
+    const live = new Sim(CFG);
+    let sim = live;
+    window.PW = {
+      get sim() {
+        return sim;
+      },
+      live,
+      M3: model3d_default,
+      CFG,
+      get rec() {
+        return rec;
+      },
+      // console and test handle
+      checkReplay() {
+        const s = Sim.fromState(rec.state, clone(rec.cfg), Object.assign({}, rec.moves));
+        let i15 = 0;
+        const c = rec.cmds;
+        while (s.stepN < live.stepN) {
+          while (i15 < c.length && c[i15].s <= s.stepN) applyCmd(s, c[i15++].c);
+          s.step(1 / 60);
+        }
+        const A = s.saveState(), B = live.saveState();
+        delete A.events;
+        delete B.events;
+        const out = [];
+        const diff = (x, y, p) => {
+          if (JSON.stringify(x) === JSON.stringify(y)) return;
+          if (typeof x !== "object" || !x || !y) {
+            out.push(p + ": " + JSON.stringify(x) + " vs " + JSON.stringify(y));
+            return;
+          }
+          for (const k of /* @__PURE__ */ new Set([...Object.keys(x), ...Object.keys(y)])) diff(x[k], y[k], p + "." + k);
+        };
+        diff(A, B, "");
+        return out.length ? out.slice(0, 8) : true;
+      }
+    };
+    let rec = null, snaps = [], pb = null;
+    const clone = (o) => JSON.parse(JSON.stringify(o));
     const STEP = 1 / 60;
     const FONT = '"Pixelify Sans", monospace';
     const bg2 = document.createElement("canvas");
@@ -18006,23 +18187,20 @@ void main(){
         send({ t: "spawn", tier: $("tier").value, n, ai: $("ai").value });
         return;
       }
-      for (let i15 = 0; i15 < n; i15++) sim.spawn({ tier: $("tier").value, dur: Math.max(1, num("dur", 6)), ai: $("ai").value, index: sim.enemies.filter((e) => e.state === "alive").length % 5 });
-      sim.say("info", "Spawned " + n + " " + CFG.tiers[$("tier").value].label + " man-at-arms (" + $("ai").value + ").");
+      const o = { tier: $("tier").value, dur: Math.max(1, num("dur", 6)), ai: $("ai").value };
+      cmd({ t: "spawn", list: Array.from({ length: n }, () => o), say: "Spawned " + n + " " + CFG.tiers[$("tier").value].label + " man-at-arms (" + $("ai").value + ")." });
     });
     $("clear").addEventListener("click", () => {
       if (net) {
         send({ t: "clear" });
         return;
       }
-      sim.clearEnemies();
-      sim.say("info", "Arena cleared.");
+      cmd({ t: "clear" });
+      if (!pb) startRec();
     });
-    $("heal").addEventListener("click", () => sim.healAll());
-    $("repair").addEventListener("click", () => sim.repairAll());
-    $("resetp").addEventListener("click", () => {
-      sim.resetPlayer();
-      sim.say("info", "Player reset.");
-    });
+    $("heal").addEventListener("click", () => cmd({ t: "heal" }));
+    $("repair").addEventListener("click", () => cmd({ t: "repair" }));
+    $("resetp").addEventListener("click", () => cmd({ t: "resetp" }));
     $("pause").addEventListener("click", togglePause);
     let logSeen = -1, lastKey = "";
     const LC = $("logo"), lg2 = LC.getContext("2d"), EC = $("elogo");
@@ -18109,6 +18287,40 @@ void main(){
       if (net && net.ws.readyState === 1 && net.role === "player") net.ws.send(JSON.stringify(m));
     };
     $("netgo").addEventListener("click", netConnect);
+    setInterval(refreshKills, 500);
+    $("rcam").addEventListener("click", () => {
+      const ks2 = $("rkills")._ks || [];
+      const k = ks2[+$("rkills").value || 0];
+      if (k) killCam(k);
+    });
+    $("rwatch").addEventListener("click", () => {
+      if (rec) play(rec.state, rec.cfg, rec.moves, rec.cmds, 0, live.stepN, 1, null, "REPLAY");
+    });
+    $("rstop").addEventListener("click", stopReplay);
+    $("rsave").addEventListener("click", () => {
+      if (!rec) return;
+      const data = JSON.stringify(Object.assign({}, rec, { end: live.stepN, game: "project-war" }));
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+      a.download = "project-war-replay-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      $("rmsg").textContent = "Saved " + (data.length / 1024).toFixed(0) + " KB (" + ((live.stepN - rec.state.stepN) / 60).toFixed(0) + " s of fight).";
+    });
+    $("rload").addEventListener("change", async (ev) => {
+      const f = ev.target.files[0];
+      if (!f) return;
+      try {
+        const r = JSON.parse(await f.text());
+        if (r.game !== "project-war") throw new Error("not a Project War replay");
+        $("rmsg").textContent = r.v !== SIM_VERSION ? "Made under rules v" + r.v + " (this is v" + SIM_VERSION + "): it may play out differently." : "Playing the loaded replay.";
+        play(r.state, r.cfg, r.moves, r.cmds, 0, r.end, 1, null, "REPLAY");
+      } catch (e) {
+        $("rmsg").textContent = "Could not load: " + e.message;
+      }
+      ev.target.value = "";
+    });
     let last = performance.now(), acc = 0;
     $("customload").onclick = () => loadLibrary($("customjson").value.trim());
     $("customfile").onchange = (e) => {

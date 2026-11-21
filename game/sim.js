@@ -76,7 +76,28 @@ export function minDexForWindow(cfg, weaponKey) {
 export function hash32(a, b) { let h = Math.imul((a >>> 0) ^ 0x85EBCA6B, 0xC2B2AE35) ^ Math.imul((b >>> 0) + 0x27D4EB2F, 0x165667B1); h ^= h >>> 15; h = Math.imul(h, 0x2C1B3C6D); h ^= h >>> 12; return h >>> 0; }
 export function makeRng(seed) {
   let a = (seed >>> 0) || 1;
-  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const f = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  f.get = () => a; f.set = v => { a = v >>> 0; };                   // saved and restored with the fight state (replays)
+  return f;
+}
+
+/* ---------- replays: rules version, saved state, and the one way anything outside changes a fight ---------- */
+export const SIM_VERSION = 1;                                       // bump when a rule changes, so old replays are flagged
+const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut'];
+// every outside change (input, spawns, settings) goes through here, live and in replays, so a replay repeats the fight exactly
+export function applyCmd(sim, c) {
+  switch (c.t) {
+    case 'input': sim.input = { x: c.x, y: c.y, act: !!c.act }; break;
+    case 'spawn': for (const o of c.list) sim.spawn(Object.assign({}, o, { index: sim.enemies.filter(e => e.state === 'alive').length % 5 })); if (c.say) sim.say('info', c.say); break;
+    case 'clear': sim.clearEnemies(); sim.say('info', 'Arena cleared.'); break;
+    case 'heal': sim.healAll(); break;
+    case 'repair': sim.repairAll(); break;
+    case 'resetp': sim.resetPlayer(); sim.say('info', 'Player reset.'); break;
+    case 'set': for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move']) if (k in c) sim.player[k] = c[k]; break;
+    case 'cfg': { const d = JSON.parse(JSON.stringify(c.cfg)); for (const k in d) sim.cfg[k] = d[k]; break; }
+    case 'move': sim.moves[c.id] = c.data; break;
+    case 'say': sim.say(c.kind || 'info', c.text); break;
+  }
 }
 
 /* ---------- blade contact: baked weapon paths (rig/model3d.js bakeMove) tested against body capsules ---------- */
@@ -124,7 +145,17 @@ export function sweepHit(cfg, m, s, tPrev, ax, ay, face, targets) {
 
 export class Sim {
   // rng: rules (wounded chance). fxRng: particles only, so cosmetic effects never shift the rules' random sequence
-  constructor(cfg, seed) { this.cfg = cfg; this.seed = seed == null ? (Date.now() >>> 0) : seed; this.rng = makeRng(this.seed); this.fxRng = makeRng(this.seed ^ 0x9E3779B9); this.resetAll(); }
+  constructor(cfg, seed) { this.cfg = cfg; this.seed = seed == null ? (Date.now() >>> 0) : seed; this.rng = makeRng(this.seed); this.fxRng = makeRng(this.seed ^ 0x9E3779B9); this.stepN = 0; this.events = []; this.resetAll(); }
+  // the whole fight as plain data (no rules, no blade paths); fromState() rebuilds an identical sim
+  saveState() {
+    const o = {}; for (const k in this) if (!NOT_STATE.includes(k) && typeof this[k] !== 'function') o[k] = this[k];
+    const st = JSON.parse(JSON.stringify(o, (k, v) => k[0] === '_' ? undefined : v)); st.rngState = this.rng.get ? this.rng.get() : null; st.fxRngState = this.fxRng.get ? this.fxRng.get() : null; return st;
+  }
+  static fromState(st, cfg, moves) {
+    const s = new Sim(cfg, st.seed); const d = JSON.parse(JSON.stringify(st));
+    const r = d.rngState, fr = d.fxRngState; delete d.rngState; delete d.fxRngState; Object.assign(s, d);
+    if (r != null) s.rng.set(r); if (fr != null) s.fxRng.set(fr); s.moves = moves || {}; s.fx = []; s.texts = []; return s;
+  }
 
   resetAll() {
     const c = this.cfg;
@@ -198,6 +229,7 @@ export class Sim {
 
   /* ---------- main step ---------- */
   step(dtReal) {
+    this.stepN++;
     const act = !!this.input.act, pressed = act && !this.actPrev; this.actPrev = act;   // a press is the moment the key goes down
     if (this.hitstop > 0) { this.hitstop -= dtReal; return; }
     let dt = dtReal;
@@ -385,6 +417,7 @@ export class Sim {
   kill(e, dramatic, swing) {
     const p = this.player;
     e.state = 'dying'; e.deathT = 0; e.dramatic = dramatic; e.wounded = 0; e.atk = null; e.flee = false;
+    this.events.push({ kind: dramatic ? 'dramatic' : 'kill', step: this.stepN, x: e.x, y: e.y, id: e.id }); if (this.events.length > 20) this.events.shift();   // kill cams
     const dir = Math.sign(e.x - p.x) || 1;
     if (dramatic) {
       e.vx = dir * 230; e.vz = 190;

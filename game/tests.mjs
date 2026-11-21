@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { CFG, Sim, makeRng, weaponStats, swingInterval, minDexForWindow, fitsWindow, segSegDist, moveTouches } from './sim.js';
+import { CFG, Sim, applyCmd, SIM_VERSION, makeRng, weaponStats, swingInterval, minDexForWindow, fitsWindow, segSegDist, moveTouches } from './sim.js';
 
 function fresh(weapon, dex) {
   const s = new Sim(CFG); s.rng = () => 0; // always passes chance rolls
@@ -200,6 +200,31 @@ console.log('PASS shrug off after surviving crit');
     for (let i = 0; i < 70; i++) s2.step(1 / 60);
     assert.strictEqual(s2.lastClash.result, 'lose', 'holding the key from before is not a press'); }
   console.log('PASS clash: crossing blades, freeze, timed press');
+}
+
+// 15. replays: the same start state plus the same commands give the same fight, from the start or from a mid-fight save
+{
+  const c = JSON.parse(JSON.stringify(CFG)); c.woundedChance = 0.6;
+  const live = new Sim(c, 77); const cmds = []; const moves = {};
+  const cmd = x => { cmds.push({ s: live.stepN, c: JSON.parse(JSON.stringify(x)) }); applyCmd(live, x); };
+  const start = live.saveState(), cfg0 = JSON.parse(JSON.stringify(c));
+  const r = makeRng(5); let mid = null, midCfg = null, midAt = 0;
+  for (let i = 0; i < 60 * 40; i++) {
+    if (i % 23 === 0) cmd({ t: 'input', x: Math.round(r() * 2 - 1), y: Math.round(r() * 2 - 1), act: r() < .2 });
+    if (i % 400 === 5) cmd({ t: 'spawn', list: [{ tier: ['leather', 'mail', 'plate'][i % 3], dur: 4, ai: 'advance' }, { tier: 'leather', dur: 3, ai: 'stand' }] });
+    if (i === 900) cmd({ t: 'set', weapon: 'greatsword', dex: 40 });
+    if (i === 1300) { const cc = JSON.parse(JSON.stringify(live.cfg)); cc.woundedDur = 1.6; cmd({ t: 'cfg', cfg: cc }); }
+    if (i === 1000) { mid = live.saveState(); midCfg = JSON.parse(JSON.stringify(live.cfg)); midAt = cmds.length; }
+    live.step(1 / 60);
+  }
+  const end = JSON.stringify(live.saveState());
+  const play = (st, cfg, list) => { const s = Sim.fromState(st, JSON.parse(JSON.stringify(cfg)), {}); let j = 0;
+    while (s.stepN < live.stepN) { while (j < list.length && list[j].s <= s.stepN) applyCmd(s, list[j++].c); s.step(1 / 60); } return JSON.stringify(s.saveState()); };
+  assert(live.enemies.length + live.log.filter(l => /KILLED/.test(l.text)).length > 0, 'the fight had action');
+  assert.strictEqual(play(start, cfg0, cmds), end, 'replay from the start matches exactly');
+  assert.strictEqual(play(mid, midCfg, cmds.slice(midAt)), end, 'replay from a mid-fight save matches exactly');
+  assert(Number.isInteger(SIM_VERSION));
+  console.log('PASS replays reproduce the fight exactly');
 }
 
 console.log('\nALL SIM TESTS PASSED');

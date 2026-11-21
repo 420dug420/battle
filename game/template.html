@@ -112,6 +112,13 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
       </section>
 
       <section class="panel">
+        <h2>Replays</h2>
+        <div class="field"><label for="rkills">Kill cam</label><span style="display:flex;gap:6px"><select id="rkills"><option>No kills yet</option></select><button class="btn" id="rcam" type="button">Play</button></span></div>
+        <div class="btns" style="margin-top:8px"><button class="btn" id="rwatch" type="button">Watch this fight</button><button class="btn" id="rstop" type="button" disabled>Stop</button></div>
+        <div class="btns" style="margin-top:8px"><button class="btn" id="rsave" type="button">Save replay</button><label class="btn" style="cursor:pointer">Load replay<input id="rload" type="file" accept=".json,application/json" hidden></label></div>
+        <p class="muted" id="rmsg">Recording since the page opened or the arena was last cleared.</p>
+      </section>
+      <section class="panel">
         <h2>Company logo</h2>
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
           <canvas id="logo" width="36" height="36" style="width:216px;height:216px;image-rendering:pixelated;border:1px solid var(--line);background:#0d0e12;cursor:crosshair;touch-action:none"></canvas>

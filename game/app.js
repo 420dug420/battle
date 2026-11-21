@@ -3,15 +3,31 @@
    Fighters are live 3D models (rig/model3d.js) drawn into the 2D stage.
    ============================================================ */
 import M3 from '../rig/model3d.js';
-import { CFG, Sim, fitsWindow, minDexForWindow, moveTau, segAt } from './sim.js';
+import { CFG, Sim, applyCmd, SIM_VERSION, fitsWindow, minDexForWindow, moveTau, segAt } from './sim.js';
 import BUILTIN_ANIMS from './anims.json';
 import { applySnapshot } from '../server/protocol.js';
 {
   const $ = id => document.getElementById(id);
   const cv = $('stage');
   let ctx = cv.getContext('2d');
-  const sim = new Sim(CFG);
-  window.PW = { sim, M3, CFG };                         // console and test handle
+  const live = new Sim(CFG);
+  let sim = live;                                       // what is drawn: the live fight, or a replay while one plays
+  window.PW = { get sim() { return sim; }, live, M3, CFG, get rec() { return rec; },     // console and test handle
+    checkReplay() { const s = Sim.fromState(rec.state, clone(rec.cfg), Object.assign({}, rec.moves)); let i = 0; const c = rec.cmds;   // re-run the recording; true if it ends exactly like the live fight
+      while (s.stepN < live.stepN) { while (i < c.length && c[i].s <= s.stepN) applyCmd(s, c[i++].c); s.step(1 / 60); }
+      const A = s.saveState(), B = live.saveState(); delete A.events; delete B.events; const out = [];
+      const diff = (x, y, p) => { if (JSON.stringify(x) === JSON.stringify(y)) return; if (typeof x !== 'object' || !x || !y) { out.push(p + ': ' + JSON.stringify(x) + ' vs ' + JSON.stringify(y)); return; } for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) diff(x[k], y[k], p + '.' + k); };
+      diff(A, B, ''); return out.length ? out.slice(0, 8) : true; } };
+
+  /* ---------- recording: every outside change is a command, logged with the step it happened on ---------- */
+  let rec = null, snaps = [], pb = null;                 // pb: replay playing
+  const clone = o => JSON.parse(JSON.stringify(o));
+  function startRec() { rec = { v: SIM_VERSION, cfg: clone(live.cfg), moves: Object.assign({}, live.moves), state: live.saveState(), cmds: [] }; snaps = []; }
+  function cmd(c) {
+    if (pb) return;                                      // the menu doesn't steer a replay
+    if (rec) rec.cmds.push({ s: live.stepN, c: clone(c) });
+    applyCmd(live, c);
+  }
   const STEP = 1 / 60;
   const FONT = '"Pixelify Sans", monospace';
 
@@ -118,29 +134,27 @@ import { applySnapshot } from '../server/protocol.js';
   }
   const look = { tier: 'leather', head: '', body: '', liv: '', metal: '', style: 'cut' };
   function readLook() {
-    const w = sim.weaponInfo(), sel = $('atkstyle'), lg = sel.querySelector('option[value=lunge]');
+    const w = live.weaponInfo(), sel = $('atkstyle'), lg = sel.querySelector('option[value=lunge]');
     if (lg) { lg.disabled = !w.twoHanded; if (!w.twoHanded && sel.value === 'lunge') sel.value = 'chop'; }
     const v = sel.value;
     look.tier = $('ptier').value; look.head = $('lkhead').value; look.body = $('lkbody').value; look.liv = $('lkliv').value; look.metal = $('lkmetal').value;
     look.style = ({ horiz: 'attack2', chop: 'chop', lunge: 'lunge', cut: 'cut' })[v] || (v.slice(0, 2) === 'c_' ? v : 'cut');
     // the move the player's swings use, with its weapon path baked from the 3D rig for blade-contact hits
     const key = M3.moveKey(look.style, w.twoHanded), id = key + '|' + (w.kind || 'sword');
-    if (!sim.moves[id]) { const m = M3.bakeMove(key, { two: w.twoHanded, wkind: w.kind || 'sword' }); if (m) sim.moves[id] = m; }
-    sim.player.move = sim.moves[id] ? id : null;
+    if (!live.moves[id]) { const m = M3.bakeMove(key, { two: w.twoHanded, wkind: w.kind || 'sword' }); if (m) cmd({ t: 'move', id, data: m }); }
+    const mv = live.moves[id] ? id : null; if (live.player.move !== mv) cmd({ t: 'set', move: mv });
     netSync();
   }
   ['ptier', 'lkhead', 'lkbody', 'lkliv', 'lkmetal', 'atkstyle'].forEach(id => $(id).addEventListener('change', readLook));
   function applySettings() {
-    sim.player.weapon = $('weapon').value;
-    sim.player.dex = Math.max(5, num('dex', 5)); $('dexv').textContent = sim.player.dex;
-    const ov = $('dmgov').value.trim(); sim.player.dmgOverride = ov === '' ? null : Math.max(1, parseInt(ov, 10) || 1);
-    sim.player.inv = $('inv').checked;
-    CFG.woundedThreshold = Math.max(0, num('thr', 3));
-    CFG.woundedChance = Math.min(1, Math.max(0, num('chance', 100) / 100));
-    CFG.woundedDur = Math.max(0.1, num('wdur', 1));
-    CFG.critOrder = $('critorder').value;
-    CFG.fleeSan = num('flee', 3);
-    CFG.enemy.san = num('esan', 5);
+    const ov = $('dmgov').value.trim();
+    const set = { t: 'set', weapon: $('weapon').value, dex: Math.max(5, num('dex', 5)), dmgOverride: ov === '' ? null : Math.max(1, parseInt(ov, 10) || 1), inv: $('inv').checked };
+    if (['weapon', 'dex', 'dmgOverride', 'inv'].some(k => live.player[k] !== set[k])) cmd(set);
+    $('dexv').textContent = live.player.dex;
+    const nc = clone(CFG);
+    nc.woundedThreshold = Math.max(0, num('thr', 3)); nc.woundedChance = Math.min(1, Math.max(0, num('chance', 100) / 100)); nc.woundedDur = Math.max(0.1, num('wdur', 1));
+    nc.critOrder = $('critorder').value; nc.fleeSan = num('flee', 3); nc.enemy.san = num('esan', 5);
+    if (JSON.stringify(nc) !== JSON.stringify(CFG)) cmd({ t: 'cfg', cfg: nc });
     timeScale = num('ts', 1); $('tsv').textContent = timeScale.toFixed(2) + 'x';
     readout(); readLook();
   }
@@ -149,13 +163,13 @@ import { applySnapshot } from '../server/protocol.js';
   $('spawn').addEventListener('click', () => {
     const n = Math.max(1, Math.min(5, parseInt($('count').value, 10) || 1));
     if (net) { send({ t: 'spawn', tier: $('tier').value, n, ai: $('ai').value }); return; }
-    for (let i = 0; i < n; i++) sim.spawn({ tier: $('tier').value, dur: Math.max(1, num('dur', 6)), ai: $('ai').value, index: sim.enemies.filter(e => e.state === 'alive').length % 5 });
-    sim.say('info', 'Spawned ' + n + ' ' + CFG.tiers[$('tier').value].label + ' man-at-arms (' + $('ai').value + ').');
+    const o = { tier: $('tier').value, dur: Math.max(1, num('dur', 6)), ai: $('ai').value };
+    cmd({ t: 'spawn', list: Array.from({ length: n }, () => o), say: 'Spawned ' + n + ' ' + CFG.tiers[$('tier').value].label + ' man-at-arms (' + $('ai').value + ').' });
   });
-  $('clear').addEventListener('click', () => { if (net) { send({ t: 'clear' }); return; } sim.clearEnemies(); sim.say('info', 'Arena cleared.'); });
-  $('heal').addEventListener('click', () => sim.healAll());
-  $('repair').addEventListener('click', () => sim.repairAll());
-  $('resetp').addEventListener('click', () => { sim.resetPlayer(); sim.say('info', 'Player reset.'); });
+  $('clear').addEventListener('click', () => { if (net) { send({ t: 'clear' }); return; } cmd({ t: 'clear' }); if (!pb) startRec(); });   // a cleared arena starts a fresh recording
+  $('heal').addEventListener('click', () => cmd({ t: 'heal' }));
+  $('repair').addEventListener('click', () => cmd({ t: 'repair' }));
+  $('resetp').addEventListener('click', () => cmd({ t: 'resetp' }));
   $('pause').addEventListener('click', togglePause);
 
   /* ---------- menu readouts that follow the sim ---------- */
@@ -192,6 +206,7 @@ import { applySnapshot } from '../server/protocol.js';
   function render() {
     ctx.imageSmoothingEnabled = false;
     ctx.save();
+    if (pb && pb.zoom) { const W = cv.width, H = cv.height, z = 2, zx = Math.max(W / z / 2, Math.min(W - W / z / 2, pb.zoom.x)), zy = Math.max(H / z / 2, Math.min(H - H / z / 2, pb.zoom.y)); ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-zx, -zy); }
     if (sim.shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * 5), Math.round((Math.random() - 0.5) * 3));
     ctx.drawImage(bg, 0, 0);
     const p = sim.player, w = sim.weaponInfo();
@@ -285,6 +300,7 @@ import { applySnapshot } from '../server/protocol.js';
       ctx.fillStyle = '#ffffff'; ctx.fillRect(p.x - 19 + Math.round(38 * s.hitAt / s.dur), p.y - 101, 1, 6);
     }
     ctx.restore();
+    if (pb) { ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(8, 8, 74, 14); label(pb.label + (pb.speed < 1 ? ' ' + pb.speed + 'x' : ''), 45, 19, '#ffd27a', 9); }
   }
 
 
@@ -379,6 +395,51 @@ import { applySnapshot } from '../server/protocol.js';
   }
   $('netgo').addEventListener('click', netConnect);
 
+  /* ---------- replays and kill cams ---------- */
+  function pbStep() { const c = pb.cmds; while (pb.i < c.length && c[pb.i].s <= pb.sim.stepN) applyCmd(pb.sim, c[pb.i++].c); pb.sim.step(STEP); }
+  function play(state, cfg, moves, cmds, from, end, speed, zoom, label) {
+    const s = Sim.fromState(state, clone(cfg), Object.assign({}, moves));
+    pb = { sim: s, cmds, i: from, end, speed, zoom, acc: 0, label };
+    while (pb.i < cmds.length && cmds[pb.i].s < state.stepN) pb.i++;
+    sim = s; $('rstop').disabled = false;
+  }
+  function fastForward(to) { while (pb.sim.stepN < to) pbStep(); pb.sim.fx = []; pb.sim.texts = []; }
+  function stopReplay() { pb = null; sim = live; $('rstop').disabled = true; }
+  function killCam(ev) {                                       // from the last save at least 3 s before the kill: re-run it, then show it slowed and zoomed
+    if (!rec) return;
+    const from = Math.max(0, ev.step - 90), sn = [...snaps].reverse().find(x => x.step <= from);
+    const base = sn || { state: rec.state, cfg: rec.cfg, moves: rec.moves, at: 0 };
+    if (base.state.stepN > ev.step) return;
+    play(base.state, base.cfg, Object.assign({}, rec.moves, base.moves, live.moves), rec.cmds, base.at, ev.step + 90, 0.5, { x: ev.x, y: ev.y - 40 }, 'KILL CAM');
+    fastForward(from);
+  }
+  function refreshKills() {
+    const ks = live.events.filter(e => e.kind === 'dramatic' || e.kind === 'kill').slice(-6).reverse(), sel = $('rkills'), key = ks.map(k => k.step).join();
+    if (sel.dataset.k === key) return; sel.dataset.k = key;
+    sel.innerHTML = ks.length ? ks.map((k, i) => '<option value="' + i + '">' + (k.kind === 'dramatic' ? 'Dramatic kill' : 'Kill') + ' at ' + (k.step / 60).toFixed(1) + ' s</option>').join('') : '<option>No kills yet</option>';
+    sel._ks = ks;
+  }
+  setInterval(refreshKills, 500);
+  $('rcam').addEventListener('click', () => { const ks = $('rkills')._ks || []; const k = ks[+$('rkills').value || 0]; if (k) killCam(k); });
+  $('rwatch').addEventListener('click', () => { if (rec) play(rec.state, rec.cfg, rec.moves, rec.cmds, 0, live.stepN, 1, null, 'REPLAY'); });
+  $('rstop').addEventListener('click', stopReplay);
+  $('rsave').addEventListener('click', () => {
+    if (!rec) return;
+    const data = JSON.stringify(Object.assign({}, rec, { end: live.stepN, game: 'project-war' }));
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+    a.download = 'project-war-replay-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.json'; document.body.appendChild(a); a.click(); a.remove();
+    $('rmsg').textContent = 'Saved ' + (data.length / 1024).toFixed(0) + ' KB (' + ((live.stepN - rec.state.stepN) / 60).toFixed(0) + ' s of fight).';
+  });
+  $('rload').addEventListener('change', async ev => {
+    const f = ev.target.files[0]; if (!f) return;
+    try {
+      const r = JSON.parse(await f.text()); if (r.game !== 'project-war') throw new Error('not a Project War replay');
+      $('rmsg').textContent = r.v !== SIM_VERSION ? 'Made under rules v' + r.v + ' (this is v' + SIM_VERSION + '): it may play out differently.' : 'Playing the loaded replay.';
+      play(r.state, r.cfg, r.moves, r.cmds, 0, r.end, 1, null, 'REPLAY');
+    } catch (e) { $('rmsg').textContent = 'Could not load: ' + e.message; }
+    ev.target.value = '';
+  });
+
   /* ---------- loop ---------- */
   let last = performance.now(), acc = 0;
   function frame(now) {
@@ -387,11 +448,17 @@ import { applySnapshot } from '../server/protocol.js';
       const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act }, k = inp.x + ',' + inp.y + ',' + inp.act;
       if (k !== net.lastIn) { net.lastIn = k; send(Object.assign({ t: 'input' }, inp)); }
       for (const t of sim.texts) t.life -= real; sim.texts = sim.texts.filter(t => t.life > 0);
+    } else if (pb) {                                             // a replay or kill cam is playing
+      pb.acc += real * pb.speed;
+      while (pb.acc >= STEP && pb.sim.stepN < pb.end) { pbStep(); pb.acc -= STEP; }
+      if (pb.sim.stepN >= pb.end) stopReplay();
     } else if (!paused) {
       acc += real * timeScale;
       while (acc >= STEP) {
-        sim.input = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act };
-        sim.step(STEP); acc -= STEP;
+        const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act }, s0 = live.input;
+        if (inp.x !== s0.x || inp.y !== s0.y || inp.act !== !!s0.act) cmd(Object.assign({ t: 'input' }, inp));
+        live.step(STEP); acc -= STEP;
+        if (rec && live.stepN % 300 === 0) { snaps.push({ step: live.stepN, state: live.saveState(), cfg: clone(live.cfg), moves: Object.assign({}, live.moves), at: rec.cmds.length }); if (snaps.length > 8) snaps.shift(); }
       }
     }
     render(); renderLog(); renderLast(); renderStatus();
@@ -440,15 +507,16 @@ import { applySnapshot } from '../server/protocol.js';
     fill('lkhead', P ? P.heads : [], 'from armor'); fill('lkbody', P ? P.bodies : [], 'from armor'); fill('lkliv', P ? P.liveries : [], 'from armor'); fill('lkmetal', P ? P.metals : [], 'from armor'); }
   function boot(saved) {
     saved = saved || {};
-    { const m = M3.bakeMove('cut1', { role: 'e', two: false, wkind: 'sword', shield: true }); if (m) sim.moves[CFG.enemy.move] = m; }   // enemy swing path
+    startRec();
+    { const m = M3.bakeMove('cut1', { role: 'e', two: false, wkind: 'sword', shield: true }); if (m) cmd({ t: 'move', id: CFG.enemy.move, data: m }); }   // enemy swing path
     IDS.forEach(id => { if (saved[id] != null) $(id).value = saved[id]; });
     if (saved.inv != null) $('inv').checked = !!saved.inv;
     if (saved.dbg != null) $('dbg').checked = !!saved.dbg;
     if (saved.dur == null) tierDefaults();
     applySettings();
     try { if (saved.atkstyle && saved.atkstyle.slice(0, 2) === 'c_') $('atkstyle').value = saved.atkstyle; } catch (e) { }
-    sim.say('info', 'Test arena ready. Walk into range; attacks are automatic.');
-    sim.spawn({ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand', index: 0 });
+    cmd({ t: 'say', text: 'Test arena ready. Walk into range; attacks are automatic.' });
+    cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] });
     requestAnimationFrame(frame);
   }
   try { window.claude && window.claude.hot && window.claude.hot.snapshot && window.claude.hot.snapshot(() => { const o = {}; IDS.forEach(id => o[id] = $(id).value); o.inv = $('inv').checked; o.dbg = $('dbg').checked; return o; }); } catch (e) { }
