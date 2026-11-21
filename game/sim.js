@@ -163,7 +163,7 @@ export class Sim {
     this.player = {
       x: 170, y: 282, face: 1, hp: c.player.hp, maxHp: c.player.hp,
       weapon: 'longsword', dex: 5, dmgOverride: null, inv: true,
-      swing: null, chain: 0, cooldown: 0, moved: false, flash: 0, walkT: 0, moving: false,
+      swing: null, chain: 0, cooldown: 0, moved: false, flash: 0, hurt: 0, walkT: 0, moving: false,
     };
     this.enemies = []; this.fx = []; this.texts = []; this.routed = 0;
     this.log = []; this.logVer = 0; this.lastHit = null;
@@ -206,7 +206,7 @@ export class Sim {
       durMax: opts.dur != null ? opts.dur : c.tiers[tier].dur,
       broken: false, wounded: 0, state: 'alive', flee: false,
       ai: opts.ai === 'advance' ? 'advance' : 'stand',
-      atk: null, atkCd: 0.6, deathT: 0, dramatic: false, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0,
+      atk: null, atkCd: 0.6, deathT: 0, dramatic: false, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0, hurt: 0,
     };
     e.lookSeed = hash32(this.seed, e.id);                        // picks this enemy's parts and colours from its rank's pools (client side)
     this.enemies.push(e);
@@ -261,7 +261,7 @@ export class Sim {
     let ix = this.input.x, iy = this.input.y;
     const mag = Math.sqrt(ix * ix + iy * iy);                     // not Math.hypot: identical results on every engine (replays, server)
     if (mag > 1) { ix /= mag; iy /= mag; }
-    p.flash = Math.max(0, p.flash - dt);
+    p.flash = Math.max(0, p.flash - dt); p.hurt = Math.max(0, (p.hurt || 0) - dt);
     const swinging = !!p.swing;
     const spd = c.player.speed * (swinging ? c.swingMoveMult : 1);
     p.moving = mag > 0;
@@ -387,7 +387,7 @@ export class Sim {
       threshold: thr, woundedSet: false, dead, dramatic: false, notes: [], tier: c.tiers[e.tier].label,
     };
 
-    e.flash = 0.12;
+    e.flash = 0.12; e.hurt = 0.6;                                  // flash is the white blink; hurt times the custom damaged animation (visual only)
     this.burst(e.x, e.y - 48, crit ? 14 : 8, crit ? '#ffe08a' : '#f4ecd8', crit ? 150 : 100);
     this.text(e.x, e.y - 96, (crit ? 'CRIT ' : '') + '-' + dmg, crit ? '#ffd27a' : '#ffffff', crit ? 12 : 10);
     if (dead) { this.hitstop = Math.max(this.hitstop, 0.05); }
@@ -442,7 +442,7 @@ export class Sim {
   /* ---------- enemies ---------- */
   updateEnemy(e, dt) {
     const c = this.cfg, p = this.player;
-    e.flash = Math.max(0, e.flash - dt);
+    e.flash = Math.max(0, e.flash - dt); e.hurt = Math.max(0, (e.hurt || 0) - dt);
     if (e.state === 'dying') {
       e.deathT += dt;
       if (e.dramatic) {
@@ -503,7 +503,7 @@ export class Sim {
 
   enemyHitsPlayer(e) {
     const p = this.player, c = this.cfg;
-    p.flash = 0.2;
+    p.flash = 0.2; p.hurt = 0.6;
     if (!p.inv) {
       p.hp -= c.enemy.atkDmg;
       this.text(p.x, p.y - 96, '-' + c.enemy.atkDmg, '#ff7a6a', 10);

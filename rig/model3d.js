@@ -592,9 +592,13 @@ M3.pose = function (role, f) {
   let p, aux = {}, free = false;
   const dt = 0.016;
   if (f.dead) {
-    const base = KEYS.hit[0], T = f.deathT || 0, viol = !!f.dramatic;
-    const u = Math.min(1, T / (viol ? 0.62 : 0.8)), e = u * u * (3 - 2 * u);
-    p = lerpP(base, P({ py: -0.08, pel: [-40, 10, 0], head: [-30, 0], hand: [-0.5, 0.2, -0.2], blade: [0, -1, 0.4], far: [0.4, 0.1, -0.3], legN: [14, 0, 60, 0, 0], legF: [-8, 0, 50, 0, 0] }), e);
+    const two = f.two ? 2 : 1, viol = !!f.dramatic, T = f.deathT || 0;
+    const cd = ONE['dying' + two], cf = ONE['falling' + two], dD = cd ? cd.dur : 0, fD = cf ? cf.dur : DEAD_T(viol);
+    const u = Math.min(1, Math.max(0, T - dD) / fD), e = u * u * (3 - 2 * u);
+    const base = cd ? sampleT(cd.keys, cd.T, cd.len) : KEYS.hit[0];             // pose the fall starts from: the end of a custom dying, else the hit flinch
+    if (cd && T < dD) p = sampleT(cd.keys, cd.T, T / dD * cd.len);
+    else if (cf) p = sampleT(cf.keys, cf.T, u * cf.len);
+    else p = lerpP(base, P({ py: -0.08, pel: [-40, 10, 0], head: [-30, 0], hand: [-0.5, 0.2, -0.2], blade: [0, -1, 0.4], far: [0.4, 0.1, -0.3], legN: [14, 0, 60, 0, 0], legF: [-8, 0, 50, 0, 0] }), e);
     aux.rigRot = [-(Math.PI / 2 - 0.12) * e, 0, 0]; aux.rigZ = 0.8 * e;
     free = true;
     if (viol) aux.lift = Math.sin(Math.min(1, u * 1.1) * Math.PI) * 0.5;
@@ -615,6 +619,9 @@ M3.pose = function (role, f) {
     else pos = cf + (n - 1 - cf) * Math.min(1, (t - h - ex) / Math.max(0.05, sw.dur - h - ex));
     p = sample(keys, pos, false);
     }
+  } else if (f.hurt > 0 && f.hurtMax && ONE['hurt' + (f.two ? 2 : 1)] && (f.hurtMax - f.hurt) < ONE['hurt' + (f.two ? 2 : 1)].dur) {
+    const h = ONE['hurt' + (f.two ? 2 : 1)], u = (f.hurtMax - f.hurt) / h.dur;     // damaged: plays from the moment of the hit
+    p = sampleT(h.keys, h.T, u * h.len);
   } else if (f.flash > 0 && f.flashMax) {
     const u = 1 - f.flash / f.flashMax; p = lerpP(f.two ? KEYS.idleTwo[0] : KEYS.idle[0], KEYS.hit[0], Math.sin(Math.min(1, u) * Math.PI) * 0.9 + 0.1);
   } else if (f.woundedPose) {
@@ -675,6 +682,10 @@ M3.render = function (rig) {
 };
 
 /* ===== animator support: poses from a few readable parameters, joint lookup, and a library of custom animations ===== */
+const ONE = {};                                                         // custom one-shot reactions by 'hurt1' 'dying2' 'falling1' ... : { keys, T, len, dur }
+const DEAD_T = d => d ? 0.62 : 0.8;                                      // default fall time (violent, normal)
+const dieDur = two => (ONE['dying' + (two ? 2 : 1)] || { dur: 0 }).dur;
+M3.dieDur = dieDur;
 const CLOOP = {};                                                       // custom idle / walk loops by 'idle1' 'idle2' 'walk1' 'walk2'
 function loopSample(c, t) { const u = (((t / c.period) % 1) + 1) % 1; return sampleT(c.keys, c.T, u * c.len); }
 function idleLead(f) { const ci = CLOOP['idle' + (f.two ? 2 : 1)]; return ci ? ci.keys[0] : (f.two ? KEYS.idleTwo[0] : KEYS.idle[0]); }
@@ -702,8 +713,8 @@ M3.joints = function (rig) {
   return { hand: sc(rig.near.wg), shoulder: sc(rig.near.sg), pelvis: sc(rig.pelvis), head: sc(rig.headG), ankN: sc(rig.legN.ag), ankF: sc(rig.legF.ag),
     kneeN: sc(rig.legN.kg), kneeF: sc(rig.legF.kg), farHand: sc(rig.far.wg), farShoulder: sc(rig.far.sg), tipLen: Math.abs(rig.sword._tipY) + 0.02 };
 };
-M3.clearCustom = function () { for (const k of Object.keys(KT)) if (k.slice(0, 2) === 'c_' || k.slice(0, 6) === 'custom') { delete KT[k]; delete KEYS[k]; } for (const k of Object.keys(CLOOP)) delete CLOOP[k]; };
-/* def = { id, type: attack|idle|walk, two, contact, loop (seconds), len (frames in a loop), end, keys:[{ f, ...params }] } */
+M3.clearCustom = function () { for (const k of Object.keys(KT)) if (k.slice(0, 2) === 'c_' || k.slice(0, 6) === 'custom') { delete KT[k]; delete KEYS[k]; } for (const k of Object.keys(CLOOP)) delete CLOOP[k]; for (const k of Object.keys(ONE)) delete ONE[k]; };
+/* def = { id, type: attack|idle|walk|hurt|dying|falling, two, contact, loop (seconds), len (frames in a loop), end, keys:[{ f, ...params }] } */
 M3.registerAnim = function (def) {
   const ks = (def.keys || []).slice().sort((a, b) => a.f - b.f); if (!ks.length) return false;
   const two = !!def.two, typ = def.type || 'attack', keys = [], T = [];
@@ -716,6 +727,13 @@ M3.registerAnim = function (def) {
     if (keys.length < 2) { keys.push(keys[0]); T.push(END); }
     const id = 'c_' + (def.id || 'x');
     KEYS[id] = keys; KT[id] = { t: T, c: Math.max(1, Math.min(END - 1, def.contact || 36)), lead: ks[0].f > 0 ? ks[0].f : null, two: two, hit: def.hit || null };
+  } else if (typ === 'hurt' || typ === 'dying' || typ === 'falling') {
+    const L = def.len || 60;
+    for (const k of ks) add(k, k.f);
+    if (T[0] > 0) { keys.unshift(M3.buildPose(ks[0], two)); T.unshift(0); }
+    if (T[T.length - 1] < L) { keys.push(typ === 'hurt' ? M3.buildPose(ks[0], two) : keys[keys.length - 1]); T.push(L); }   // a flinch returns to its first pose; a death holds its last
+    if (keys.length < 2) { keys.push(keys[0]); T.push(L); }
+    ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, dur: def.loop || ({ hurt: 0.3, dying: 0.35, falling: 0.5 })[typ] };
   } else {
     const L = def.len || 60;
     for (const k of ks) add(k, k.f);

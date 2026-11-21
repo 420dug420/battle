@@ -228,7 +228,7 @@ import { applySnapshot } from '../server/protocol.js';
     for (const it of list) {
       if (it.kind === 'p') {
         drawFigure({ role: 'p', x: p.x, y: p.y, face: p.face, tier: look.tier, pHead: look.head, pBody: look.body, pLiv: look.liv, pMetal: look.metal, broken: false, two: w.twoHanded, wkind: w.kind || 'sword', shield: false,
-          swing: p.swing, moving: p.moving, walkT: p.walkT, t: sim.t, flash: p.flash, flashMax: 0.2, style: look.style });
+          swing: p.swing, moving: p.moving, walkT: p.walkT, t: sim.t, flash: p.flash, flashMax: 0.2, hurt: p.hurt, hurtMax: 0.6, style: look.style });
       } else {
         const e = it.e;
         if (e.state === 'dying') {
@@ -242,7 +242,7 @@ import { applySnapshot } from '../server/protocol.js';
           }
           const atk = e.atk ? { t: e.atk.t, dur: CFG.enemy.atkDur, dur0: CFG.enemy.atkDur, hitAt: CFG.enemy.atkHitAt, extra: 0 } : null;
           drawFigure(withLook(e, { role: 'e', x: e.x, y: e.y, face: e.face, tier: e.tier, broken: e.broken, shield: true,
-            swing: atk, woundedPose: e.wounded > 0, moving: e.moving, walkT: e.walkT, t: sim.t, flash: e.flash, flashMax: 0.12 }));
+            swing: atk, woundedPose: e.wounded > 0, moving: e.moving, walkT: e.walkT, t: sim.t, flash: e.flash, flashMax: 0.12, hurt: e.hurt, hurtMax: 0.6 }));
         }
       }
     }
@@ -489,7 +489,7 @@ import { applySnapshot } from '../server/protocol.js';
       if (!info.length) throw new Error('empty');
       try { localStorage.setItem('pwlib2', txt); } catch (e) { }
       $('customjson').value = txt;
-      $('custommsg').textContent = 'Loaded: ' + info.join(', ') + '. Idle and walk animations apply to every 1H or 2H fighter automatically. Attacks appear in the Attack style list.';
+      $('custommsg').textContent = 'Loaded: ' + info.join(', ') + '. Idle, walk, damaged, dying and falling animations apply to every 1H or 2H fighter automatically. Attacks appear in the Attack style list.';
       if (first && !quiet) sel.value = first;
       if (typeof readLook === 'function') try { readLook(); } catch (e) { }
       if (!quiet) sim.say('info', 'Animation library loaded (' + info.length + ').');

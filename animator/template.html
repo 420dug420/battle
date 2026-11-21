@@ -27,12 +27,12 @@ input[type=range]{width:100%}.leg{display:inline-block;width:10px;height:10px;bo
 <button id="sync" class="pri" style="width:100%;margin:2px 0 4px">⇪ Sync to Claude</button><div class="hint" id="syncmsg">Press this when you want me to have your animations. Then just tell me which to load.</div>
 <h2>Library</h2>
 <div id="alist"></div>
-<div class="row" style="margin-top:6px"><select id="newtype" style="width:auto"><option value="attack">Attack</option><option value="idle">Idle loop</option><option value="walk">Walk loop</option></select><button id="new" class="go sm">+ New</button><button id="dup" class="sm">Duplicate</button><button id="del" class="sm">Delete</button></div>
+<div class="row" style="margin-top:6px"><select id="newtype" style="width:auto"><option value="attack">Attack</option><option value="idle">Idle loop</option><option value="walk">Walk loop</option><option value="hurt">Damaged</option><option value="dying">Dying</option><option value="falling">Falling</option></select><button id="new" class="go sm">+ New</button><button id="dup" class="sm">Duplicate</button><button id="del" class="sm">Delete</button></div>
 <h2>This animation</h2>
 <label>Name</label><input type="text" id="name">
 <label>Loadout (also decides 1H or 2H in the game)</label>
 <select id="load"><option value="1s">One-hand + shield</option><option value="1">One-hand (no shield)</option><option value="2">Two-hand</option></select>
-<div id="loopbox" style="display:none"><label>One loop takes <span id="lv"></span> s</label><input type="range" id="loop" min="3" max="80" value="30"></div>
+<div id="loopbox" style="display:none"><label>One loop takes <span id="lv"></span> s</label><input type="range" id="loop" min="2" max="80" value="30"></div>
 <label>Armor</label><select id="tier"><option>plate</option><option>mail</option><option>leather</option><option>special</option></select>
 <label>Zoom</label><select id="zoom"><option value="3">3x</option><option value="4" selected>4x</option><option value="5">5x</option></select>
 <div id="durbox"><label>Swing length <span id="dv">0.9</span> s</label><input type="range" id="dur" min="4" max="20" value="9"></div>
@@ -76,7 +76,7 @@ const HBSL=[['w','Blade thickness',0.03,0.4,0.01,'blade'],['reach','Reach forwar
 function hitOf(a){if(!a.hit)a.hit={shape:'blade',w:0.12,reach:0.9,h:0.5,y:1.0,r:0.6,f0:Math.max(0,a.contact-2),f1:Math.min(88,a.contact+3)};return a.hit}
 const uid=()=>'a'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 let lib={anims:[],sel:null},frame=0,playing=false,last=0,drag=null,handlesPx=[];
-function mkAnim(type,load,name){return{id:uid(),name:name||({attack:'New attack',idle:'New idle',walk:'New walk'})[type],type,load:load||'1s',contact:36,loop:type==='idle'?3:0.55,keys:[]}}
+function mkAnim(type,load,name){return{id:uid(),name:name||({attack:'New attack',idle:'New idle',walk:'New walk',hurt:'New damaged',dying:'New dying',falling:'New falling'})[type],type,load:load||'1s',contact:36,loop:({idle:3,hurt:0.3,dying:0.35,falling:0.5})[type]||0.55,keys:[]}}
 function cur(){return lib.anims.find(a=>a.id===lib.sel)}
 const isLoop=a=>a.type!=='attack',NF=a=>isLoop(a)?60:90,twoOf=a=>a.load==='2',shieldOf=a=>a.load==='1s';
 function dur(){return +$('dur').value/10}
@@ -87,6 +87,9 @@ function keyAt(f){return cur().keys.find(k=>k.f===f)}
 function figureAt(fr){const a=cur(),f=fobjBase(),n=NF(a);
   if(a.type==='attack'){if(!a.keys.length)return M.poseCustom('p',f,DEF0);f.style='c_'+a.id;const d=dur(),h=d*a.contact/(n-1);f.swing={t:fr/(n-1)*d,dur:d,dur0:d,hitAt:h,extra:0};return M.pose('p',f)}
   if(a.type==='idle'){f.t=fr/n*a.loop;return M.pose('p',f)}
+  if(a.type==='hurt'){f.hurtMax=1;f.hurt=1-fr/(n-1)*a.loop*0.999;return M.pose('p',f)}
+  if(a.type==='dying'){f.dead=true;f.deathT=fr/(n-1)*a.loop;return M.pose('p',f)}
+  if(a.type==='falling'){f.dead=true;f.deathT=M.dieDur(f.two)+fr/(n-1)*a.loop;return M.pose('p',f)}
   f.moving=true;f.walkT=fr/n*2*Math.PI/12;return M.pose('p',f)}
 function paramsHere(){const a=cur(),k=keyAt(frame);if(k)return clone(k);
   if(!a.keys.length)return Object.assign({f:frame},isLoop(a)?DEFL:DEF0);
@@ -111,8 +114,9 @@ function draw(){
     if(!twoOf(a))handlesPx.push({id:'shield',p:j.farHand,c:'#ffd84a'})}
   oc.clearRect(0,0,W,stage.height);drawHit(a,j,d,Z,W);for(const h of handlesPx){oc.beginPath();oc.arc(h.p[0]*Z,h.p[1]*Z,9,0,7);oc.fillStyle=h.c+'55';oc.fill();oc.lineWidth=2;oc.strokeStyle=h.c;oc.stroke()}
   const k=keyAt(frame),tsec=isLoop(a)?frame/n*a.loop:frame/(n-1)*dur();
-  $('info').innerHTML='<b>'+esc(a.name)+'</b> · frame <b>'+(frame+1)+' / '+n+'</b> · '+tsec.toFixed(2)+' s · '+(k?'<b style="color:#e8b04a">KEY</b>':'in-between')+' · keys: '+a.keys.length+(a.type==='attack'?' · hit lands on frame '+(a.contact+1):' · loops')
-  $('help').textContent=a.type==='attack'?'Drag the dots to pose. Moving a dot on a frame without a key creates a key there. The idle stance holds until your first key, then jumps in. The red line is the frame where the hit lands.':'This loops forever in the game while the fighter is '+(a.type==='idle'?'standing':'walking')+'. Put keys around the loop; the last frame blends back to the first.';
+  $('info').innerHTML='<b>'+esc(a.name)+'</b> · frame <b>'+(frame+1)+' / '+n+'</b> · '+tsec.toFixed(2)+' s · '+(k?'<b style="color:#e8b04a">KEY</b>':'in-between')+' · keys: '+a.keys.length+(a.type==='attack'?' · hit lands on frame '+(a.contact+1):(['hurt','dying','falling'].includes(a.type)?' · plays once':' · loops'))
+  $('help').textContent=a.type==='attack'?'Drag the dots to pose. Moving a dot on a frame without a key creates a key there. The idle stance holds until your first key, then jumps in. The red line is the frame where the hit lands.':({hurt:'Plays once each time the fighter is hit, then returns to its first pose. Start it from a standing pose. Slider = how long it lasts.',dying:'Plays once when the fighter is killed, before the fall. The last pose is held, then Falling takes over. Slider = how long it lasts.',falling:'Plays after Dying while the body topples to the ground (the tip-over itself is automatic). The last pose is held on the ground. Slider = how long it lasts.'})[a.type]||('This loops forever in the game while the fighter is '+(a.type==='idle'?'standing':'walking')+'. Put keys around the loop; the last frame blends back to the first.');
+  {const one=['hurt','dying','falling'].includes(a.type);$('loopbox').firstChild.firstChild.textContent=one?'Plays over ':'One loop takes '}
   $('fr').value=frame;renderTL(a,n);
   for(const[id]of SL){const el=$('s_'+id);if(el&&!(drag&&drag.slider===id)){el.value=prm[id];$('v_'+id).textContent=(+prm[id]).toFixed(Math.abs(el.step)<1?2:0)}}
   for(const r of document.querySelectorAll('.sl[data-sh]'))r.style.display=twoOf(a)?'none':'';
