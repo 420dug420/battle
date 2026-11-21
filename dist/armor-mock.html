@@ -14195,6 +14195,18 @@ void main(){
     fn2(0.22);
     fn2(0.78);
   };
+  var LOGOS = { p: null, e: null };
+  var lk = (k) => k.logo ? "L" + k.logo.ver : "";
+  function logoAt(T, logo, cx2, v02, size) {
+    const g = T.g;
+    g.save();
+    g.imageSmoothingEnabled = false;
+    g.translate(cx2 - size / 2, v02 + size);
+    g.scale(size, -size);
+    g.drawImage(logo.canvas, 0, 0, 1, 1);
+    g.restore();
+  }
+  var logoFlanks = (T, logo) => flankU((cx2) => logoAt(T, logo, cx2, 0.12, 0.32));
   var hmat = (name, painter) => mat(name, () => TX(128, 128, painter));
   var clothBase = (T, c, hem) => {
     T.fill(c);
@@ -14382,9 +14394,9 @@ void main(){
   } };
   BODIES.komtur = { label: "Mantle and cross", f: (k) => {
     const { P: P2, A, B, belt, bothArms, mail, metal } = k;
-    longTab(P2, hmat("komtur" + A + B, (T) => {
+    longTab(P2, hmat("komtur" + A + B + lk(k), (T) => {
       clothBase(T, A, B);
-      flankU((cx2) => {
+      k.logo ? logoFlanks(T, k.logo) : flankU((cx2) => {
         T.rect(cx2 - 0.03, 0.1, cx2 + 0.03, 0.5, B);
         T.rect(cx2 - 0.12, 0.34, cx2 + 0.12, 0.4, B);
         T.poly([[cx2 - 0.03, 0.5], [cx2 + 0.03, 0.5], [cx2 + 0.065, 0.56], [cx2 - 0.065, 0.56]], B);
@@ -14454,12 +14466,12 @@ void main(){
   } };
   BODIES.griffon = { label: "Per fess tabard", f: (k) => {
     const { P: P2, A, B, belt, bothArms, mail, metal } = k, S = "#e9e3d0";
-    longTab(P2, hmat("griffon" + A + B, (T) => {
+    longTab(P2, hmat("griffon" + A + B + lk(k), (T) => {
       clothBase(T, A, S);
       T.rect(0, 0, 1, 0.44, B);
       T.rect(0, 0.44, 1, 0.47, S);
       T.rect(0, 0, 1, 0.05, S);
-      flankU((cx2) => {
+      k.logo ? logoFlanks(T, k.logo) : flankU((cx2) => {
         T.poly([[cx2, 0.47], [cx2 + 0.17, 0.24], [cx2 + 0.17, 0.14], [cx2, 0.37], [cx2 - 0.17, 0.14], [cx2 - 0.17, 0.24]], A);
       });
     }), -0.42);
@@ -14471,9 +14483,9 @@ void main(){
   } };
   BODIES.sun = { label: "Sunburst surcoat", f: (k) => {
     const { P: P2, A, B, belt, bothArms, metal } = k;
-    longTab(P2, hmat("sunT" + A + B, (T) => {
+    longTab(P2, hmat("sunT" + A + B + lk(k), (T) => {
       clothBase(T, A, B);
-      flankU((cx2) => {
+      k.logo ? logoFlanks(T, k.logo) : flankU((cx2) => {
         T.ell(cx2, 0.3, 0.06, 0.06, B);
         for (let i15 = 0; i15 < 16; i15++) {
           const a = i15 * Math.PI / 8, r1 = 0.07, r2 = i15 % 2 ? 0.11 : 0.16, px = Math.cos(a + 0.13), py = Math.sin(a + 0.13), qx = Math.cos(a - 0.13), qy = Math.sin(a - 0.13);
@@ -14487,9 +14499,9 @@ void main(){
   } };
   BODIES.stag = { label: "Bend tabard", f: (k) => {
     const { P: P2, A, B, belt, bothArms, mail, metal } = k;
-    longTab(P2, hmat("stag" + A + B, (T) => {
+    longTab(P2, hmat("stag" + A + B + lk(k), (T) => {
       clothBase(T, A, G);
-      flankU((cx2) => {
+      k.logo ? logoFlanks(T, k.logo) : flankU((cx2) => {
         T.poly([[cx2 - 0.2, 0.55], [cx2 - 0.08, 0.55], [cx2 + 0.2, 0.08], [cx2 + 0.08, 0.08]], B);
       });
     }), -0.46);
@@ -14520,11 +14532,12 @@ void main(){
     T.rect(0, 0, 1, 0.035, lo2);
     T.rect(0, 0.965, 1, 1, lo2);
   });
-  var tunicMat = (A, B) => mat("tunic" + A + B, () => TX(64, 64, (T) => {
+  var tunicMat = (A, B, logo) => mat("tunic" + A + B + (logo ? "L" + logo.ver : ""), () => TX(logo ? 128 : 64, logo ? 128 : 64, (T) => {
     clothBase(T, A, B);
     T.rect(0, 0.05, 1, 0.065, shade(A, -0.25));
+    if (logo) flankU((cx2) => logoAt(T, logo, cx2, 0.3, 0.3));
   }));
-  var tunicSkirt = (k, lo2) => loft(ringsOf([[lo2, 0.24, 0.17], [lo2 + 0.12, 0.225, 0.155], [-0.1, 0.205, 0.135], [0.06, 0.19, 0.118], [0.3, 0.205, 0.126], [0.5, 0.2, 0.12], [0.57, 0.15, 0.1]]), 16, tunicMat(k.A, k.B), k.P, 0, 0, 0, lo2, 0.57);
+  var tunicSkirt = (k, lo2, logo) => loft(ringsOf([[lo2, 0.24, 0.17], [lo2 + 0.12, 0.225, 0.155], [-0.1, 0.205, 0.135], [0.06, 0.19, 0.118], [0.3, 0.205, 0.126], [0.5, 0.2, 0.12], [0.57, 0.15, 0.1]]), 16, tunicMat(k.A, k.B, logo), k.P, 0, 0, 0, lo2, 0.57);
   var sleeves = (k, m, long) => k.bothArms((a) => {
     tube(a.sg, -0.02, -0.29, 0.068, 0.058, m, 10);
     if (long) tube(a.eg, -0.01, -0.19, 0.054, 0.046, m, 10);
@@ -14552,7 +14565,7 @@ void main(){
     box(0.016, 0.1, 0.012, "#8f98a2", H, 0, 0.1, 0.138);
   } };
   BODIES.tunic = { label: "Tunic", f: (k) => {
-    tunicSkirt(k, -0.34);
+    tunicSkirt(k, -0.34, k.logo);
     sleeves(k, tunicMat(k.A, k.B), true);
     k.belt();
   } };
@@ -14621,7 +14634,7 @@ void main(){
       box(0.28, 0.3, 0.012, c.tab, P2, 0, 0.12, -0.122);
       return;
     }
-    const k = { rig, role, P: P2, H, c, A: lv[0], B: lv[1], met, metal, mail, quil, leather, torsoR, belt, bothArms };
+    const k = { rig, role, P: P2, H, c, A: lv[0], B: lv[1], met, metal, mail, quil, leather, torsoR, belt, bothArms, logo: LOGOS[role] || null };
     BODIES[body].f(k);
     HEADS[head].f(k);
   }
@@ -14652,6 +14665,12 @@ void main(){
       }
       box(0.046, 0.026, 0.32, c2, rig.shield, 0, 0.06, 0);
       box(0.05, 0.05, 0.05, "#c9a24a", rig.shield, 0, 0, 0);
+      const lg2 = LOGOS[opts.role];
+      if (lg2) {
+        const m = new Mesh(new BoxGeometry(0.05, 0.26, 0.26), mat("shieldlogo" + opts.role + lg2.ver, () => TX(36, 36, (T) => logoAt(T, lg2, 0.5, 0, 1))));
+        m.position.set(0, 0, 0);
+        rig.shield.add(m);
+      }
     }
     HT.scene.add(rig.g);
     rig.g.visible = false;
@@ -14705,7 +14724,7 @@ void main(){
     const tier = ARMOR_PRESETS[f.tier] ? f.tier : "leather", broken = !!f.broken, two = !!f.two, sh2 = !!f.shield;
     const lo2 = f.pHead || f.pBody || f.pLiv || f.pMetal ? { head: f.pHead, body: f.pBody, liv: f.pLiv, metal: f.pMetal } : null;
     const pre = ARMOR_PRESETS[tier], bodyId = lo2 && BODIES[lo2.body] ? lo2.body : pre.body, livId = lo2 && LIVERIES[lo2.liv] ? lo2.liv : pre.liv || "";
-    const wk = f.wkind || "sword", key = [role, tier, lo2 ? [lo2.head || "", lo2.body || "", lo2.liv || "", lo2.metal || ""].join("/") : "", broken ? 1 : 0, two ? 1 : 0, sh2 ? 1 : 0, wk].join("|");
+    const wk = f.wkind || "sword", key = [role, "L" + (LOGOS[role] ? LOGOS[role].ver : 0), tier, lo2 ? [lo2.head || "", lo2.body || "", lo2.liv || "", lo2.metal || ""].join("/") : "", broken ? 1 : 0, two ? 1 : 0, sh2 ? 1 : 0, wk].join("|");
     let r = M3.rigs[key];
     if (r) r._used = ++rigClock;
     if (!r) {
@@ -14742,6 +14761,17 @@ void main(){
   };
   var listParts = (R, draft) => Object.keys(R).filter((id) => !!R[id].draft === draft).map((id) => [id, R[id].label]);
   M3.draftParts = { heads: listParts(HEADS, true), bodies: listParts(BODIES, true) };
+  var logoVer = 0;
+  M3.setLogo = function(role, src) {
+    if (!src) {
+      LOGOS[role] = null;
+      return;
+    }
+    const c = document.createElement("canvas");
+    c.width = c.height = 36;
+    c.getContext("2d").drawImage(src, 0, 0, 36, 36);
+    LOGOS[role] = { canvas: c, ver: ++logoVer };
+  };
   M3.parts = { heads: listParts(HEADS, false), bodies: listParts(BODIES, false), liveries: Object.keys(LIVERIES).map((id) => [id, LIVERIES[id].label]), metals: Object.keys(METALS).map((id) => [id, METALS[id].label]), presets: Object.keys(ARMOR_PRESETS).map((id) => [id, ARMOR_PRESETS[id].label]) };
   var P = (o) => Object.assign({
     py: 0,

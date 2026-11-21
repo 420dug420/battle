@@ -139,6 +139,13 @@ const LIVERIES = {
 };
 const shade = (hex, f) => { const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.max(0, Math.min(255, Math.round(f < 0 ? v * (1 + f) : v + (255 - v) * f)))); return '#' + c.map(v => v.toString(16).padStart(2, '0')).join(''); };
 const flankU = fn => { fn(.22); fn(.78); };
+/* company logos: a 36x36 canvas per side ('p' your company, 'e' the enemy faction), painted where a tabard carries its device */
+const LOGOS = { p: null, e: null };
+const lk = k => k.logo ? 'L' + k.logo.ver : '';                    // material cache key part
+function logoAt(T, logo, cx, v0, size) {                           // paint the logo upright, centred at u=cx, from v0 up
+  const g = T.g; g.save(); g.imageSmoothingEnabled = false; g.translate(cx - size / 2, v0 + size); g.scale(size, -size); g.drawImage(logo.canvas, 0, 0, 1, 1); g.restore();
+}
+const logoFlanks = (T, logo) => flankU(cx => logoAt(T, logo, cx, .12, .32));
 const hmat = (name, painter) => mat(name, () => TX(128, 128, painter));
 const clothBase = (T, c, hem) => { T.fill(c); T.speckle(500, ['#000', '#fff'], .02, .06, 1.2); if (hem) T.rect(0, 0, 1, .05, hem); };
 const longTab = (P, m, lo) => loft(ringsOf([[lo, .25, .17], [lo + .1, .243, .163], [-.3, .232, .152], [-.2, .221, .143], [-.1, .207, .132], [.1, .205, .127], [.3, .212, .13], [.5, .2, .12], [.57, .15, .1]]), 22, m, P, 0, 0, 0, lo, .57);
@@ -178,7 +185,7 @@ BODIES.lamellar = { label: 'Lamellar', f: k => { const { P, A, rig, belt, bothAr
   loft(ringsOf([[.5, .2, .12], [.58, .15, .1]]), 14, metal, P, 0, 0, 0, .5, .58); bothArms(a => { tube(a.sg, -.02, -.3, .062, .054, mail, 10); for (let i = 0; i < 3; i++) tube(a.sg, -.03 - i * .08, -.09 - i * .08, .07, .068, lac, 8); });
   belt(); for (const lg of [rig.legN, rig.legF]) for (let i = 0; i < 4; i++) tube(lg.hg, -.03 - i * .075, -.1 - i * .075, .115 - i * .006, .11 - i * .006, i % 2 ? lac : metal, 10); } };
 BODIES.komtur = { label: 'Mantle and cross', f: k => { const { P, A, B, belt, bothArms, mail, metal } = k;
-  longTab(P, hmat('komtur' + A + B, T => { clothBase(T, A, B); flankU(cx => { T.rect(cx - .03, .1, cx + .03, .5, B); T.rect(cx - .12, .34, cx + .12, .4, B); T.poly([[cx - .03, .5], [cx + .03, .5], [cx + .065, .56], [cx - .065, .56]], B); T.poly([[cx - .03, .1], [cx + .03, .1], [cx + .065, .04], [cx - .065, .04]], B); T.poly([[cx - .12, .34], [cx - .12, .4], [cx - .17, .44], [cx - .17, .3]], B); T.poly([[cx + .12, .34], [cx + .12, .4], [cx + .17, .44], [cx + .17, .3]], B); }); }), -.5);
+  longTab(P, hmat('komtur' + A + B + lk(k), T => { clothBase(T, A, B); (k.logo ? logoFlanks(T, k.logo) : flankU(cx => { T.rect(cx - .03, .1, cx + .03, .5, B); T.rect(cx - .12, .34, cx + .12, .4, B); T.poly([[cx - .03, .5], [cx + .03, .5], [cx + .065, .56], [cx - .065, .56]], B); T.poly([[cx - .03, .1], [cx + .03, .1], [cx + .065, .04], [cx - .065, .04]], B); T.poly([[cx - .12, .34], [cx - .12, .4], [cx - .17, .44], [cx - .17, .3]], B); T.poly([[cx + .12, .34], [cx + .12, .4], [cx + .17, .44], [cx + .17, .3]], B); })); }), -.5);
   bothArms(a => { tube(a.sg, -.02, -.3, .062, .054, mail, 10); dome(a.sg, 0, .0, 0, .12, .11, .1, metal); }); belt(); } };
 BODIES.spire = { label: 'Lancet cuirass', f: k => { const { P, A, B, rig, belt, bothArms, metal } = k;
   const torso = hmat('spireT' + B + k.met.id, T => { T.fill(k.met.t[1]); T.speckle(500, [k.met.t[2], k.met.t[0]], .03, .12, 1.4); flankU(cx => { for (const j of [-.13, 0, .13]) T.line([[cx + j - .045, .3], [cx + j - .045, .66], [cx + j, .8], [cx + j + .045, .66], [cx + j + .045, .3], [cx + j - .045, .3]], B, 1.6); }); T.rect(0, 0, 1, .03, B); });
@@ -195,13 +202,13 @@ BODIES.deco = { label: 'Deco plate', f: k => { const { P, A, B, rig, belt, bothA
   armsLegs(k, metal);
   loft(ringsOf([[-.2, .226, .152], [-.1, .212, .138], [.05, .2, .124]]), 22, hmat('decoA' + A + B, T => { clothBase(T, A, B); flankU(cx => { for (let i = 0; i < 3; i++) chev(T, cx, .25 + i * .22, .17, .05, B); }); }), P, 0, 0, 0, -.2, .05); belt(); } };
 BODIES.griffon = { label: 'Per fess tabard', f: k => { const { P, A, B, belt, bothArms, mail, metal } = k, S = '#e9e3d0';
-  longTab(P, hmat('griffon' + A + B, T => { clothBase(T, A, S); T.rect(0, 0, 1, .44, B); T.rect(0, .44, 1, .47, S); T.rect(0, 0, 1, .05, S); flankU(cx => { T.poly([[cx, .47], [cx + .17, .24], [cx + .17, .14], [cx, .37], [cx - .17, .14], [cx - .17, .24]], A); }); }), -.42);
+  longTab(P, hmat('griffon' + A + B + lk(k), T => { clothBase(T, A, S); T.rect(0, 0, 1, .44, B); T.rect(0, .44, 1, .47, S); T.rect(0, 0, 1, .05, S); (k.logo ? logoFlanks(T, k.logo) : flankU(cx => { T.poly([[cx, .47], [cx + .17, .24], [cx + .17, .14], [cx, .37], [cx - .17, .14], [cx - .17, .24]], A); })); }), -.42);
   bothArms(a => { tube(a.sg, -.02, -.3, .062, .054, mail, 10); dome(a.sg, 0, .0, 0, .12, .11, .1, metal); }); belt(); } };
 BODIES.sun = { label: 'Sunburst surcoat', f: k => { const { P, A, B, belt, bothArms, metal } = k;
-  longTab(P, hmat('sunT' + A + B, T => { clothBase(T, A, B); flankU(cx => { T.ell(cx, .3, .06, .06, B); for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8, r1 = .07, r2 = i % 2 ? .11 : .16, px = Math.cos(a + .13), py = Math.sin(a + .13), qx = Math.cos(a - .13), qy = Math.sin(a - .13); T.poly([[cx + qx * r1, .3 + qy * r1], [cx + Math.cos(a) * r2, .3 + Math.sin(a) * r2], [cx + px * r1, .3 + py * r1]], B); } }); }), -.46);
+  longTab(P, hmat('sunT' + A + B + lk(k), T => { clothBase(T, A, B); (k.logo ? logoFlanks(T, k.logo) : flankU(cx => { T.ell(cx, .3, .06, .06, B); for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8, r1 = .07, r2 = i % 2 ? .11 : .16, px = Math.cos(a + .13), py = Math.sin(a + .13), qx = Math.cos(a - .13), qy = Math.sin(a - .13); T.poly([[cx + qx * r1, .3 + qy * r1], [cx + Math.cos(a) * r2, .3 + Math.sin(a) * r2], [cx + px * r1, .3 + py * r1]], B); } })); }), -.46);
   for (const s of [-1, 1]) pauld(P, s, metal); armsLegs(k, metal); belt(); } };
 BODIES.stag = { label: 'Bend tabard', f: k => { const { P, A, B, belt, bothArms, mail, metal } = k;
-  longTab(P, hmat('stag' + A + B, T => { clothBase(T, A, G); flankU(cx => { T.poly([[cx - .2, .55], [cx - .08, .55], [cx + .2, .08], [cx + .08, .08]], B); }); }), -.46);
+  longTab(P, hmat('stag' + A + B + lk(k), T => { clothBase(T, A, G); (k.logo ? logoFlanks(T, k.logo) : flankU(cx => { T.poly([[cx - .2, .55], [cx - .08, .55], [cx + .2, .08], [cx + .08, .08]], B); })); }), -.46);
   for (const s of [-1, 1]) { pauld(P, s, metal, .52); pauld(P, s, mat('stagl' + k.met.id, () => steel(shade(k.met.t[0], .3), shade(k.met.t[1], .3), k.met.t[2], false)), .46); }
   bothArms(a => { tube(a.sg, -.02, -.3, .062, .054, mail, 10); }); belt(); } };
 BODIES.warlord = { label: 'Spiked harness', f: k => { const { P, A, rig, belt, bothArms, metal } = k;
@@ -211,8 +218,8 @@ BODIES.warlord = { label: 'Spiked harness', f: k => { const { P, A, rig, belt, b
 
 /* ----- low-tier clothing and mail ----- */
 const leatherTex = (base, hi, lo) => TX(64, 64, T => { T.fill(base); T.speckle(420, [lo, hi], .02, .08, 1.3); T.rect(0, 0, 1, .035, lo); T.rect(0, .965, 1, 1, lo); });
-const tunicMat = (A, B) => mat('tunic' + A + B, () => TX(64, 64, T => { clothBase(T, A, B); T.rect(0, .05, 1, .065, shade(A, -.25)); }));
-const tunicSkirt = (k, lo) => loft(ringsOf([[lo, .24, .17], [lo + .12, .225, .155], [-.1, .205, .135], [.06, .19, .118], [.3, .205, .126], [.5, .2, .12], [.57, .15, .1]]), 16, tunicMat(k.A, k.B), k.P, 0, 0, 0, lo, .57);
+const tunicMat = (A, B, logo) => mat('tunic' + A + B + (logo ? 'L' + logo.ver : ''), () => TX(logo ? 128 : 64, logo ? 128 : 64, T => { clothBase(T, A, B); T.rect(0, .05, 1, .065, shade(A, -.25)); if (logo) flankU(cx => logoAt(T, logo, cx, .3, .3)); }));
+const tunicSkirt = (k, lo, logo) => loft(ringsOf([[lo, .24, .17], [lo + .12, .225, .155], [-.1, .205, .135], [.06, .19, .118], [.3, .205, .126], [.5, .2, .12], [.57, .15, .1]]), 16, tunicMat(k.A, k.B, logo), k.P, 0, 0, 0, lo, .57);
 const sleeves = (k, m, long) => k.bothArms(a => { tube(a.sg, -.02, -.29, .068, .058, m, 10); if (long) tube(a.eg, -.01, -.19, .054, .046, m, 10); });
 HEADS.bare = { label: 'Bare head', f: k => { } };
 HEADS.cap = { label: 'Arming cap', f: k => { const { H } = k, m = mat('cap' + k.B, () => quilt(shade(k.B, -.15), shade(k.B, -.45)));
@@ -226,7 +233,7 @@ HEADS.coif = { label: 'Mail coif', f: k => { const { H, mail } = k;
 HEADS.coifhelm = { label: 'Skullcap over coif', f: k => { HEADS.coif.f(k); const { H, metal } = k;
   loft(ringsOf([[.15, .116, .136], [.21, .108, .128], [.26, .082, .098], [.29, .036, .044], [.3, .004, .005]]), 16, metal, H, 0, 0, 0, .15, .3);
   box(.016, .1, .012, '#8f98a2', H, 0, .1, .138); } };
-BODIES.tunic = { label: 'Tunic', f: k => { tunicSkirt(k, -.34); sleeves(k, tunicMat(k.A, k.B), true); k.belt(); } };
+BODIES.tunic = { label: 'Tunic', f: k => { tunicSkirt(k, -.34, k.logo); sleeves(k, tunicMat(k.A, k.B), true); k.belt(); } };
 BODIES.jerkin = { label: 'Leather jerkin', f: k => { const { P } = k, lth = mat('jerkin', () => leatherTex('#6a4a2c', '#8a6a44', '#33220f'));
   tunicSkirt(k, -.3); sleeves(k, tunicMat(k.A, k.B), true);
   loft(ringsOf([[-.14, .22, .15], [-.02, .21, .138], [.1, .2, .128], [.3, .214, .134], [.5, .208, .126], [.56, .16, .104]]), 16, lth, P, 0, 0, 0, -.14, .56);
@@ -262,7 +269,7 @@ function dressMedieval(rig, role, tier, broken, lo) {
   const belt = () => { loft(ringsOf([[0, .182, .114], [.045, .182, .114]]), 12, leather, P, 0, .03, 0, 0, .045); box(.05, .05, .03, G, P, 0, .05, .122); };
   const bothArms = f => { f(rig.near); f(rig.far); };
   if (broken) { belt(); box(.28, .36, .012, c.tab, P, 0, .12, .122); box(.28, .3, .012, c.tab, P, 0, .12, -.122); return; }
-  const k = { rig, role, P, H, c, A: lv[0], B: lv[1], met, metal, mail, quil, leather, torsoR, belt, bothArms };
+  const k = { rig, role, P, H, c, A: lv[0], B: lv[1], met, metal, mail, quil, leather, torsoR, belt, bothArms, logo: LOGOS[role] || null };
   BODIES[body].f(k); HEADS[head].f(k);
 }
 
@@ -280,6 +287,11 @@ function makeRig(cfg, opts) {
     const steps = [[.36, .1, .08], [.33, .1, .0], [.27, .1, -.08], [.19, .1, -.16], [.1, .09, -.23], [.03, .08, -.29]];
     for (const [w, h, y] of steps) { box(0.035, h, w, col, rig.shield, 0, y, 0); box(0.043, h * .8, w * .22, c2, rig.shield, 0, y, 0); }
     box(0.046, 0.026, 0.32, c2, rig.shield, 0, 0.06, 0); box(0.05, 0.05, 0.05, '#c9a24a', rig.shield, 0, 0.0, 0);
+    const lg = LOGOS[opts.role];
+    if (lg) {                                                       // company or faction logo on the shield face
+      const m = new Mesh(new BoxGeometry(0.05, 0.26, 0.26), mat('shieldlogo' + opts.role + lg.ver, () => TX(36, 36, T => logoAt(T, lg, .5, 0, 1))));
+      m.position.set(0, 0.0, 0); rig.shield.add(m);
+    }
   }
   HT.scene.add(rig.g); rig.g.visible = false; rig.opts = opts; rig.ankle0 = 0.07;
   return rig;
@@ -309,7 +321,7 @@ M3.getRig = function (role, f) {
   const tier = ARMOR_PRESETS[f.tier] ? f.tier : 'leather', broken = !!f.broken, two = !!f.two, sh = !!f.shield;
   const lo = (f.pHead || f.pBody || f.pLiv || f.pMetal) ? { head: f.pHead, body: f.pBody, liv: f.pLiv, metal: f.pMetal } : null;
   const pre = ARMOR_PRESETS[tier], bodyId = (lo && BODIES[lo.body]) ? lo.body : pre.body, livId = (lo && LIVERIES[lo.liv]) ? lo.liv : (pre.liv || '');
-  const wk = f.wkind || 'sword', key = [role, tier, lo ? [lo.head || '', lo.body || '', lo.liv || '', lo.metal || ''].join('/') : '', broken ? 1 : 0, two ? 1 : 0, sh ? 1 : 0, wk].join('|');
+  const wk = f.wkind || 'sword', key = [role, 'L' + (LOGOS[role] ? LOGOS[role].ver : 0), tier, lo ? [lo.head || '', lo.body || '', lo.liv || '', lo.metal || ''].join('/') : '', broken ? 1 : 0, two ? 1 : 0, sh ? 1 : 0, wk].join('|');
   let r = M3.rigs[key];
   if (r) r._used = ++rigClock;
   if (!r) {
@@ -339,6 +351,12 @@ M3.enemyLook = function (tier, seed) {
 };
 const listParts = (R, draft) => Object.keys(R).filter(id => !!R[id].draft === draft).map(id => [id, R[id].label]);
 M3.draftParts = { heads: listParts(HEADS, true), bodies: listParts(BODIES, true) };
+let logoVer = 0;
+M3.setLogo = function (role, src) {                                  // src: a 36x36 canvas, or null to go back to the painted devices
+  if (!src) { LOGOS[role] = null; return; }
+  const c = document.createElement('canvas'); c.width = c.height = 36; c.getContext('2d').drawImage(src, 0, 0, 36, 36);
+  LOGOS[role] = { canvas: c, ver: ++logoVer };
+};
 M3.parts = { heads: listParts(HEADS, false), bodies: listParts(BODIES, false), liveries: Object.keys(LIVERIES).map(id => [id, LIVERIES[id].label]), metals: Object.keys(METALS).map(id => [id, METALS[id].label]), presets: Object.keys(ARMOR_PRESETS).map(id => [id, ARMOR_PRESETS[id].label]) };
 
 /* ---------- poses ---------- */

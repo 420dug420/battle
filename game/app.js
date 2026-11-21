@@ -287,6 +287,76 @@ import { applySnapshot } from '../server/protocol.js';
     ctx.restore();
   }
 
+
+  /* ---------- company logo: 36x36 pixel editor; the logo is painted onto tabards, tunics and shields ---------- */
+  const LC = $('logo'), lg = LC.getContext('2d'), EC = $('elogo');
+  const PALETTE = ['#d9b24a', '#e8e4d8', '#a82424', '#23468c', '#2f6b34', '#1c1c20', '#6b3f8f', '#c2602a', '#7fb0d9', '#8a6a45', '#5a5f68', '#f0d6a0'];
+  let ltool = 'draw', lcol = PALETTE[0], ldown = false, lsave = null;
+  const sw = $('swatches');
+  PALETTE.forEach(c => { const b = document.createElement('button'); b.type = 'button'; b.style.cssText = 'width:20px;height:20px;border:1px solid #000;border-radius:3px;padding:0;background:' + c; b.title = c; b.onclick = () => { lcol = c; $('lcolor').value = c; }; sw.appendChild(b); });
+  $('lcolor').addEventListener('input', () => { lcol = $('lcolor').value; });
+  const setTool = t => { ltool = t; for (const k of ['draw', 'fill', 'erase']) $('ltool-' + k).style.outline = k === t ? '2px solid var(--gold)' : 'none'; };
+  ['draw', 'fill', 'erase'].forEach(k => $('ltool-' + k).addEventListener('click', () => setTool(k))); setTool('draw');
+  const cell = ev => { const r = LC.getBoundingClientRect(); return [Math.floor((ev.clientX - r.left) / r.width * 36), Math.floor((ev.clientY - r.top) / r.height * 36)]; };
+  function flood(x, y, col) {                                        // 4-way fill of the clicked colour
+    const id = lg.getImageData(0, 0, 36, 36), d = id.data, at = (x, y) => (y * 36 + x) * 4, t0 = d.slice(at(x, y), at(x, y) + 4);
+    const c = col ? [parseInt(col.slice(1, 3), 16), parseInt(col.slice(3, 5), 16), parseInt(col.slice(5, 7), 16), 255] : [0, 0, 0, 0];
+    if (t0.every((v, i) => v === c[i])) return;
+    const st = [[x, y]];
+    while (st.length) { const [px, py] = st.pop(); if (px < 0 || py < 0 || px > 35 || py > 35) continue; const i = at(px, py);
+      if (d[i] !== t0[0] || d[i + 1] !== t0[1] || d[i + 2] !== t0[2] || d[i + 3] !== t0[3]) continue;
+      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = c[3]; st.push([px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]); }
+    lg.putImageData(id, 0, 0);
+  }
+  function paint(ev) {
+    const [x, y] = cell(ev); if (x < 0 || y < 0 || x > 35 || y > 35) return;
+    if (ltool === 'fill') flood(x, y, lcol);
+    else if (ltool === 'erase' || ev.buttons === 2) lg.clearRect(x, y, 1, 1);
+    else { lg.fillStyle = lcol; lg.fillRect(x, y, 1, 1); }
+  }
+  const logoEmpty = () => { const d = lg.getImageData(0, 0, 36, 36).data; for (let i = 3; i < d.length; i += 4) if (d[i]) return false; return true; };
+  function applyLogo() {
+    M3.setLogo('p', $('luse').checked && !logoEmpty() ? LC : null);
+    try { localStorage.setItem('pw.logo', LC.toDataURL()); } catch (e) { }
+  }
+  const later = () => { clearTimeout(lsave); lsave = setTimeout(applyLogo, 250); };
+  LC.addEventListener('contextmenu', e => e.preventDefault());
+  LC.addEventListener('pointerdown', e => { ldown = true; LC.setPointerCapture(e.pointerId); paint(e); if (ltool === 'fill') later(); });
+  LC.addEventListener('pointermove', e => { if (ldown && ltool !== 'fill') paint(e); });
+  LC.addEventListener('pointerup', () => { ldown = false; later(); });
+  $('lclear').addEventListener('click', () => { lg.clearRect(0, 0, 36, 36); applyLogo(); });
+  $('luse').addEventListener('change', applyLogo);
+  try { const u = localStorage.getItem('pw.logo'); if (u) { const im = new Image(); im.onload = () => { lg.drawImage(im, 0, 0); applyLogo(); }; im.src = u; } } catch (e) { }
+
+  // generated heraldry for the enemy faction: a field, an ordinary and maybe a charge, metal on colour
+  function heraldry(seed, cv) {
+    let a = seed >>> 0 || 1; const r = () => { a = (Math.imul(a, 1664525) + 1013904223) >>> 0; return a / 4294967296; }, pick = l => l[Math.floor(r() * l.length)];
+    const METAL = ['#d9b24a', '#e8e4d8'], COLOUR = ['#a82424', '#23468c', '#2f6b34', '#1c1c20', '#6b3f8f'];
+    const flip = r() < .5, f = flip ? pick(METAL) : pick(COLOUR), o = flip ? pick(COLOUR) : pick(METAL);
+    const g = cv.getContext('2d'); g.clearRect(0, 0, 36, 36); g.fillStyle = f; g.fillRect(0, 0, 36, 36); g.fillStyle = o;
+    const poly = pts => { g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill(); };
+    const kind = pick(['pale', 'fess', 'bend', 'chevron', 'cross', 'saltire', 'quarterly', 'perpale', 'perfess', 'bordure']);
+    if (kind === 'pale') g.fillRect(13, 0, 10, 36); else if (kind === 'fess') g.fillRect(0, 13, 36, 10);
+    else if (kind === 'bend') poly([[0, 0], [9, 0], [36, 27], [36, 36], [27, 36], [0, 9]]);
+    else if (kind === 'chevron') poly([[0, 30], [18, 10], [36, 30], [36, 38], [18, 19], [0, 38]]);
+    else if (kind === 'cross') { g.fillRect(14, 0, 8, 36); g.fillRect(0, 14, 36, 8); }
+    else if (kind === 'saltire') { poly([[0, 0], [6, 0], [36, 30], [36, 36], [30, 36], [0, 6]]); poly([[36, 0], [36, 6], [6, 36], [0, 36], [0, 30], [30, 0]]); }
+    else if (kind === 'quarterly') { g.fillRect(18, 0, 18, 18); g.fillRect(0, 18, 18, 18); }
+    else if (kind === 'perpale') g.fillRect(18, 0, 18, 36); else if (kind === 'perfess') g.fillRect(0, 18, 36, 18);
+    else { g.fillRect(0, 0, 36, 4); g.fillRect(0, 32, 36, 4); g.fillRect(0, 0, 4, 36); g.fillRect(32, 0, 4, 36); }
+    if (r() < .55 && !['quarterly', 'perpale', 'perfess', 'cross', 'saltire'].includes(kind)) {   // a charge in the centre, in the field's opposite
+      g.fillStyle = flip ? pick(COLOUR) : pick(METAL); const ch = pick(['roundel', 'lozenge', 'mullet']);
+      if (ch === 'roundel') { g.beginPath(); g.arc(18, 18, 6, 0, 7); g.fill(); }
+      else if (ch === 'lozenge') poly([[18, 10], [25, 18], [18, 26], [11, 18]]);
+      else { const p = []; for (let i = 0; i < 10; i++) { const rr = i % 2 ? 3 : 8, an = -Math.PI / 2 + i * Math.PI / 5; p.push([18 + Math.cos(an) * rr, 18 + Math.sin(an) * rr]); } poly(p); }
+    }
+  }
+  let eseed = (Date.now() >>> 0);
+  const applyEnemy = () => { heraldry(eseed, EC); M3.setLogo('e', $('euse').checked ? EC : null); };
+  $('enew').addEventListener('click', () => { eseed = (Math.imul(eseed, 2654435761) + 12345) >>> 0; applyEnemy(); });
+  $('euse').addEventListener('change', applyEnemy);
+  applyEnemy();
+
   /* ---------- online test: a server room owns the fight; this page sends input and draws its snapshots ---------- */
   let net = null;
   const send = m => { if (net && net.ws.readyState === 1 && net.role === 'player') net.ws.send(JSON.stringify(m)); };
