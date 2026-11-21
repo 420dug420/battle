@@ -227,4 +227,31 @@ console.log('PASS shrug off after surviving crit');
   console.log('PASS replays reproduce the fight exactly');
 }
 
+// 16. campaign battle rules: worn armor on the player, hired allies, chain styles, win and loss
+{
+  const s = new Sim(CFG, 3); s.mode = 'battle'; applyCmd(s, { t: 'set', inv: false, armorPct: 0.5, dur: 4, durMax: 4, hp: 30, maxHp: 30 });
+  const e = s.spawn({ tier: 'leather', dur: 99, ai: 'advance' }); e.x = s.player.x + 30; e.y = s.player.y; e.atkCd = 0;
+  s.player.weapon = 'longsword';
+  run(s, 1.2, () => { s.player.cooldown = 9; });                       // you never swing; the enemy does
+  assert(s.player.hp < 30 && s.player.hp >= 26, 'armor halves a 2-point hit to 1');
+  assert(s.player.dur < 4, 'durability wears');
+  let t2 = new Sim(CFG, 4); t2.mode = 'battle'; applyCmd(t2, { t: 'set', inv: false, hp: 2, maxHp: 2 });
+  const e2 = t2.spawn({ tier: 'leather', dur: 99, ai: 'advance' }); e2.x = t2.player.x + 30; e2.y = t2.player.y; e2.atkCd = 0; t2.player.cooldown = 99;
+  run(t2, 2, () => { t2.player.cooldown = 99; });
+  assert.strictEqual(t2.outcome, 'lost', 'a downed player loses the battle'); assert.strictEqual(t2.player.hp, 0);
+  // an ally wins the fight alone
+  const s3 = new Sim(CFG, 5); s3.mode = 'battle'; applyCmd(s3, { t: 'set', inv: true });
+  s3.player.cooldown = 99; s3.player.x = 40;
+  const al = s3.spawnAlly({ tier: 'leather', weapon: 'longsword', hid: 'h1', hp: 40 });
+  const en = s3.spawn({ tier: 'leather', dur: 99, ai: 'advance' }); en.x = 300; en.y = s3.player.y;
+  run(s3, 12, () => { s3.player.cooldown = 99; });
+  assert.strictEqual(s3.outcome, 'won', 'the hireling cleared the enemy'); assert(al.state === 'alive' && s3.fallen.length === 0);
+  // chain styles play in order
+  const s4 = new Sim(CFG, 6); s4.mode = 'battle'; applyCmd(s4, { t: 'set', chainStyles: [{ style: 'cut', move: null }, { style: 'chop', move: null }] });
+  const en4 = s4.spawn({ tier: 'plate', dur: 99, ai: 'stand' }); en4.hp = en4.maxHp = 99; en4.x = s4.player.x + 40; en4.y = s4.player.y;
+  const seen = []; run(s4, 6, () => { const w = s4.player.swing; if (w && w.style && seen[seen.length - 1] !== w.style + w.t.toFixed(0) && w.t === 0) seen.push(w.style); });
+  assert(seen.length >= 3 && seen[0] === 'cut' && seen[1] === 'chop' && seen[2] === 'cut', 'styles alternate in slot order: ' + seen.join(','));
+  console.log('PASS campaign battle rules: armor, allies, chain styles, outcome');
+}
+
 console.log('\nALL SIM TESTS PASSED');

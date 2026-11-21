@@ -82,7 +82,7 @@ export function makeRng(seed) {
 }
 
 /* ---------- replays: rules version, saved state, and the one way anything outside changes a fight ---------- */
-export const SIM_VERSION = 1;                                       // bump when a rule changes, so old replays are flagged
+export const SIM_VERSION = 2;                                       // bump when a rule changes, so old replays are flagged
 const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut'];
 // every outside change (input, spawns, settings) goes through here, live and in replays, so a replay repeats the fight exactly
 export function applyCmd(sim, c) {
@@ -93,7 +93,9 @@ export function applyCmd(sim, c) {
     case 'heal': sim.healAll(); break;
     case 'repair': sim.repairAll(); break;
     case 'resetp': sim.resetPlayer(); sim.say('info', 'Player reset.'); break;
-    case 'set': for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move']) if (k in c) sim.player[k] = c[k]; break;
+    case 'set': for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr']) if (k in c) sim.player[k] = c[k]; break;
+    case 'ally': sim.spawnAlly(c.o); break;
+    case 'mode': sim.mode = c.mode; break;
     case 'cfg': { const d = JSON.parse(JSON.stringify(c.cfg)); for (const k in d) sim.cfg[k] = d[k]; break; }
     case 'move': sim.moves[c.id] = c.data; break;
     case 'say': sim.say(c.kind || 'info', c.text); break;
@@ -164,13 +166,16 @@ export class Sim {
       x: 170, y: 282, face: 1, hp: c.player.hp, maxHp: c.player.hp,
       weapon: 'longsword', dex: 5, dmgOverride: null, inv: true,
       swing: null, chain: 0, cooldown: 0, moved: false, flash: 0, hurt: 0, walkT: 0, moving: false,
+      armorPct: 0, dur: 0, durMax: 0, broken: false, chainStyles: null, san: 5, chr: 5,   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
     };
+    this.mode = this.mode || 'arena'; this.outcome = null; this.spawned = 0; this.allies = []; this.fallen = [];   // mode 'battle': a downed player loses the fight instead of being restored
     this.enemies = []; this.fx = []; this.texts = []; this.routed = 0;
     this.log = []; this.logVer = 0; this.lastHit = null;
     this.moves = this.moves || {};                                // baked weapon paths by move id; a move without one uses the reach rule
     this.input = { x: 0, y: 0, act: false }; this.actPrev = false; this.clash = null;
   }
   clearEnemies() { this.enemies = []; this.fx = []; this.texts = []; }
+  clearAllies() { this.allies = []; }
   resetPlayer() {
     const p = this.player; p.x = 170; p.y = 282; p.face = 1; p.hp = p.maxHp;
     p.swing = null; p.chain = 0; p.cooldown = 0; p.moved = false;
@@ -209,8 +214,20 @@ export class Sim {
       atk: null, atkCd: 0.6, deathT: 0, dramatic: false, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0, hurt: 0,
     };
     e.lookSeed = hash32(this.seed, e.id);                        // picks this enemy's parts and colours from its rank's pools (client side)
-    this.enemies.push(e);
+    this.enemies.push(e); this.spawned++;
     return e;
+  }
+  // a hired fighter on your side: fights with the same weapon classes and armor rules, steers itself
+  spawnAlly(o) {
+    const c = this.cfg, p = this.player, t = c.tiers[o.tier] ? o.tier : 'leather', w = o.weapon && c.weapons[o.weapon] ? o.weapon : 'longsword', i = o.index || 0, offs = [26, -26, 52, -52, 0];
+    const a = {
+      id: this.nextId++, hid: o.hid || null, name: o.name || 'Hireling', x: Math.max(c.arena.left + 10, p.x - 34 - i * 30), y: this.clampY(p.y + offs[i % 5]), face: 1,
+      hp: o.hp || 18, maxHp: o.hp || 18, tier: t, armorPct: o.armorPct != null ? o.armorPct : c.tiers[t].pct,
+      dur: o.dur != null ? o.dur : c.tiers[t].dur, durMax: o.dur != null ? o.dur : c.tiers[t].dur, broken: false,
+      weapon: w, dex: o.dex || 5, state: 'alive', atk: null, atkCd: 0.5, deathT: 0, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0, hurt: 0,
+      look: o.look || null, lookSeed: hash32(this.seed, this.nextId * 7),
+    };
+    this.allies.push(a); return a;
   }
   healAll() { this.enemies.forEach(e => { if (e.state === 'alive') e.hp = e.maxHp; }); this.say('info', 'All enemies healed.'); }
   repairAll() {
@@ -240,7 +257,12 @@ export class Sim {
     const lock = this.clash ? this.clash.eId : null;                 // the two fighters in a clash stand frozen
     if (lock == null) this.updatePlayer(dt); else { this.player.moving = false; }
     for (const e of this.enemies) { if (e.id === lock) { e.moving = false; continue; } this.updateEnemy(e, dt); }
+    for (const a of this.allies) this.updateAlly(a, dt);
     this.enemies = this.enemies.filter(e => !(e.state === 'dying' && e.deathT > 2.6) && e.state !== 'routed');
+    if (this.mode === 'battle' && !this.outcome) {
+      if (this.player.hp <= 0) this.outcome = 'lost';
+      else if (this.spawned > 0 && !this.enemies.some(e => e.state === 'alive')) this.outcome = 'won';
+    }
     this.updateFx(dt);
   }
 
@@ -288,8 +310,9 @@ export class Sim {
     if (!p.swing && p.cooldown <= 0) {
       const tgt = this.findTarget(w);
       if (tgt) {
+        const cs = p.chainStyles && p.chainStyles.length ? p.chainStyles[p.chain % p.chainStyles.length] : null;
         p.face = tgt.x >= p.x ? 1 : -1;
-        p.swing = { t: 0, dur: w.interval, dur0: w.interval, hitAt: w.interval * 0.45, hit: false, target: tgt.id, whiff: false, dramatic: false, extra: 0, move: p.move || null };
+        p.swing = { t: 0, dur: w.interval, dur0: w.interval, hitAt: w.interval * 0.45, hit: false, target: tgt.id, whiff: false, dramatic: false, extra: 0, move: cs ? cs.move : (p.move || null), style: cs ? cs.style : null };
         p.moved = false;
       }
     }
@@ -441,7 +464,7 @@ export class Sim {
 
   /* ---------- enemies ---------- */
   updateEnemy(e, dt) {
-    const c = this.cfg, p = this.player;
+    const c = this.cfg, p = this.pickTarget(e);                    // the nearest of you and your hirelings
     e.flash = Math.max(0, e.flash - dt); e.hurt = Math.max(0, (e.hurt || 0) - dt);
     if (e.state === 'dying') {
       e.deathT += dt;
@@ -452,6 +475,7 @@ export class Sim {
       return;
     }
     e.moving = false;
+    if (!p) return;                                                  // nobody left standing to fight
     if (e.stun > 0) { e.stun -= dt; return; }                         // staggered after losing a clash
     if (e.wounded > 0) {
       e.wounded -= dt;
@@ -485,11 +509,11 @@ export class Sim {
         if (!e.atk.hit) {
           const s = { t: e.atk.t, dur: c.enemy.atkDur, hitAt: c.enemy.atkHitAt, extra: 0 };
           const r = sweepHit(c, m, s, t0, e.x, e.y, e.face, [p]);
-          if (r === 'past') e.atk.hit = true; else if (r) { e.atk.hit = true; this.enemyHitsPlayer(e); }
+          if (r === 'past') e.atk.hit = true; else if (r) { e.atk.hit = true; this.enemyHits(e, p); }
         }
       } else if (!e.atk.hit && e.atk.t >= c.enemy.atkHitAt) {
         e.atk.hit = true;
-        if (Math.abs(dx) <= c.enemy.reach + 8 && Math.abs(dy) <= c.laneTol) this.enemyHitsPlayer(e);
+        if (Math.abs(dx) <= c.enemy.reach + 8 && Math.abs(dy) <= c.laneTol) this.enemyHits(e, p);
       }
       if (e.atk.t >= c.enemy.atkDur) { e.atk = null; e.atkCd = c.enemy.atkCool; }
       return;
@@ -501,18 +525,72 @@ export class Sim {
     if (e.moving) e.walkT += dt;
   }
 
+  pickTarget(e) {
+    let best = this.player.hp > 0 ? this.player : null, bd = best ? (best.x - e.x) ** 2 + 4 * (best.y - e.y) ** 2 : 1e12;
+    for (const a of this.allies) { if (a.state !== 'alive') continue; const d = (a.x - e.x) ** 2 + 4 * (a.y - e.y) ** 2; if (d < bd) { best = a; bd = d; } }
+    return best;
+  }
+  enemyHits(e, t) { if (t === this.player) this.enemyHitsPlayer(e); else this.enemyHitsAlly(e, t); }
+  // damage to a worn-armor fighter: percent off (at least 1), durability drops by the raw hit, a broken set protects nothing
+  takeHit(t, raw) {
+    const dmg = Math.max(1, Math.floor(raw * (1 - (t.broken ? 0 : t.armorPct)) + 1e-9)); let broke = false;
+    t.hp -= dmg;
+    if (t.durMax > 0 && !t.broken) { t.dur = Math.max(0, t.dur - raw); if (t.dur <= 0) { t.broken = true; broke = true; } }
+    return { dmg, broke };
+  }
   enemyHitsPlayer(e) {
     const p = this.player, c = this.cfg;
     p.flash = 0.2; p.hurt = 0.6;
     if (!p.inv) {
-      p.hp -= c.enemy.atkDmg;
-      this.text(p.x, p.y - 96, '-' + c.enemy.atkDmg, '#ff7a6a', 10);
-      if (p.hp <= 0) { this.say('info', 'Player downed; restored.'); p.hp = p.maxHp; }
+      const r = this.takeHit(p, c.enemy.atkDmg);
+      this.text(p.x, p.y - 96, '-' + r.dmg, '#ff7a6a', 10);
+      if (r.broke) { this.say('break', 'Your armor broke.'); this.text(p.x, p.y - 110, 'ARMOR BROKEN', '#ff9a6a', 9); }
+      if (p.hp <= 0) { if (this.mode === 'battle') p.hp = 0; else { this.say('info', 'Player downed; restored.'); p.hp = p.maxHp; } }
     } else this.text(p.x, p.y - 96, 'HIT', '#9fd0ff', 10);
     if (p.swing) {
       p.swing = null; p.chain = 0; p.cooldown = c.interruptDelay;
       this.say('info', 'Player swing interrupted by an enemy hit.');
     }
+  }
+  enemyHitsAlly(e, a) {
+    a.flash = 0.2; a.hurt = 0.6; a.atk = null; a.atkCd = Math.max(a.atkCd, 0.4);
+    const r = this.takeHit(a, this.cfg.enemy.atkDmg);
+    this.text(a.x, a.y - 96, '-' + r.dmg, '#ff7a6a', 10);
+    this.burst(a.x, a.y - 48, 6, '#f4ecd8', 90);
+    if (a.hp <= 0) {
+      a.hp = 0; a.state = 'dying'; a.deathT = 0; a.vx = (Math.sign(a.x - e.x) || 1) * 26;
+      if (a.hid) this.fallen.push(a.hid);
+      this.say('info', a.name + ' is down.');
+    }
+  }
+  updateAlly(a, dt) {
+    const c = this.cfg, p = this.player;
+    a.flash = Math.max(0, a.flash - dt); a.hurt = Math.max(0, (a.hurt || 0) - dt);
+    if (a.state === 'dying') { a.deathT += dt; a.x = this.clampX(a.x + a.vx * dt); a.vx *= 0.9; return; }
+    a.moving = false;
+    const w = weaponStats(c, a.weapon), iv = swingInterval(c, a.weapon, a.dex || 5), spd = c.player.speed * 0.8;
+    let tgt = null, bd = 1e12;
+    for (const e of this.enemies) { if (e.state !== 'alive') continue; const d = (e.x - a.x) ** 2 + 4 * (e.y - a.y) ** 2; if (d < bd) { tgt = e; bd = d; } }
+    if (a.atk) {                                                      // mid-swing: the blow lands once, at its hit time
+      a.atk.t += dt;
+      if (!a.atk.hit && a.atk.t >= iv * 0.45) {
+        a.atk.hit = true;
+        const e = this.enemies.find(q => q.id === a.atk.target);
+        if (e && e.state === 'alive' && Math.abs(e.x - a.x) <= w.reach + 8 && Math.abs(e.y - a.y) <= c.laneTol) this.applyHit(e, w.dmg, null);
+      }
+      if (a.atk.t >= iv) { a.atk = null; a.atkCd = 0.15; }
+      return;
+    }
+    a.atkCd -= dt;
+    if (!tgt) {                                                       // nothing to fight: keep near you
+      const dx = p.x - 40 - a.x; if (Math.abs(dx) > 40) { a.x = this.clampX(a.x + Math.sign(dx) * spd * dt); a.face = Math.sign(dx); a.moving = true; a.walkT += dt; }
+      return;
+    }
+    const dx = tgt.x - a.x, dy = tgt.y - a.y; a.face = dx >= 0 ? 1 : -1;
+    if (Math.abs(dy) > c.laneTol * 0.5) { a.y = this.clampY(a.y + Math.sign(dy) * spd * 0.7 * dt); a.moving = true; }
+    if (Math.abs(dx) > w.reach * 0.8) { a.x = this.clampX(a.x + Math.sign(dx) * spd * dt); a.moving = true; }
+    else if (Math.abs(dy) <= c.laneTol && a.atkCd <= 0) a.atk = { t: 0, hit: false, target: tgt.id };
+    if (a.moving) a.walkT += dt;
   }
 
   /* ---------- effects ---------- */
