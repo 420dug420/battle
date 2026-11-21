@@ -33,7 +33,7 @@ export class FightRoom extends DurableObject {
     if (ws !== this.pilot && m.t !== 'ping') return;               // watchers can't steer
     const s = this.sim, c = this.cfg;
     switch (m.t) {
-      case 'input': s.input = { x: Math.max(-1, Math.min(1, +m.x || 0)), y: Math.max(-1, Math.min(1, +m.y || 0)) }; break;
+      case 'input': s.input = { x: Math.max(-1, Math.min(1, +m.x || 0)), y: Math.max(-1, Math.min(1, +m.y || 0)), act: !!m.act }; break;
       case 'set':
         if (m.weapon && c.weapons[m.weapon]) s.player.weapon = m.weapon;
         if (m.dex != null) s.player.dex = Math.max(5, Math.min(99, +m.dex || 5));

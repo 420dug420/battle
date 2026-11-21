@@ -88,11 +88,13 @@ import { applySnapshot } from '../server/protocol.js';
   window.addEventListener('keydown', e => {
     if (typing(e)) return;
     if (e.code === 'KeyP') { togglePause(); return; }
+    if (e.code === 'Space') { keys.act = true; e.preventDefault(); return; }    // Clash press
     const k = MAP[e.code]; if (!k) return;
     if (e.target && e.target.type === 'range' && e.code.startsWith('Arrow')) return;
     keys[k] = true; e.preventDefault();
   });
-  window.addEventListener('keyup', e => { const k = MAP[e.code]; if (k) keys[k] = false; });
+  window.addEventListener('keyup', e => { if (e.code === 'Space') keys.act = false; const k = MAP[e.code]; if (k) keys[k] = false; });
+  cv.addEventListener('pointerdown', () => { keys.act = true; }); window.addEventListener('pointerup', () => { keys.act = false; });
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
   cv.addEventListener('pointerdown', () => cv.focus());
 
@@ -253,6 +255,11 @@ import { applySnapshot } from '../server/protocol.js';
     // fx + texts
     for (const f of sim.fx) { ctx.globalAlpha = Math.max(0, f.life / f.max); ctx.fillStyle = f.col; ctx.fillRect(Math.round(f.x), Math.round(f.y), f.size, f.size); }
     ctx.globalAlpha = 1;
+    if (sim.clash) {                                               // Clash: the ring closes on the inner ring; press as they meet
+      const k = sim.clash, X = Math.round(k.x), Y = Math.round(k.y - k.h), C = CFG.clash, r = Math.max(1, 7 + 34 * (k.target - k.t) / k.target);
+      ctx.save(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.arc(X, Y, 7, 0, 7); ctx.stroke();
+      ctx.strokeStyle = Math.abs(k.t - k.target) <= C.window ? '#ffe27a' : '#e8a040'; ctx.beginPath(); ctx.arc(X, Y, r, 0, 7); ctx.stroke(); ctx.restore();
+    }
     for (const t of sim.texts) { ctx.globalAlpha = Math.min(1, t.life / 0.3); label(t.text, t.x, t.y, t.col, t.size + 2); }
     ctx.globalAlpha = 1;
 
@@ -307,13 +314,13 @@ import { applySnapshot } from '../server/protocol.js';
   function frame(now) {
     const real = Math.min(0.05, (now - last) / 1000); last = now;
     if (net) {                                                   // online: send input when it changes; the room steps the fight
-      const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0) }, k = inp.x + ',' + inp.y;
+      const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act }, k = inp.x + ',' + inp.y + ',' + inp.act;
       if (k !== net.lastIn) { net.lastIn = k; send(Object.assign({ t: 'input' }, inp)); }
       for (const t of sim.texts) t.life -= real; sim.texts = sim.texts.filter(t => t.life > 0);
     } else if (!paused) {
       acc += real * timeScale;
       while (acc >= STEP) {
-        sim.input = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0) };
+        sim.input = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act };
         sim.step(STEP); acc -= STEP;
       }
     }

@@ -1,10 +1,10 @@
 /* What a room sends each snapshot, and how a browser applies it. Shared by the server and the game page. */
 const P_KEYS = ['x', 'y', 'face', 'hp', 'maxHp', 'weapon', 'dex', 'chain', 'moving', 'walkT', 'flash', 'move'];
-const E_KEYS = ['id', 'x', 'y', 'z', 'face', 'state', 'hp', 'maxHp', 'dur', 'durMax', 'broken', 'wounded', 'flee', 'tier', 'lookSeed', 'moving', 'walkT', 'flash', 'deathT', 'dramatic', 'chr', 'san'];
+const E_KEYS = ['id', 'x', 'y', 'z', 'face', 'state', 'hp', 'maxHp', 'dur', 'durMax', 'broken', 'wounded', 'flee', 'tier', 'lookSeed', 'moving', 'walkT', 'flash', 'deathT', 'dramatic', 'chr', 'san', 'stun'];
 const pick = (o, keys) => { const r = {}; for (const k of keys) r[k] = o[k]; return r; };
 export function snapshot(sim, tick, logFrom) {
   const p = sim.player;
-  const msg = { t: 'state', tick, time: sim.t, slow: sim.slow, shake: sim.shake, routed: sim.routed,
+  const msg = { t: 'state', tick, time: sim.t, slow: sim.slow, shake: sim.shake, routed: sim.routed, clash: sim.clash,
     p: Object.assign(pick(p, P_KEYS), { swing: p.swing ? pick(p.swing, ['t', 'dur', 'dur0', 'hitAt', 'extra', 'move', 'target', 'hit']) : null }),
     e: sim.enemies.map(e => Object.assign(pick(e, E_KEYS), { atk: e.atk ? { t: e.atk.t } : null })),
     log: [], texts: sim.textOut ? sim.textOut.splice(0) : [] };
@@ -14,7 +14,7 @@ export function snapshot(sim, tick, logFrom) {
 }
 // browser side: copy a snapshot into the local sim object that the renderer reads
 export function applySnapshot(sim, m) {
-  sim.t = m.time; sim.slow = m.slow; sim.shake = m.shake; sim.routed = m.routed;
+  sim.t = m.time; sim.slow = m.slow; sim.shake = m.shake; sim.routed = m.routed; sim.clash = m.clash;
   const p = sim.player; Object.assign(p, m.p);
   const old = new Map(sim.enemies.map(e => [e.id, e]));
   sim.enemies = m.e.map(n => Object.assign(old.get(n.id) || {}, n));   // keep client-only fields (cached look)

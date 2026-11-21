@@ -45,6 +45,9 @@ export const CFG = {
   },
   abreak: { sanMult: 0.5, speedMult: 1.25 },   // design
   pxPerM: 54,                             // sim pixels per metre (the 3D render scale)
+  // Clash: your blade meets an enemy's mid-swing. Both freeze; press (Space or click) as the closing ring meets the inner one.
+  // Outcomes are PLACEHOLDERS: win = enemy staggered and your next swing starts at once; lose or no press = you are knocked back.
+  clash: { dur: 1.0, target: 0.6, window: 0.12, early: 0.7, stun: 1.0, knock: 26, loseDelay: 0.6 },   // early: how far back into the wind-up blades can meet (fraction of set-to-contact)
   body: { height: 1.7, radius: 0.2 },     // PLACEHOLDER: a fighter's hit capsule, metres (side view)
   enemy:  { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1.0, atkHitAt: 0.45, atkCool: 0.8, reach: 38, move: 'cut1|sword' },   // move: the baked path its swing uses, if the client provided one
   rallyPerChr: 0.004,                     // PLACEHOLDER: chance per second, per CHR point, that a fleeing enemy rallies (CHR 5 = 2%/s)
@@ -134,7 +137,7 @@ export class Sim {
     this.enemies = []; this.fx = []; this.texts = []; this.routed = 0;
     this.log = []; this.logVer = 0; this.lastHit = null;
     this.moves = this.moves || {};                                // baked weapon paths by move id; a move without one uses the reach rule
-    this.input = { x: 0, y: 0 };
+    this.input = { x: 0, y: 0, act: false }; this.actPrev = false; this.clash = null;
   }
   clearEnemies() { this.enemies = []; this.fx = []; this.texts = []; }
   resetPlayer() {
@@ -195,13 +198,16 @@ export class Sim {
 
   /* ---------- main step ---------- */
   step(dtReal) {
+    const act = !!this.input.act, pressed = act && !this.actPrev; this.actPrev = act;   // a press is the moment the key goes down
     if (this.hitstop > 0) { this.hitstop -= dtReal; return; }
     let dt = dtReal;
     if (this.slow > 0) { dt *= 0.35; this.slow -= dtReal; }
     if (this.shake > 0) this.shake -= dtReal;
     this.t += dt;
-    this.updatePlayer(dt);
-    for (const e of this.enemies) this.updateEnemy(e, dt);
+    if (this.clash) this.updateClash(dt, pressed); else this.checkClash();
+    const lock = this.clash ? this.clash.eId : null;                 // the two fighters in a clash stand frozen
+    if (lock == null) this.updatePlayer(dt); else { this.player.moving = false; }
+    for (const e of this.enemies) { if (e.id === lock) { e.moving = false; continue; } this.updateEnemy(e, dt); }
     this.enemies = this.enemies.filter(e => !(e.state === 'dying' && e.deathT > 2.6) && e.state !== 'routed');
     this.updateFx(dt);
   }
@@ -221,7 +227,7 @@ export class Sim {
   updatePlayer(dt) {
     const p = this.player, c = this.cfg, w = this.weaponInfo();
     let ix = this.input.x, iy = this.input.y;
-    const mag = Math.hypot(ix, iy);
+    const mag = Math.sqrt(ix * ix + iy * iy);                     // not Math.hypot: identical results on every engine (replays, server)
     if (mag > 1) { ix /= mag; iy /= mag; }
     p.flash = Math.max(0, p.flash - dt);
     const swinging = !!p.swing;
@@ -262,6 +268,50 @@ export class Sim {
     const p = this.player, r = sweepHit(this.cfg, m, s, tPrev, p.x, p.y, p.face, this.enemies.filter(e => e.state === 'alive'));
     if (r === 'past') { s.hit = true; s.whiff = true; this.text(p.x + p.face * 40, p.y - 70, 'MISS', '#b7ab9a', 10); }
     else if (r) { s.hit = true; s.target = r.id; this.applyHit(r, w.dmg, s); }
+  }
+
+  /* ---------- Clash ---------- */
+  bladePx(m, s, t, x, face) {                                        // a swing's blade as a segment in sim px, height up
+    const g = segAt(m, moveTau(m, s, t)), P = this.cfg.pxPerM;
+    return [x + face * g[0] * P, g[1] * P, x + face * g[2] * P, g[3] * P];
+  }
+  checkClash() {
+    const p = this.player, c = this.cfg, s = p.swing; if (!s || s.hit) return;
+    const pm = s.move && this.moves[s.move], em = this.moves[c.enemy.move]; if (!pm || !pm.seg || !em || !em.seg) return;
+    const from = m => m.c - c.clash.early * (m.c - m.t0), pt = moveTau(pm, s, s.t); if (pt < Math.min(from(pm), pm.hit.f0) || pt > pm.hit.f1) return;
+    for (const e of this.enemies) {
+      if (e.state !== 'alive' || !e.atk || e.atk.hit || Math.abs(e.y - p.y) > c.laneTol || Math.sign(e.x - p.x) !== p.face) continue;
+      const es = { t: e.atk.t, dur: c.enemy.atkDur, hitAt: c.enemy.atkHitAt, extra: 0 }, et = moveTau(em, es, es.t);
+      if (et < Math.min(from(em), em.hit.f0) || et > em.hit.f1) continue;
+      const a = this.bladePx(pm, s, s.t, p.x, p.face), b = this.bladePx(em, es, es.t, e.x, e.face);
+      if (segSegDist(a, b) > ((pm.hit.w || 0.12) + (em.hit.w || 0.12)) * c.pxPerM / 2) continue;
+      // where they cross (closest approach), for sparks and the timing rings
+      const cx = (a[0] + a[2] + b[0] + b[2]) / 4, cy = (a[1] + a[3] + b[1] + b[3]) / 4;
+      this.clash = { eId: e.id, t: 0, dur: c.clash.dur, target: c.clash.target, x: cx, y: p.y, h: cy, result: null };
+      this.burst(cx, p.y - cy, 10, '#ffe7a0', 120); this.shake = 0.12;
+      this.say('clash', 'CLASH: blades met (enemy #' + e.id + ').');
+      return;
+    }
+  }
+  updateClash(dt, pressed) {
+    const k = this.clash, c = this.cfg, p = this.player, e = this.enemies.find(x => x.id === k.eId);
+    if (!e || e.state !== 'alive') { this.clash = null; return; }
+    k.t += dt;
+    let won = null;
+    if (pressed) won = Math.abs(k.t - k.target) <= c.clash.window;
+    else if (k.t >= k.dur) won = false;
+    if (won === null) return;
+    k.result = won ? 'win' : 'lose'; this.lastClash = { result: k.result, t: k.t, at: this.t };
+    if (won) {                                                         // PLACEHOLDER outcome
+      e.atk = null; e.atkCd = c.enemy.atkCool; e.stun = c.clash.stun; p.swing = null; p.cooldown = 0;
+      this.text(e.x, e.y - 100, 'STAGGER', '#ffd27a', 11); this.burst(k.x, p.y - k.h, 8, '#fff2c0', 140);
+      this.say('clash', 'Clash won (pressed at ' + k.t.toFixed(2) + ' s): enemy staggered.');
+    } else {
+      p.swing = null; p.chain = 0; p.cooldown = c.clash.loseDelay; p.x = this.clampX(p.x - p.face * c.clash.knock);
+      e.atk = null; e.atkCd = 0.2;
+      this.say('clash', pressed ? 'Clash lost (pressed at ' + k.t.toFixed(2) + ' s): knocked back.' : 'Clash lost (no press): knocked back.');
+    }
+    this.clash = null;
   }
 
   breakChain(why) {
@@ -369,6 +419,7 @@ export class Sim {
       return;
     }
     e.moving = false;
+    if (e.stun > 0) { e.stun -= dt; return; }                         // staggered after losing a clash
     if (e.wounded > 0) {
       e.wounded -= dt;
       if (e.wounded <= 0) { e.wounded = 0; this.checkFlee(e); }

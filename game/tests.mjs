@@ -170,4 +170,36 @@ console.log('PASS shrug off after surviving crit');
   console.log('PASS enemy blade sweep');
 }
 
+// 14. Clash: blades crossing mid-swing freeze both fighters; a timed press decides it
+{
+  const flat = { t0: 0, c: 36, end: 89, n: 2, seg: [[0.2, 1, 1, 1], [0.2, 1, 1, 1], [0.2, 1, 1, 1]], hit: { shape: 'blade', w: 0.12, f0: 30, f1: 40 } };
+  const setup = () => {
+    const c = JSON.parse(JSON.stringify(CFG)); const s = new Sim(c, 4); s.moves.flat = flat; s.moves[c.enemy.move] = flat;
+    s.player.inv = false; s.player.x = 300; s.player.face = 1;
+    const e = s.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); e.x = 360; e.y = s.player.y; e.face = -1; e.hp = 99; e.maxHp = 99;
+    s.player.swing = { t: 0.42, dur: 1, dur0: 1, hitAt: 0.45, hit: false, target: e.id, whiff: false, dramatic: false, extra: 0, move: 'flat' };
+    e.atk = { t: 0.42, hit: false };
+    s.step(1 / 60); return { s, e, c };
+  };
+  let { s, e, c } = setup();
+  assert(s.clash && s.clash.eId === e.id, 'blades crossed: clash');
+  const pt = s.player.swing.t, et = e.atk.t; s.step(1 / 60); s.step(1 / 60);
+  assert.strictEqual(s.player.swing.t, pt, 'player frozen'); assert.strictEqual(e.atk.t, et, 'enemy frozen'); assert.strictEqual(e.hp, 99, 'no hit lands during a clash');
+  while (s.clash.t < c.clash.target - 1 / 120) s.step(1 / 60);
+  s.input.act = true; s.step(1 / 60);
+  assert(!s.clash && s.lastClash.result === 'win' && e.stun > 0 && !e.atk, 'timed press wins: enemy staggered');
+  ({ s, e, c } = setup()); const x0 = s.player.x;
+  for (let i = 0; i < 70; i++) s.step(1 / 60);
+  assert(s.lastClash.result === 'lose' && s.player.x === x0 - c.clash.knock, 'no press: knocked back');
+  ({ s, e, c } = setup()); s.step(1 / 60); s.input.act = true; s.step(1 / 60);
+  assert.strictEqual(s.lastClash.result, 'lose', 'pressing far too early loses');
+  { const c2 = JSON.parse(JSON.stringify(CFG)); const s2 = new Sim(c2, 4); s2.moves.flat = flat; s2.moves[c2.enemy.move] = flat; s2.player.x = 300; s2.player.face = 1;
+    const e2 = s2.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); e2.x = 360; e2.y = s2.player.y; e2.face = -1;
+    s2.input.act = true; s2.step(1 / 60);                          // key already held before the clash
+    s2.player.swing = { t: 0.42, dur: 1, dur0: 1, hitAt: 0.45, hit: false, target: e2.id, extra: 0, move: 'flat' }; e2.atk = { t: 0.42, hit: false };
+    for (let i = 0; i < 70; i++) s2.step(1 / 60);
+    assert.strictEqual(s2.lastClash.result, 'lose', 'holding the key from before is not a press'); }
+  console.log('PASS clash: crossing blades, freeze, timed press');
+}
+
 console.log('\nALL SIM TESTS PASSED');
