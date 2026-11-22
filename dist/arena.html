@@ -15634,7 +15634,7 @@ void main(){
     };
     return f;
   }
-  var SIM_VERSION = 2;
+  var SIM_VERSION = 3;
   var NOT_STATE = ["cfg", "rng", "fxRng", "moves", "fx", "texts", "textOut"];
   function applyCmd(sim, c) {
     switch (c.t) {
@@ -16039,9 +16039,7 @@ void main(){
           this.playerStrike(s, w);
         }
         if (s.t >= s.dur) {
-          if (s.whiff) {
-            this.breakChain("missed");
-          } else if (p.moved) {
+          if (p.moved) {
             this.breakChain("you moved");
             p.cooldown = c.moveBreakDelay;
           } else p.chain++;
@@ -16132,7 +16130,10 @@ void main(){
     }
     breakChain(why) {
       const p = this.player;
-      if (p.chain > 0) this.say("info", "Chain reset (" + why + ").");
+      if (p.chain > 0) {
+        this.say("info", "Chain reset (" + why + ").");
+        this.text(p.x, p.y - 108, "CHAIN BROKEN: " + why, "#ff9a6a", 9);
+      }
       p.chain = 0;
     }
     playerStrike(s, w) {
@@ -16413,6 +16414,7 @@ void main(){
         }
       } else this.text(p.x, p.y - 96, "HIT", "#9fd0ff", 10);
       if (p.swing) {
+        if (p.chain > 0) this.text(p.x, p.y - 108, "CHAIN BROKEN: hit", "#ff9a6a", 9);
         p.swing = null;
         p.chain = 0;
         p.cooldown = c.interruptDelay;

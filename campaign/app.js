@@ -269,7 +269,7 @@ function styleHTML() {
     return `<button class="cs" data-a="slot" data-i="${i}" aria-pressed="${i === slotSel}"><b>Slot ${i + 1}</b><br>${st ? esc(st.name) : '<small>empty</small>'}${st && !D.styleFits(st, hands) ? '<br><small class="bad">needs ' + st.hands + ' hands</small>' : ''}</button>`;
   }).join('');
   return `<div class="cols"><div class="col"><canvas id="pv" class="pv" width="200" height="200" data-mode="style" data-style="${cur.id}"></canvas><div class="sub" style="text-align:center">${esc(cur.name)}</div></div>
-  <div class="col"><div class="panel"><h2>Chain</h2><p class="muted" style="margin:0">Your swings play in slot order, then start over. Moving or missing breaks the chain back to slot 1.</p><div class="chain">${slots}</div></div>
+  <div class="col"><div class="panel"><h2>Chain</h2><p class="muted" style="margin:0">Your swings play in slot order, then start over. Moving or being hit breaks the chain back to slot 1.</p><div class="chain">${slots}</div></div>
   <div class="panel"><h2>Styles you know</h2><div class="pick" style="max-height:260px">${owned.map(s => `<button data-a="setstyle" data-id="${s.id}" ${D.styleFits(s, hands) ? '' : 'style="opacity:.5"'}><b>${esc(s.name)}</b>${s.hands ? `<span class="tag">${s.hands === 2 ? 'two-handed' : 'one-handed'}</span>` : '<span class="tag">any</span>'}</button>`).join('')}</div>
     <p class="muted">${locked.length} more to learn. The training ground teaches your second.</p></div>
   <div class="panel"><details><summary>Animations</summary><div style="display:flex;flex-direction:column;gap:8px"><p class="muted">Made in the Animator? Paste the library here (or open the file) to use it. Attack animations become styles; idle, walk, damaged, dying and falling play automatically.</p>
@@ -373,7 +373,7 @@ function startBattle(spec) {
   battle = { sim, spec, tiers, keys: {}, acc: 0, last: 0, paused: false, over: false, endAt: 0, hint: !!spec.tutorial, retreat: false, rain: Array.from({ length: 70 }, (_, i) => [Math.random() * 640, Math.random() * 360, 4 + Math.random() * 3]) };
   scr = 'battle'; modal = null; render(); requestAnimationFrame(battleFrame);
 }
-const HINTS = ['Walk toward the men (WASD or the arrow keys). You swing on your own once one is within reach.', 'Standing still keeps your chain going; moving or missing breaks it back to your first style.', 'When blades cross mid-swing, the ring closes: press Space or click as it meets the inner ring.', 'Win the training and you learn a second fighting style.'];
+const HINTS = ['Walk toward the men (WASD or the arrow keys). You swing on your own once one is within reach.', 'Standing still keeps your chain going; moving or being hit breaks it back to your first style.', 'When blades cross mid-swing, the ring closes: press Space or click as it meets the inner ring.', 'Win the training and you learn a second fighting style.'];
 function battleHTML() {
   const b = battle, sp = b.spec;
   return `<div class="topbar"><span class="co">${esc(sp.label)}</span><span class="chip">${esc(sp.weather)} · ${esc(sp.time)}</span><span class="chip">Pay <b class="gold">${sp.pay}</b></span><span style="flex:1"></span><button class="btn sm" data-a="bpause">Pause</button><button class="btn sm" data-a="bretreat">${sp.tutorial ? 'Restart' : 'Retreat (counts as a loss)'}</button></div>
@@ -465,7 +465,8 @@ function drawBattle() {
   if (hud) hud.innerHTML = `<div class="u">${esc(G.char.name)} HP ${Math.max(0, p.hp)}/${p.maxHp}<div class="bar"><i style="width:${Math.max(0, 100 * p.hp / p.maxHp)}%"></i></div></div>` +
     `<div class="u">Armor ${p.broken ? '<b class="bad">BROKEN</b>' : p.dur + '/' + p.durMax}<div class="bar arm"><i style="width:${p.durMax ? 100 * p.dur / p.durMax : 0}%"></i></div></div>` +
     sim.allies.map(a => `<div class="u">${esc(a.name.split(' ')[0])} ${a.state === 'alive' ? a.hp + '/' + a.maxHp : '<b class="bad">down</b>'}<div class="bar"><i style="width:${100 * a.hp / a.maxHp}%"></i></div></div>`).join('') +
-    `<div class="u">Enemies ${sim.enemies.filter(e => e.state === 'alive').length}</div>`;
+    `<div class="u">Enemies ${sim.enemies.filter(e => e.state === 'alive').length}</div>` +
+    (p.chainStyles && p.chainStyles.length > 1 ? `<div class="u" style="min-width:200px">Chain: ${p.chainStyles.map((c, i) => { const nm = (D.allStyles(anims).find(s => s.id === c.style) || { name: c.style }).name; return i === p.chain % p.chainStyles.length ? '<b class="gold">[' + esc(nm) + ']</b>' : esc(nm); }).join(' > ')}</div>` : '');
 }
 
 /* ---------- boot ---------- */

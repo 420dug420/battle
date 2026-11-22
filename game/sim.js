@@ -82,7 +82,7 @@ export function makeRng(seed) {
 }
 
 /* ---------- replays: rules version, saved state, and the one way anything outside changes a fight ---------- */
-export const SIM_VERSION = 2;                                       // bump when a rule changes, so old replays are flagged
+export const SIM_VERSION = 3;                                       // bump when a rule changes, so old replays are flagged
 const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut'];
 // every outside change (input, spawns, settings) goes through here, live and in replays, so a replay repeats the fight exactly
 export function applyCmd(sim, c) {
@@ -301,8 +301,7 @@ export class Sim {
       if (m && m.seg) { if (!s.hit) this.bladeCheck(s, m, t0, w); }
       else if (!s.hit && s.t >= s.hitAt) { s.hit = true; this.playerStrike(s, w); }
       if (s.t >= s.dur) {
-        if (s.whiff) { this.breakChain('missed'); }
-        else if (p.moved) { this.breakChain('you moved'); p.cooldown = c.moveBreakDelay; }
+        if (p.moved) { this.breakChain('you moved'); p.cooldown = c.moveBreakDelay; }
         else p.chain++;
         p.swing = null;
       }
@@ -371,7 +370,7 @@ export class Sim {
 
   breakChain(why) {
     const p = this.player;
-    if (p.chain > 0) this.say('info', 'Chain reset (' + why + ').');
+    if (p.chain > 0) { this.say('info', 'Chain reset (' + why + ').'); this.text(p.x, p.y - 108, 'CHAIN BROKEN: ' + why, '#ff9a6a', 9); }
     p.chain = 0;
   }
 
@@ -548,6 +547,7 @@ export class Sim {
       if (p.hp <= 0) { if (this.mode === 'battle') p.hp = 0; else { this.say('info', 'Player downed; restored.'); p.hp = p.maxHp; } }
     } else this.text(p.x, p.y - 96, 'HIT', '#9fd0ff', 10);
     if (p.swing) {
+      if (p.chain > 0) this.text(p.x, p.y - 108, 'CHAIN BROKEN: hit', '#ff9a6a', 9);
       p.swing = null; p.chain = 0; p.cooldown = c.interruptDelay;
       this.say('info', 'Player swing interrupted by an enemy hit.');
     }
