@@ -248,15 +248,65 @@ BODIES.mailjerkin = { label: 'Mail under leather', f: k => { const { P, mail } =
   loft(ringsOf([[-.06, .228, .16], [.06, .214, .144], [.3, .224, .142], [.5, .218, .134], [.555, .17, .11]]), 16, lth, P, 0, 0, 0, -.06, .555);
   k.belt(); } };
 
+/* ----- five more models: heads barbute, nasal, furcap, spangen, burgonet; bodies coatplates, furmantle, scale, robe, halfplate ----- */
+const furtex = (base, hi, lo) => TX(64, 64, T => { T.fill(base); T.speckle(1400, [lo, hi], .015, .07, 1.1); for (let i = 0; i < 40; i++) { const x = (i * 37 % 100) / 100, y = (i * 53 % 100) / 100; T.line([[x, y], [x + .02, y + .07]], hi, 1); } });
+const scaletex = (base, hi, lo) => TX(64, 64, T => { T.fill(lo); for (let r = 0; r < 10; r++) for (let c = 0; c < 8; c++) { const u = (c + (r % 2 ? .5 : 0)) / 8 + .0625, v = r / 10 + .05; T.ell(u, v, .06, .06, base); T.ell(u, v + .012, .03, .03, hi); } });
+HEADS.barbute = { label: 'Barbute', f: k => { const { H, mail, metal } = k; gorget(H, mail);
+  loft(ringsOf([[-.12, .118, .1, .01], [-.04, .102, .12, .012], [.08, .102, .126, .012], [.2, .1, .124, .012], [.25, .072, .092, .01], [.285, .005, .006, .01]]), 16, metal, H, 0, 0, 0, -.12, .285);
+  box(.12, .026, .02, '#8f98a2', H, 0, .17, .14); box(.1, .02, .012, '#050505', H, 0, .125, .142); box(.02, .15, .012, '#050505', H, 0, .04, .142); box(.012, .1, .012, G, H, 0, .24, .1); } };
+HEADS.nasal = { label: 'Nasal helm', f: k => { const { H, metal } = k; HEADS.coif.f(k);
+  loft(ringsOf([[.14, .116, .136], [.2, .108, .128], [.255, .08, .096], [.292, .034, .04], [.305, .004, .005]]), 16, metal, H, 0, 0, 0, .14, .305);
+  box(.026, .13, .014, '#8f98a2', H, 0, .06, .146); box(.14, .018, .02, '#8f98a2', H, 0, .15, .14); } };
+HEADS.furcap = { label: 'Fur cap', f: k => { const { H } = k, fur = mat('fur', () => furtex('#5a4430', '#8a6c48', '#2c1f12'));
+  loft(ringsOf([[.07, .118, .14], [.14, .114, .134], [.23, .092, .11], [.28, .05, .06], [.3, .006, .008]]), 14, fur, H, 0, 0, 0, .07, .3);
+  loft(ringsOf([[.07, .128, .15], [.14, .128, .15]]), 14, fur, H, 0, 0, 0, .07, .14);
+  for (const s of [-1, 1]) loft(ringsOf([[-.04, .03, .05], [.07, .05, .07]]), 8, fur, H, s * .11, 0, .0, -.04, .07); } };
+HEADS.spangen = { label: 'Spangenhelm', f: k => { const { H, metal } = k, gd = mat('spanggd', () => steel('#f0d6a0', '#b0864a', '#5a3f1c', false));
+  loft(ringsOf([[.08, .104, .126], [.2, .1, .122], [.255, .075, .092], [.295, .03, .036], [.31, .004, .005]]), 12, metal, H, 0, 0, 0, .08, .31);
+  loft(ringsOf([[.07, .112, .134], [.1, .112, .134]]), 12, gd, H, 0, 0, 0, .07, .1);
+  box(.012, .26, .012, gd, H, 0, .2, .126); box(.012, .26, .012, gd, H, 0, .2, -.126); box(.2, .012, .012, gd, H, 0, .2, 0); box(.012, .012, .24, gd, H, 0, .21, 0);
+  box(.026, .13, .014, '#8f98a2', H, 0, .06, .14); for (const s of [-1, 1]) box(.01, .1, .08, '#8f98a2', H, s * .1, .04, .04); } };
+HEADS.burgonet = { label: 'Burgonet', f: k => { const { H, mail, metal } = k; gorget(H, mail);
+  loft(ringsOf([[-.04, .1, .12], [.02, .104, .126], [.2, .102, .124], [.245, .082, .1], [.285, .03, .04], [.3, .004, .005]]), 16, metal, H, 0, 0, 0, -.04, .3);
+  box(.2, .014, .09, metal, H, 0, .17, .14); box(.03, .06, .3, '#b8352f', H, 0, .32, 0); box(.016, .035, .32, metal, H, 0, .295, 0);
+  for (const s of [-1, 1]) { box(.016, .15, .1, metal, H, s * .108, .04, .04); box(.012, .09, .05, '#8f98a2', H, s * .11, -.06, .02); } } };
+BODIES.coatplates = { label: 'Coat of plates', f: k => { const { P, A, B, belt, bothArms, mail } = k;
+  const coat = hmat('coatpl' + A + B, T => { clothBase(T, A, B); for (let v = .12; v < .96; v += .08) for (let u = .05; u < 1; u += .09) T.rect(u, v, u + .02, v + .02, '#c9a24a'); });
+  loft(ringsOf([[-.34, .24, .17], [-.2, .221, .15], [-.05, .205, .13], [.06, .192, .118], [.3, .208, .128], [.5, .2, .12], [.57, .15, .1]]), 18, coat, P, 0, 0, 0, -.34, .57);
+  bothArms(a => { tube(a.sg, -.02, -.3, .064, .056, mail, 10); dome(a.sg, 0, 0, 0, .105, .1, .09, coat); }); belt(); } };
+BODIES.furmantle = { label: 'Fur mantle', f: k => { const { P, A, B, belt, bothArms } = k, fur = mat('fur', () => furtex('#5a4430', '#8a6c48', '#2c1f12')), lth = mat('jerkin', () => leatherTex('#6a4a2c', '#8a6a44', '#33220f'));
+  tunicSkirt(k, -.3); sleeves(k, tunicMat(A, B), true);
+  loft(ringsOf([[-.14, .22, .15], [-.02, .21, .138], [.1, .2, .128], [.3, .214, .134], [.5, .208, .126], [.56, .16, .104]]), 16, lth, P, 0, 0, 0, -.14, .56);
+  loft(ringsOf([[.44, .27, .19], [.5, .26, .185], [.56, .2, .14], [.6, .13, .1]]), 16, fur, P, 0, 0, 0, .44, .6); for (const s of [-1, 1]) dome(P, s * .26, .46, 0, .13, .12, .11, fur, 0, -s * .5); belt(); } };
+BODIES.scale = { label: 'Scale hauberk', f: k => { const { P, A, rig, belt, bothArms, mail } = k, sc = mat('scale' + A + k.met.id, () => scaletex(k.met.t[1], k.met.t[0], k.met.t[2]));
+  loft(ringsOf([[-.3, .232, .16], [-.2, .218, .146], [-.05, .204, .128], [.1, .19, .118], [.3, .208, .128], [.5, .202, .122], [.57, .152, .1]]), 18, sc, P, 0, 0, 0, -.3, .57);
+  bothArms(a => { tube(a.sg, -.02, -.3, .066, .058, sc, 10); tube(a.eg, -.01, -.19, .054, .046, mail, 10); }); for (const lg of [rig.legN, rig.legF]) tube(lg.hg, -.03, -.26, .106, .09, mail, 10);
+  box(.3, .5, .012, A, P, 0, -.15, .132); belt(); } };
+BODIES.robe = { label: 'Warrior-monk robe', f: k => { const { P, A, B, belt, bothArms } = k, rb = hmat('robe' + A + B, T => { clothBase(T, A, shade(A, -.3)); T.rect(.46, .05, .54, 1, shade(A, -.25)); });
+  loft(ringsOf([[-.62, .27, .2], [-.4, .245, .18], [-.2, .225, .155], [0, .205, .13], [.3, .208, .13], [.5, .2, .122], [.57, .15, .1]]), 18, rb, P, 0, 0, 0, -.62, .57);
+  bothArms(a => { tube(a.sg, -.02, -.3, .075, .09, rb, 10); tube(a.eg, -.01, -.2, .09, .085, rb, 10); });
+  loft(ringsOf([[.3, .22, .15], [.45, .21, .14], [.55, .16, .105]]), 14, hmat('scap' + B, T => clothBase(T, B, shade(B, -.3))), P, 0, 0, 0, .3, .55);
+  loft(ringsOf([[0, .21, .134], [.04, .21, .134]]), 14, mat('rope', () => cloth('#c9b58a')), P, 0, 0, 0, 0, .04); box(.04, .24, .03, '#c9b58a', P, .1, -.1, .13); } };
+BODIES.halfplate = { label: 'Cuirassier half-plate', f: k => { const { P, A, B, rig, belt, bothArms, torsoR, mail, metal } = k;
+  loft(ringsOf([[-.2, .21, .15], [-.1, .2, .13], [.05, .19, .115], [.3, .205, .125], [.5, .2, .12], [.57, .15, .1]]), 14, mail, P, 0, 0, 0, -.2, .57); gorget(k.H, mail);
+  loft(torsoR(1.08, .04, .57), 18, metal, P, 0, 0, 0, .04, .57);
+  for (const s of [-1, 1]) { for (let j = 0; j < 3; j++) dome(P, s * (.26 + j * .006), .5 - j * .05, 0, .12 - j * .01, .11, .09, metal, 0, -s * .5); }
+  bothArms(a => { tube(a.sg, -.03, -.27, .071, .062, metal, 10); tube(a.eg, -.015, -.2, .056, .046, metal, 10); dome(a.eg, 0, .03, .01, .06, .06, .06, metal); });
+  for (const lg of [rig.legN, rig.legF]) { for (let i = 0; i < 4; i++) loft(ringsOf([[0, .122 - i * .004, .11 - i * .004], [-.1, .122 - i * .004, .11 - i * .004]]), 12, i % 2 ? metal : mail, lg.hg, 0, -.02 - i * .09, 0, -.1, 0); dome(lg.kg, 0, -.03, .035, .07, .07, .06, metal, Math.PI / 2, 0); tube(lg.kg, -.06, -.38, .07, .056, metal, 10); }
+  for (let i = 0; i < 3; i++) loft(ringsOf([[-.2 - i * .06, .215 + i * .01, .15 + i * .008], [-.12 - i * .06, .215 + i * .01, .15 + i * .008]]), 18, i % 2 ? metal : mail, P, 0, 0, 0, -.2 - i * .06, -.12 - i * .06);
+  box(.3, .5, .012, A, P, 0, -.1, .15); belt(); } };
+
 // presets: the old tiers and the new designs. Each is just a choice of head, body, livery and metal
 const ARMOR_PRESETS = {
   leather: { label: 'Leather / cloth', head: 'hood', body: 'quilted', metal: 'steel' }, mail: { label: 'Mail', head: 'helm', body: 'mail', metal: 'steel' }, plate: { label: 'Plate', head: 'bascinet', body: 'plate', metal: 'steel' }, special: { label: 'Special (gilded)', head: 'crested', body: 'plate', metal: 'gilded' },
   militia: { label: 'Militia (cap, tunic)', head: 'cap', body: 'tunic', metal: 'steel' }, sergeant: { label: 'Sergeant (coif, mail shirt)', head: 'coifhelm', body: 'haubergeon', metal: 'steel' },
   jack: { label: 'Jack and kettle hat', head: 'kettlehat', body: 'jack', metal: 'steel' }, brigandine: { label: 'Brigandine and sallet', head: 'sallet', body: 'brigandine', metal: 'steel' }, lamellar: { label: 'Lamellar', head: 'cone', body: 'lamellar', metal: 'steel' },
   komtur: { label: 'Komtur (mantle, great helm)', head: 'greathelm', body: 'komtur', metal: 'steel', liv: 'white' }, spire: { label: 'Spire (black lancet)', head: 'spire', body: 'spire', metal: 'black', liv: 'black' }, deco: { label: 'Deco plate', head: 'domed', body: 'deco', metal: 'silver', liv: 'azure' },
+  wolfhunter: { label: 'Wolf-hunter (fur cap and mantle)', head: 'furcap', body: 'furmantle', metal: 'steel', liv: 'green' }, norman: { label: 'Norman (nasal helm, coat of plates)', head: 'nasal', body: 'coatplates', metal: 'steel', liv: 'red' },
+  varangian: { label: 'Varangian (spangenhelm, scale)', head: 'spangen', body: 'scale', metal: 'bronze', liv: 'azure' }, cuirassier: { label: 'Cuirassier (burgonet, half-plate)', head: 'burgonet', body: 'halfplate', metal: 'silver', liv: 'black' }, monk: { label: 'Warrior-monk (barbute, robe)', head: 'barbute', body: 'robe', metal: 'black', liv: 'ash' },
   griffon: { label: 'Griffon (per fess)', head: 'beaked', body: 'griffon', metal: 'steel', liv: 'azure' }, sun: { label: 'Sunburst', head: 'domed', body: 'sun', metal: 'silver', liv: 'red' }, stag: { label: 'Stag (bend tabard)', head: 'beaked', body: 'stag', metal: 'steel', liv: 'green' }, warlord: { label: 'Warlord (black spiked)', head: 'blackhelm', body: 'warlord', metal: 'black', liv: 'red' }
 };
-const BODYCFG = { quilted: 'leather', jack: 'leather', tunic: 'leather', jerkin: 'leather', mail: 'mail', brigandine: 'mail', lamellar: 'mail', haubergeon: 'mail', mailjerkin: 'mail' };
+const BODYCFG = { coatplates: 'mail', furmantle: 'leather', scale: 'mail', robe: 'leather', quilted: 'leather', jack: 'leather', tunic: 'leather', jerkin: 'leather', mail: 'mail', brigandine: 'mail', lamellar: 'mail', haubergeon: 'mail', mailjerkin: 'mail' };
 function dressMedieval(rig, role, tier, broken, lo) {
   const P = rig.pelvis, H = rig.headG, c = COL[role] || COL.p;
   const pre = ARMOR_PRESETS[tier] || ARMOR_PRESETS.leather, head = (lo && HEADS[lo.head]) ? lo.head : pre.head, body = (lo && BODIES[lo.body]) ? lo.body : pre.body;
@@ -808,6 +858,7 @@ M3.registerAnim = function (def) {
   return true;
 };
 M3.registerCustom = function (def) { return M3.registerAnim({ id: 'legacy', type: 'attack', two: def.two, contact: def.contact, end: def.end, keys: def.keys }); };
+M3.textureCanvases = function () { const o = {}; for (const k in MAT) { const u = MAT[k].uniforms && MAT[k].uniforms.map, im = u && u.value && u.value.image; if (im && im.toDataURL) o[k] = im; } return o; };   // every armor texture built so far, by material name
 M3.ready = true;
 M3.debug = { KEYS, P, applyPose, groundLock, sample, wr: HT.renderer, cam, ln: HT.scene };
 
