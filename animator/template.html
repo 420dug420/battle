@@ -27,7 +27,7 @@ input[type=range]{width:100%}.leg{display:inline-block;width:10px;height:10px;bo
 <button id="sync" class="pri" style="width:100%;margin:2px 0 4px">⇪ Sync to Claude</button><div class="hint" id="syncmsg">Press this when you want me to have your animations. Then just tell me which to load.</div>
 <h2>Library</h2>
 <div id="alist"></div>
-<div class="row" style="margin-top:6px"><select id="newtype" style="width:auto"><option value="attack">Attack</option><option value="idle">Idle loop</option><option value="walk">Walk loop</option><option value="hurt">Damaged</option><option value="dying">Dying</option><option value="falling">Falling</option></select><button id="new" class="go sm">+ New</button><button id="dup" class="sm">Duplicate</button><button id="del" class="sm">Delete</button></div>
+<div class="row" style="margin-top:6px"><select id="newtype" style="width:auto"><option value="attack">Attack</option><option value="idle">Idle loop</option><option value="walk">Walk loop</option><option value="hurt">Damaged</option><option value="dying">Dying</option><option value="falling">Falling</option><option value="grab">Grab (reach + hold)</option><option value="throw">Throw</option><option value="slam">Slam</option><option value="strike">Hold-and-strike</option></select><button id="new" class="go sm">+ New</button><button id="dup" class="sm">Duplicate</button><button id="del" class="sm">Delete</button></div>
 <h2>This animation</h2>
 <label>Name</label><input type="text" id="name">
 <label>Loadout (also decides 1H or 2H in the game)</label>
@@ -39,6 +39,7 @@ input[type=range]{width:100%}.leg{display:inline-block;width:10px;height:10px;bo
 <div class="row" style="margin-top:6px"><label style="margin:0"><input type="checkbox" id="onion" checked> ghost previous key</label><label style="margin:0"><input type="checkbox" id="handles" checked> handles</label></div>
 <h2>Drag on the figure</h2>
 <div class="hint"><span class="leg" style="background:#ff9d3c"></span>sword hand · <span class="leg" style="background:#46d6ff"></span>sword tip (pull it toward the hand to aim at the screen, Shift flips toward/away) · <span class="leg" style="background:#ffd84a"></span>shield hand · <span class="leg" style="background:#5be37d"></span>hips (sideways = forward, up/down = crouch) · <span class="leg" style="background:#d58cff"></span>front foot · <span class="leg" style="background:#ff8ccf"></span>rear foot (if both feet sit on the same spot, drag right for the front foot or left for the rear one)</div>
+<div id="vbox" style="display:none"><h2>Enemy dummy</h2><label style="margin:0"><input type="checkbox" id="vshow" checked> show the dummy</label><label style="margin:6px 0 0"><input type="checkbox" id="vman"> pose the dummy by hand (off = fixed grip)</label><div class="hint">Fixed grip: the dummy hangs from the hand. By hand: drag the dummy, or use the Victim sliders, on each key.</div></div>
 <h2>This frame</h2><div id="sliders"></div>
 <h2>Hitbox</h2>
 <label>Shape</label>
@@ -70,32 +71,38 @@ const DEFL=Object.assign({},DEF0,{hy:0.25,hz:0.3,ba:70,pp:4,nh:-30,nk:35,fh:25,f
 const SL=[['ba','Sword up/down',-180,180,1],['bx','Sword turn to screen',-180,180,1],['br','Blade roll',-180,180,1],['hy','Hand up/down',-0.6,0.8,0.01],['hz','Hand forward',-0.6,0.8,0.01],
  ['fx','Shield arm out',-0.4,0.5,0.01,1],['fy','Shield arm up/down',-0.5,0.5,0.01,1],['fz','Shield arm forward',-0.4,0.55,0.01,1],
  ['pp','Torso lean',-30,45,1],['py','Torso turn',-90,90,1],['hp','Head nod',-40,40,1],['hw','Head turn',-60,60,1],['rz','Body forward',-0.4,1,0.01],
+ ['vz','Victim forward',-0.8,0.8,0.01,0,1],['vy','Victim height',0,1.6,0.01,0,1],['vr','Victim tilt',-110,60,1,0,1],
  ['nh','Front hip',-100,70,1],['nk','Front knee',0,150,1],['fh','Rear hip',-60,70,1],['fk','Rear knee',0,150,1]];
 const clone=o=>JSON.parse(JSON.stringify(o));
 const HBSL=[['w','Blade thickness',0.03,0.4,0.01,'blade'],['reach','Reach forward',0.2,1.8,0.01,'box'],['h','Box height',0.2,1.8,0.01,'box'],['y','Box centre height',0,1.8,0.01,'box'],['r','Radius',0.2,1.2,0.01,'circle']];
 function hitOf(a){if(!a.hit)a.hit={shape:'blade',w:0.12,reach:0.9,h:0.5,y:1.0,r:0.6,f0:Math.max(0,a.contact-2),f1:Math.min(88,a.contact+3)};return a.hit}
 const uid=()=>'a'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 let lib={anims:[],sel:null},frame=0,playing=false,last=0,drag=null,handlesPx=[];
-function mkAnim(type,load,name){return{id:uid(),name:name||({attack:'New attack',idle:'New idle',walk:'New walk',hurt:'New damaged',dying:'New dying',falling:'New falling'})[type],type,load:load||'1s',contact:36,loop:({idle:3,hurt:0.3,dying:0.35,falling:0.5})[type]||0.55,keys:[]}}
+function mkAnim(type,load,name){return{id:uid(),name:name||({attack:'New attack',idle:'New idle',walk:'New walk',hurt:'New damaged',dying:'New dying',falling:'New falling',grab:'New grab',throw:'New throw',slam:'New slam',strike:'New strike'})[type],type,load:load||'1s',contact:36,loop:({idle:3,hurt:0.3,dying:0.35,falling:0.5})[type]||0.55,keys:[]}}
 function cur(){return lib.anims.find(a=>a.id===lib.sel)}
-const isLoop=a=>a.type!=='attack',NF=a=>isLoop(a)?60:90,twoOf=a=>a.load==='2',shieldOf=a=>a.load==='1s';
+const GRABT=['grab','throw','slam','strike'],isGrab=a=>GRABT.includes(a.type),isAtk=a=>a.type==='attack'||isGrab(a),isLoop=a=>!isAtk(a),NF=a=>isLoop(a)?60:90,twoOf=a=>a.load==='2',shieldOf=a=>a.load==='1s';
 function dur(){return +$('dur').value/10}
 function reg(){M.clearCustom();const c=cur();for(const a of lib.anims)if(a!==c&&a.keys.length)M.registerAnim(regDef(a));if(c&&c.keys.length)M.registerAnim(regDef(c));save()}
-function regDef(a){return{id:a.id,type:a.type,two:twoOf(a),contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,keys:a.keys}}
+function regDef(a){return{id:a.id,type:a.type,two:twoOf(a),contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,keys:a.keys,vm:!!a.vm}}
 function fobjBase(){const a=cur();return{role:'p',tier:$('tier').value,two:twoOf(a),shield:shieldOf(a),face:1,broken:false,tabard:'#c2413b',helm:'#98a2ae',moving:false,walkT:0,flash:0,flashMax:.2,t:0}}
+function gv0(a,fr){const n=NF(a),c=Math.max(1,a.contact||36),hu=0.4;if(a.type==='grab')return{kind:'grab',u:fr/(n-1),hu};
+  return{kind:a.type,hu,u:fr<c?hu*fr/c:hu+(1-hu)*(fr-c)/Math.max(1,n-1-c)}}
+function vdef(a,fr){const g=gv0(a,fr),d=M.victimDefault(g.kind,g.u,g.hu);return{vz:d.dz,vy:d.lift,vr:d.rot/D2R}}
 function keyAt(f){return cur().keys.find(k=>k.f===f)}
 function figureAt(fr){const a=cur(),f=fobjBase(),n=NF(a);
   if(a.type==='attack'){if(!a.keys.length)return M.poseCustom('p',f,DEF0);f.style='c_'+a.id;const d=dur(),h=d*a.contact/(n-1);f.swing={t:fr/(n-1)*d,dur:d,dur0:d,hitAt:h,extra:0};return M.pose('p',f)}
+  if(isGrab(a)){if(!a.keys.length)return M.poseCustom('p',f,DEF0);const g=gv0(a,fr);f.gx={kind:g.kind,u:g.u,hu:g.hu};return M.pose('p',f)}
   if(a.type==='idle'){f.t=fr/n*a.loop;return M.pose('p',f)}
   if(a.type==='hurt'){f.hurtMax=1;f.hurt=1-fr/(n-1)*a.loop*0.999;return M.pose('p',f)}
   if(a.type==='dying'){f.dead=true;f.deathT=fr/(n-1)*a.loop;return M.pose('p',f)}
   if(a.type==='falling'){f.dead=true;f.deathT=M.dieDur(f.two)+fr/(n-1)*a.loop;return M.pose('p',f)}
   f.moving=true;f.walkT=fr/n*2*Math.PI/12;return M.pose('p',f)}
-function paramsHere(){const a=cur(),k=keyAt(frame);if(k)return clone(k);
+function paramsHere(){const r=paramsHere0();if(isGrab(cur())&&r.vz==null)Object.assign(r,vdef(cur(),frame));return r}
+function paramsHere0(){const a=cur(),k=keyAt(frame);if(k)return clone(k);
   if(!a.keys.length)return Object.assign({f:frame},isLoop(a)?DEFL:DEF0);
   if(a.type==='attack'&&frame<a.keys[0].f)return Object.assign(clone(a.keys[0]),{f:frame});
   figureAt(frame);return Object.assign({},DEF0,M.paramsFromP(M.lastP),{f:frame})}
-function ensureKey(){const a=cur();let k=keyAt(frame);if(!k){k=paramsHere();k.f=frame;a.keys.push(k);a.keys.sort((x,y)=>x.f-y.f)}return k}
+function ensureKey(){const a=cur();let k=keyAt(frame);if(!k){k=paramsHere();k.f=frame;a.keys.push(k);a.keys.sort((x,y)=>x.f-y.f)}if(isGrab(a)&&a.vm&&k.vz==null)Object.assign(k,vdef(a,frame));return k}
 function setParams(upd){Object.assign(ensureKey(),upd);reg();draw()}
 function J(prm){return M.joints(M.poseCustom('p',fobjBase(),prm))}
 function dirOf(p){const e=p.ba*D2R,z=p.bx*D2R;return[Math.cos(e)*Math.sin(z),Math.sin(e),Math.cos(e)*Math.cos(z)]}
@@ -108,21 +115,29 @@ function draw(){
   ctx.fillStyle='rgba(0,0,0,.38)';ctx.beginPath();ctx.ellipse(M.ox*Z,gy,17*Z,4.5*Z,0,0,7);ctx.fill();
   const put=(rig,al)=>{const cv=M.render(rig);ctx.globalAlpha=al;const pf=ctx.filter;ctx.filter='brightness(0)';for(const[ox,oy]of[[1,0],[-1,0],[0,1],[0,-1]])ctx.drawImage(cv,ox*Z,oy*Z,200*Z,200*Z);ctx.filter=pf||'none';ctx.drawImage(cv,0,0,200*Z,200*Z);ctx.globalAlpha=1};
   if($('onion').checked&&a.keys.length){const pk=[...a.keys].reverse().find(k=>k.f<frame);if(pk)put(M.poseCustom('p',fobjBase(),pk),.28)}
-  const rig=figureAt(frame);put(rig,1);
+  const rig=figureAt(frame);
+  let vh=null;
+  if(isGrab(a)&&$('vshow').checked){const g=gv0(a,frame),fv={role:'e',tier:'mail',two:false,shield:true,face:1,broken:false,moving:false,walkT:0,flash:0,t:0,gv:{kind:g.kind,u:g.u,hu:g.hu,two:twoOf(a)}},l=M.enemyLook('mail',7);fv.pHead=l.head;fv.pBody=l.body;fv.pLiv=l.liv;fv.pMetal=l.metal;
+    const xf=a.vm&&keyAt(frame)==null?M.victimXf(fv.gv):M.victimXf(fv.gv),vr=M.pose('e',fv);
+    const off=(22+xf.dz*PXU)*Z;ctx.save();ctx.translate(M.ox*Z+off,0);ctx.scale(-1,1);ctx.translate(-M.ox*Z,0);put(vr,.9);vh=M.joints(vr).pelvis;ctx.restore();vh=[M.ox*2-vh[0]+22+xf.dz*PXU,vh[1]]}
+  put(rig,1);
   const j=M.joints(rig),prm=paramsHere(),d=dirOf(prm);handlesPx=[];
   if($('handles').checked){handlesPx=[{id:'tip',p:[j.hand[0]+d[2]*j.tipLen*PXU,j.hand[1]-d[1]*j.tipLen*PXU],c:'#46d6ff'},{id:'hand',p:j.hand,c:'#ff9d3c'},{id:'hips',p:j.pelvis,c:'#5be37d'},{id:'footN',p:j.ankN,c:'#d58cff'},{id:'footF',p:j.ankF,c:'#ff8ccf'}];
-    if(!twoOf(a))handlesPx.push({id:'shield',p:j.farHand,c:'#ffd84a'})}
+    if(!twoOf(a))handlesPx.push({id:'shield',p:j.farHand,c:'#ffd84a'});
+    if(vh&&a.vm)handlesPx.push({id:'victim',p:vh,c:'#7ee0b0'})}
   oc.clearRect(0,0,W,stage.height);drawHit(a,j,d,Z,W);for(const h of handlesPx){oc.beginPath();oc.arc(h.p[0]*Z,h.p[1]*Z,9,0,7);oc.fillStyle=h.c+'55';oc.fill();oc.lineWidth=2;oc.strokeStyle=h.c;oc.stroke()}
   const k=keyAt(frame),tsec=isLoop(a)?frame/n*a.loop:frame/(n-1)*dur();
-  $('info').innerHTML='<b>'+esc(a.name)+'</b> · frame <b>'+(frame+1)+' / '+n+'</b> · '+tsec.toFixed(2)+' s · '+(k?'<b style="color:#e8b04a">KEY</b>':'in-between')+' · keys: '+a.keys.length+(a.type==='attack'?' · hit lands on frame '+(a.contact+1):(['hurt','dying','falling'].includes(a.type)?' · plays once':' · loops'))
-  $('help').textContent=a.type==='attack'?'Drag the dots to pose. Moving a dot on a frame without a key creates a key there. The idle stance holds until your first key, then jumps in. The red line is the frame where the hit lands.':({hurt:'Plays once each time the fighter is hit, then returns to its first pose. Start it from a standing pose. Slider = how long it lasts.',dying:'Plays once when the fighter is killed, before the fall. The last pose is held, then Falling takes over. Slider = how long it lasts.',falling:'Plays after Dying while the body topples to the ground (the tip-over itself is automatic). The last pose is held on the ground. Slider = how long it lasts.'})[a.type]||('This loops forever in the game while the fighter is '+(a.type==='idle'?'standing':'walking')+'. Put keys around the loop; the last frame blends back to the first.');
+  $('info').innerHTML='<b>'+esc(a.name)+'</b> · frame <b>'+(frame+1)+' / '+n+'</b> · '+tsec.toFixed(2)+' s · '+(k?'<b style="color:#e8b04a">KEY</b>':'in-between')+' · keys: '+a.keys.length+(isAtk(a)&&a.type!=='grab'?' · '+(a.type==='attack'?'hit':'finisher')+' lands on frame '+(a.contact+1):a.type==='grab'?' · plays once, then holds the last pose':(['hurt','dying','falling'].includes(a.type)?' · plays once':' · loops'))
+  $('help').textContent=isGrab(a)?({grab:'The reach: how the fighter seizes the enemy. Plays once, then the LAST pose is held for as long as the grip lasts.',throw:'Winds up, then lets go on the red line; the enemy flies off on its own after that. Pose the grabbing hand and arm.',slam:'Lifts and brings the enemy down on the red line. The enemy ends up on the ground.',strike:'A quick blow while still holding. Afterwards the fighter goes back to holding.'})[a.type]+' The dummy is the enemy being held. Fixed grip: it hangs from the hand by itself. Tick the box to pose it yourself per key (drag it, or use the Victim sliders).':a.type==='attack'?'Drag the dots to pose. Moving a dot on a frame without a key creates a key there. The idle stance holds until your first key, then jumps in. The red line is the frame where the hit lands.':({hurt:'Plays once each time the fighter is hit, then returns to its first pose. Start it from a standing pose. Slider = how long it lasts.',dying:'Plays once when the fighter is killed, before the fall. The last pose is held, then Falling takes over. Slider = how long it lasts.',falling:'Plays after Dying while the body topples to the ground (the tip-over itself is automatic). The last pose is held on the ground. Slider = how long it lasts.'})[a.type]||('This loops forever in the game while the fighter is '+(a.type==='idle'?'standing':'walking')+'. Put keys around the loop; the last frame blends back to the first.');
   {const one=['hurt','dying','falling'].includes(a.type);$('loopbox').firstChild.firstChild.textContent=one?'Plays over ':'One loop takes '}
   $('fr').value=frame;renderTL(a,n);
   for(const[id]of SL){const el=$('s_'+id);if(el&&!(drag&&drag.slider===id)){el.value=prm[id];$('v_'+id).textContent=(+prm[id]).toFixed(Math.abs(el.step)<1?2:0)}}
   for(const r of document.querySelectorAll('.sl[data-sh]'))r.style.display=twoOf(a)?'none':'';
-  {const hb=hitOf(a);$('hbtype').value=hb.shape;for(const[id,,,,,t]of HBSL){const r=$('hr_'+id);if(r)r.style.display=(hb.shape===t&&!isLoop(a))?'':'none';const el=$('hs_'+id);if(el&&document.activeElement!==el){el.value=hb[id];$('hv_'+id).textContent=(+hb[id]).toFixed(2)}}
- $('hbtype').parentNode&&0;for(const id of['hbtype','hbs','hbe'])$(id).disabled=isLoop(a);$('hbinfo').textContent=isLoop(a)?'Hitboxes only apply to attacks.':(hb.shape==='none'?'This attack has no hitbox.':'Active on frames '+(hb.f0+1)+' to '+(hb.f1+1)+'. Move to a frame and press Starts here / Ends here.')}
- $('durbox').style.display=isLoop(a)?'none':'';$('loopbox').style.display=isLoop(a)?'':'none';$('ctk').style.display=isLoop(a)?'none':'';
+  for(const r of document.querySelectorAll('.sl[data-v]'))r.style.display=(isGrab(a)&&a.vm)?'':'none';
+  $('vbox').style.display=isGrab(a)?'':'none';$('vman').checked=!!a.vm;
+  {const hb=hitOf(a);$('hbtype').value=hb.shape;for(const[id,,,,,t]of HBSL){const r=$('hr_'+id);if(r)r.style.display=(hb.shape===t&&a.type==='attack')?'':'none';const el=$('hs_'+id);if(el&&document.activeElement!==el){el.value=hb[id];$('hv_'+id).textContent=(+hb[id]).toFixed(2)}}
+ $('hbtype').parentNode&&0;for(const id of['hbtype','hbs','hbe'])$(id).disabled=a.type!=='attack';$('hbinfo').textContent=a.type!=='attack'?'Hitboxes only apply to attacks.':(hb.shape==='none'?'This attack has no hitbox.':'Active on frames '+(hb.f0+1)+' to '+(hb.f1+1)+'. Move to a frame and press Starts here / Ends here.')}
+ $('durbox').style.display=isLoop(a)?'none':'';$('loopbox').style.display=isLoop(a)?'':'none';$('ctk').style.display=(isLoop(a)||a.type==='grab')?'none':'';
   if(document.activeElement!==$('json'))$('json').value=JSON.stringify(exportAnim(a))}
 function drawHit(a,j,d,Z,W){const hb=hitOf(a);if(!$('hbshow').checked||hb.shape==='none'||a.type!=='attack')return;
   const on=frame>=hb.f0&&frame<=hb.f1,gy=M.oy;oc.save();oc.fillStyle=on?'rgba(214,72,58,.38)':'rgba(214,72,58,.07)';oc.strokeStyle=on?'#ff5a46':'rgba(255,90,70,.35)';oc.lineWidth=2;
@@ -131,17 +146,18 @@ function drawHit(a,j,d,Z,W){const hb=hitOf(a);if(!$('hbshow').checked||hb.shape=
   else{oc.beginPath();oc.arc(j.pelvis[0]*Z,j.pelvis[1]*Z,hb.r*PXU*Z,0,7);oc.fill();oc.stroke()}
   oc.restore()}
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]);
-function exportAnim(a){return{id:a.id,name:a.name,type:a.type,load:a.load,contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,hit:a.type==='attack'?clone(hitOf(a)):undefined,keys:a.keys.map(k=>{const o={f:k.f};for(const key in DEF0)o[key]=+(+(k[key]==null?DEF0[key]:k[key])).toFixed(3);return o})}}
+function exportAnim(a){return{id:a.id,name:a.name,type:a.type,load:a.load,contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,hit:a.type==='attack'?clone(hitOf(a)):undefined,vm:isGrab(a)&&a.vm?true:undefined,keys:a.keys.map(k=>{const o={f:k.f};for(const key in DEF0)o[key]=+(+(k[key]==null?DEF0[key]:k[key])).toFixed(3);if(isGrab(a)&&k.vz!=null){o.vz=+(+k.vz).toFixed(3);o.vy=+(+k.vy).toFixed(3);o.vr=+(+k.vr).toFixed(1)}return o})}}
 function exportLib(){return{v:2,anims:lib.anims.map(exportAnim)}}
 function renderTL(a,n){const tl=$('tl');tl.innerHTML='';const w=tl.clientWidth,X=f=>f/(n-1)*(w-12)+6;
   for(const k of a.keys){const d=document.createElement('div');d.className='k'+(k.f===frame?' sel':'');d.style.left=X(k.f)+'px';d.title='frame '+(k.f+1);d.onclick=()=>{setPlay(false);go(k.f)};tl.appendChild(d)}
+  if(isAtk(a)&&a.type!=='grab'&&a.type!=='attack'){const c=document.createElement('div');c.className='ct';c.style.left=X(a.contact)+'px';c.title='finisher lands';tl.appendChild(c)}
   if(a.type==='attack'){const hb=hitOf(a);if(hb.shape!=='none'){const b=document.createElement('div');b.className='hbbar';b.style.left=X(hb.f0)+'px';b.style.width=Math.max(3,X(hb.f1)-X(hb.f0))+'px';b.title='hitbox active: frames '+(hb.f0+1)+' to '+(hb.f1+1);tl.appendChild(b)}const c=document.createElement('div');c.className='ct';c.style.left=X(a.contact)+'px';c.title='hit lands';tl.appendChild(c)}
   const p=document.createElement('div');p.className='ph';p.style.left=X(frame)+'px';tl.appendChild(p)}
 function renderList(){const L=$('alist');L.innerHTML='';for(const a of lib.anims){const d=document.createElement('div');d.className='ai'+(a.id===lib.sel?' sel':'');
   d.innerHTML='<span>'+esc(a.name)+'</span><small>'+a.type+' · '+(a.load==='2'?'2H':a.load==='1s'?'1H+shield':'1H')+'</small>';d.onclick=()=>select(a.id);L.appendChild(d)}}
 function select(id){lib.sel=id;const a=cur();setPlay(false);$('name').value=a.name;$('load').value=a.load;$('loop').value=Math.round(a.loop*10);$('lv').textContent=a.loop.toFixed(1);frame=a.keys.length?a.keys[0].f:0;renderList();reg();draw()}
 function go(f){frame=Math.max(0,Math.min(NF(cur())-1,f));draw()}
-for(const[id,lab,mn,mx,st,sh]of SL){const r=document.createElement('div');r.className='sl';if(sh)r.dataset.sh=1;r.innerHTML='<span>'+lab+'</span><input type="range" id="s_'+id+'" min="'+mn+'" max="'+mx+'" step="'+st+'"><span id="v_'+id+'"></span>';$('sliders').appendChild(r);
+for(const[id,lab,mn,mx,st,sh,vv]of SL){const r=document.createElement('div');r.className='sl';if(sh)r.dataset.sh=1;if(vv)r.dataset.v=1;r.innerHTML='<span>'+lab+'</span><input type="range" id="s_'+id+'" min="'+mn+'" max="'+mx+'" step="'+st+'"><span id="v_'+id+'"></span>';$('sliders').appendChild(r);
   $('s_'+id).oninput=e=>{drag={slider:id};setParams({[id]:+e.target.value});$('v_'+id).textContent=(+e.target.value).toFixed(st<1?2:0)};$('s_'+id).onchange=()=>{drag=null;draw()}}
 function pt(e){const r=ov.getBoundingClientRect(),Z=+$('zoom').value;return[(e.clientX-r.left)/Z,(e.clientY-r.top)/Z]}
 ov.onpointerdown=e=>{const[x,y]=pt(e);let best=null,tie=false,bd=23/+$('zoom').value;
@@ -156,6 +172,7 @@ ov.onpointermove=e=>{if(!drag||!drag.id)return;const[x,y]=pt(e),k=keyAt(frame),b
     else if(drag.id==='shield'){let fz=(x-j.farShoulder[0])/PXU,fy=(j.farShoulder[1]-y)/PXU;const L=Math.hypot(fy,fz);if(L>0.57){fy*=0.57/L;fz*=0.57/L}k.fy=fy;k.fz=fz}
     else{const dz=(x-j.hand[0])/PXU,dy=(j.hand[1]-y)/PXU,L=j.tipLen,m=Math.hypot(dz,dy),r=Math.min(m/L,1);if(m>1e-4){const xs=e.shiftKey?-drag.xs:drag.xs,vx=xs*Math.sqrt(1-r*r),vy=dy/m*r,vz=dz/m*r;
       k.ba=Math.atan2(vy,Math.hypot(vx,vz))/D2R;k.bx=Math.atan2(vx,vz)/D2R}}}
+  else if(drag.id==='victim'){k.vz=Math.max(-0.8,Math.min(0.8,(b.vz||0)+(x-drag.sx)/PXU));k.vy=Math.max(0,Math.min(1.6,(b.vy||0)-(y-drag.sy)/PXU))}
   else if(drag.id==='hips'){k.rz=b.rz+(x-drag.sx)/PXU;
     const at=c=>J(Object.assign({},b,{rz:k.rz,nk:b.nk+c,nh:b.nh-c/2,fk:b.fk+c/2,fh:b.fh+c/3}));
     let c0=drag.c,c1=c0+4,e0=at(c0).pelvis[1]-y,e1=at(c1).pelvis[1]-y;
@@ -184,10 +201,11 @@ $('play').onclick=()=>setPlay(!playing);$('b1').onclick=()=>{setPlay(false);go(0
 $('bm').onclick=()=>{setPlay(false);go(frame-1)};$('bp').onclick=()=>{setPlay(false);go(frame+1)};$('fr').oninput=e=>{setPlay(false);go(+e.target.value)};
 $('addk').onclick=()=>{ensureKey();reg();draw()};
 $('delk').onclick=()=>{const a=cur();a.keys=a.keys.filter(k=>k.f!==frame);reg();draw()};
-$('endk').onclick=()=>{const a=cur();if(a.type!=='attack'){note('End to idle is for attacks. Idle and walk loops already loop.');return}
+$('endk').onclick=()=>{const a=cur();if(!isAtk(a)||a.type==='grab'){note('End to idle is for attacks, throws, slams and strikes. The grab hold keeps its last pose.');return}
   const last=a.keys.length?a.keys[a.keys.length-1].f:0,at=frame>last?frame:Math.min(NF(a)-1,last+10);
   const f=fobjBase();f.t=0;M.pose('p',f);const prm=Object.assign({},DEF0,M.paramsFromP(M.lastP),{f:at});
   a.keys=a.keys.filter(k=>k.f!==at);a.keys.push(prm);a.keys.sort((x,y)=>x.f-y.f);frame=at;reg();save();draw();note('Added an idle-stance key at frame '+(at+1)+'.')};
+$('vman').onchange=e=>{const a=cur();a.vm=e.target.checked;if(a.vm)for(const k of a.keys)if(k.vz==null)Object.assign(k,vdef(a,k.f));reg();draw()};$('vshow').onchange=()=>draw();
 $('ctk').onclick=()=>{const a=cur();a.contact=Math.max(1,Math.min(88,frame));reg();draw()};
 for(const id of['zoom','onion','handles','tier'])$(id).onchange=()=>draw();
 $('dur').oninput=e=>{$('dv').textContent=(e.target.value/10).toFixed(1);draw()};
@@ -207,7 +225,7 @@ async function copyText(t,ok){try{await navigator.clipboard.writeText(t);note(ok
 $('copyall').onclick=()=>copyText(JSON.stringify(exportLib()),'Copied the whole library ('+lib.anims.length+' animations). Paste it to Claude, or into the game test.');
 $('copy1').onclick=()=>copyText(JSON.stringify(exportAnim(cur())),'Copied this animation.');
 function importText(t,merge){try{const o=JSON.parse(t);const arr=o.anims||[o];const out=[];
-  for(const x of arr){if(!x.keys)continue;const a=mkAnim(x.type||'attack',x.load||(x.two?'2':x.shield===false?'1':'1s'),x.name);a.id=x.id||a.id;a.contact=x.contact||36;a.loop=x.loop||a.loop;if(x.hit)a.hit=Object.assign({},x.hit);a.keys=x.keys.map(k=>Object.assign({},DEF0,k));out.push(a)}
+  for(const x of arr){if(!x.keys)continue;const a=mkAnim(x.type||'attack',x.load||(x.two?'2':x.shield===false?'1':'1s'),x.name);a.id=x.id||a.id;a.contact=x.contact||36;a.loop=x.loop||a.loop;if(x.hit)a.hit=Object.assign({},x.hit);if(x.vm)a.vm=true;a.keys=x.keys.map(k=>Object.assign({},DEF0,k));out.push(a)}
   if(!out.length)throw 0;
   if(merge){for(const a of out){const i=lib.anims.findIndex(z=>z.id===a.id);if(i>=0)lib.anims[i]=a;else lib.anims.push(a)}}else lib.anims=out;
   select(out[0].id);note('Loaded '+out.length+' animation'+(out.length>1?'s':'')+'.')}catch(e){note('That is not a valid animation file.')}}

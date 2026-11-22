@@ -48,6 +48,11 @@ export const CFG = {
   // Clash: your blade meets an enemy's mid-swing. Both freeze; press (Space or click) as the closing ring meets the inner one.
   // Outcomes are PLACEHOLDERS: win = enemy staggered and your next swing starts at once; lose or no press = you are knocked back.
   clash: { dur: 1.0, target: 0.6, window: 0.12, early: 0.7, stun: 1.0, knock: 26, loseDelay: 0.6 },   // early: how far back into the wind-up blades can meet (fraction of set-to-contact)
+  // Grab: hold G beside a staggered or wounded enemy. Then throw, slam, or strike (short hold-and-strike). Damage = weapon damage x mult, armor PERCENT ignored, durability still wears by the same amount. PLACEHOLDERS.
+  grab: { reach: 36, grip: 22, reachDur: 0.22, holdMax: 2.0, maxStrikes: 2,
+    throw:  { dur: 0.55, hitAt: 0.30, mult: 3,   speed: 260, lob: 120, bowl: 1.5, after: 0.35 },
+    slam:   { dur: 0.60, hitAt: 0.38, mult: 4,   after: 0.35, downed: 1.4 },
+    strike: { dur: 0.35, hitAt: 0.15, mult: 1.5, after: 0.0 } },
   body: { height: 1.7, radius: 0.2 },     // PLACEHOLDER: a fighter's hit capsule, metres (side view)
   enemy:  { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1.0, atkHitAt: 0.45, atkCool: 0.8, reach: 38, move: 'cut1|sword' },   // move: the baked path its swing uses, if the client provided one
   rallyPerChr: 0.004,                     // PLACEHOLDER: chance per second, per CHR point, that a fleeing enemy rallies (CHR 5 = 2%/s)
@@ -82,12 +87,12 @@ export function makeRng(seed) {
 }
 
 /* ---------- replays: rules version, saved state, and the one way anything outside changes a fight ---------- */
-export const SIM_VERSION = 3;                                       // bump when a rule changes, so old replays are flagged
+export const SIM_VERSION = 4;                                       // bump when a rule changes, so old replays are flagged
 const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut'];
 // every outside change (input, spawns, settings) goes through here, live and in replays, so a replay repeats the fight exactly
 export function applyCmd(sim, c) {
   switch (c.t) {
-    case 'input': sim.input = { x: c.x, y: c.y, act: !!c.act }; break;
+    case 'input': sim.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || '' }; break;
     case 'spawn': for (const o of c.list) sim.spawn(Object.assign({}, o, { index: sim.enemies.filter(e => e.state === 'alive').length % 5 })); if (c.say) sim.say('info', c.say); break;
     case 'clear': sim.clearEnemies(); sim.say('info', 'Arena cleared.'); break;
     case 'heal': sim.healAll(); break;
@@ -172,7 +177,7 @@ export class Sim {
     this.enemies = []; this.fx = []; this.texts = []; this.routed = 0;
     this.log = []; this.logVer = 0; this.lastHit = null;
     this.moves = this.moves || {};                                // baked weapon paths by move id; a move without one uses the reach rule
-    this.input = { x: 0, y: 0, act: false }; this.actPrev = false; this.clash = null;
+    this.input = { x: 0, y: 0, act: false, g: false, fin: '' }; this.actPrev = false; this.gPrev = false; this.finPrev = ''; this.clash = null;
   }
   clearEnemies() { this.enemies = []; this.fx = []; this.texts = []; }
   clearAllies() { this.allies = []; }
@@ -248,6 +253,9 @@ export class Sim {
   step(dtReal) {
     this.stepN++;
     const act = !!this.input.act, pressed = act && !this.actPrev; this.actPrev = act;   // a press is the moment the key goes down
+    const gd = !!this.input.g, gPress = gd && !this.gPrev; this.gPrev = gd;
+    const fin = this.input.fin || '', finPress = fin && fin !== this.finPrev ? fin : ''; this.finPrev = fin;
+    this._press = { act: pressed, g: gPress, fin: finPress };
     if (this.hitstop > 0) { this.hitstop -= dtReal; return; }
     let dt = dtReal;
     if (this.slow > 0) { dt *= 0.35; this.slow -= dtReal; }
@@ -284,6 +292,7 @@ export class Sim {
     const mag = Math.sqrt(ix * ix + iy * iy);                     // not Math.hypot: identical results on every engine (replays, server)
     if (mag > 1) { ix /= mag; iy /= mag; }
     p.flash = Math.max(0, p.flash - dt); p.hurt = Math.max(0, (p.hurt || 0) - dt);
+    if (p.grab) { p.moving = false; this.updateGrab(dt); return; }   // holding someone: planted until you let go
     const swinging = !!p.swing;
     const spd = c.player.speed * (swinging ? c.swingMoveMult : 1);
     p.moving = mag > 0;
@@ -294,6 +303,8 @@ export class Sim {
       if (!swinging && ix !== 0) p.face = Math.sign(ix);
     }
     if (p.cooldown > 0) p.cooldown -= dt;
+    const goG = !!this.input.g;                                      // holding G: reach for a staggered enemy instead of swinging
+    if (goG && this.tryGrab(!!(this._press && this._press.g))) return;
 
     if (p.swing) {
       const s = p.swing, t0 = s.t; s.t += dt;
@@ -306,7 +317,7 @@ export class Sim {
         p.swing = null;
       }
     }
-    if (!p.swing && p.cooldown <= 0) {
+    if (!p.swing && p.cooldown <= 0 && !goG) {
       const tgt = this.findTarget(w);
       if (tgt) {
         const cs = p.chainStyles && p.chainStyles.length ? p.chainStyles[p.chain % p.chainStyles.length] : null;
@@ -315,6 +326,69 @@ export class Sim {
         p.moved = false;
       }
     }
+  }
+
+  /* ---------- Grab: seize a staggered or wounded enemy, then throw, slam or strike ---------- */
+  grabbable(e) { return e.state === 'alive' && !e.held && !e.fly && (e.stun > 0 || e.wounded > 0); }
+  tryGrab(announce) {
+    const p = this.player, c = this.cfg; let best = null, bd = 1e9;
+    for (const e of this.enemies) {
+      if (!this.grabbable(e)) continue;
+      const dx = Math.abs(e.x - p.x), dy = Math.abs(e.y - p.y);
+      if (dy <= c.laneTol && dx <= c.grab.reach && dx < bd) { best = e; bd = dx; }
+    }
+    if (!best) { if (announce) this.text(p.x, p.y - 96, 'NOTHING TO GRAB', '#b7ab9a', 9); return false; }
+    p.face = best.x >= p.x ? 1 : -1; p.swing = null; p.chain = 0; p.moved = false;
+    best.held = true; best.atk = null; best.stun = 0; best.wounded = 0;
+    p.grab = { eId: best.id, phase: 'reach', t: 0, dur: c.grab.reachDur, hit: false, strikes: 0, holdT: 0 };
+    this.say('info', 'Grab: seized enemy #' + best.id + '.');
+    return true;
+  }
+  grabVictim() { const g = this.player.grab; return g && this.enemies.find(x => x.id === g.eId); }
+  endGrab(stun, down) {
+    const p = this.player, e = this.grabVictim();
+    if (e) { e.held = false; if (e.state === 'alive' && stun > 0) { e.stun = Math.max(e.stun || 0, stun); if (down) e.down = true; } }
+    p.grab = null;
+  }
+  updateGrab(dt) {
+    const p = this.player, c = this.cfg, G = c.grab, g = p.grab, e = this.grabVictim(), pr = this._press || {};
+    if (!e || e.state !== 'alive') { p.grab = null; return; }
+    g.t += dt; if (e.held) { e.x = this.clampX(p.x + p.face * G.grip); e.y = p.y; e.face = -p.face; }
+    if (g.phase === 'reach') { if (g.t >= g.dur) { g.phase = 'hold'; g.t = 0; } return; }
+    if (g.phase === 'hold') {
+      g.holdT += dt;
+      const pick = pr.fin === 'throw' ? 'throw' : pr.fin === 'slam' ? 'slam' : (pr.fin === 'strike' || pr.act) ? 'strike' : null;
+      if (pick === 'strike' && g.strikes >= G.maxStrikes) return;
+      if (pick) { g.phase = pick; g.t = 0; g.dur = G[pick].dur; g.hit = false; this.say('info', 'Grab: ' + pick + '.'); return; }
+      if (g.holdT >= G.holdMax) { this.text(p.x, p.y - 100, 'LOST GRIP', '#b7ab9a', 9); this.endGrab(0.5); }
+      return;
+    }
+    const F = G[g.phase];
+    if (!g.hit && g.t >= F.hitAt) {
+      g.hit = true; const w = this.weaponInfo(), raw = Math.max(1, Math.floor(w.dmg * F.mult + 1e-9));
+      this.text(p.x, p.y - 112, g.phase.toUpperCase(), '#ffd27a', 11); this.shake = Math.max(this.shake, 0.14);
+      this.applyHit(e, raw, null, g.phase);
+      if (e.state !== 'alive') { e.held = false; p.grab = null; p.cooldown = F.after; return; }
+      if (g.phase === 'throw') { e.held = false; e.fly = { vx: p.face * G.throw.speed, vz: G.throw.lob, hit: [] }; e.z = 1; }
+      else if (g.phase === 'slam') { this.burst(e.x, e.y, 10, '#8a7a6a', 90); }
+    }
+    if (g.t >= F.dur) {
+      if (g.phase === 'strike') { g.strikes++; g.phase = 'hold'; g.t = 0; g.holdT = 0; return; }   // back to holding, more choices
+      p.cooldown = F.after;
+      if (g.phase === 'slam') this.endGrab(G.slam.downed, true); else p.grab = null;
+    }
+  }
+  // a thrown enemy: flies, knocks over anyone in the way, lands staggered
+  updateFly(e, dt) {
+    const c = this.cfg, f = e.fly;
+    e.x = this.clampX(e.x + f.vx * dt); e.z += f.vz * dt; f.vz -= 620 * dt; f.vx *= 0.985;
+    for (const o of this.enemies) {
+      if (o === e || o.state !== 'alive' || o.held || f.hit.includes(o.id) || Math.abs(o.y - e.y) > c.laneTol || Math.abs(o.x - e.x) > 18) continue;
+      f.hit.push(o.id); o.stun = Math.max(o.stun || 0, 1.0); o.atk = null;
+      const raw = Math.max(1, Math.floor(this.weaponInfo().dmg * c.grab.throw.bowl + 1e-9));
+      this.applyHit(o, raw, null, 'bowl'); this.text(o.x, o.y - 120, 'STRIKE!', '#ffd27a', 10);
+    }
+    if ((e.z <= 0 && f.vz < 0) || Math.abs(f.vx) < 6) { e.z = 0; e.fly = null; e.stun = c.grab.slam.downed; e.down = true; this.burst(e.x, e.y, 8, '#8a7a6a', 80); this.shake = Math.max(this.shake, 0.1); }
   }
 
   // the blade's path between the last step and this one, inside the move's hit window, against every enemy in the lane
@@ -384,11 +458,11 @@ export class Sim {
   }
 
   /* ---------- the rules under test ---------- */
-  applyHit(e, raw, swing) {
-    const c = this.cfg, p = this.player;
+  applyHit(e, raw, swing, fin) {
+    const c = this.cfg, p = this.player;   // fin: a grab finisher; armor percent ignored, durability still wears, no crit or wound rules
     const wasW = e.wounded > 0, wasB = e.broken;
-    const crit = wasW || wasB;
-    const pct = wasB ? 0 : e.armorPct;
+    const crit = !fin && (wasW || wasB);
+    const pct = (wasB || fin) ? 0 : e.armorPct;
     const red = v => Math.max(1, Math.floor(v * (1 - pct) + 1e-9));
     let dmg;
     if (crit) dmg = c.critOrder === 'before' ? red(raw * c.critMult) : red(raw) * c.critMult;
@@ -398,7 +472,7 @@ export class Sim {
     e.hp = Math.max(0, e.hp - dmg);
     let brokeNow = false;
     if (!e.broken && e.durMax > 0) {
-      e.dur = Math.max(0, e.dur - raw);
+      e.dur = Math.max(0, e.dur - raw);   // a finisher's raw is its full heavy damage, so it wears the set heavily too
       if (e.dur <= 0) { e.broken = true; brokeNow = true; }
     }
     const thr = e.broken ? 0 : c.woundedThreshold;
@@ -422,6 +496,8 @@ export class Sim {
       rec.dramatic = wasW;
       this.kill(e, wasW, swing);
       this.say(wasW ? 'kill' : 'hit', line + (wasW ? '  | KILLED WHILE WOUNDED (dramatic)' : '  | KILLED'));
+    } else if (fin) {
+      this.say('hit', line + '  | ' + fin.toUpperCase() + ' (armor % ignored)');
     } else {
       let setW = false, consumed = false;
       if (e.broken) setW = dmg > 0;
@@ -474,8 +550,10 @@ export class Sim {
       return;
     }
     e.moving = false;
+    if (e.held) return;                                              // in the player's grip: pinned by updateGrab
+    if (e.fly) { this.updateFly(e, dt); return; }
     if (!p) return;                                                  // nobody left standing to fight
-    if (e.stun > 0) { e.stun -= dt; return; }                         // staggered after losing a clash
+    if (e.stun > 0) { e.stun -= dt; if (e.stun <= 0) e.down = false; return; }                         // staggered after losing a clash
     if (e.wounded > 0) {
       e.wounded -= dt;
       if (e.wounded <= 0) { e.wounded = 0; this.checkFlee(e); }
@@ -546,6 +624,7 @@ export class Sim {
       if (r.broke) { this.say('break', 'Your armor broke.'); this.text(p.x, p.y - 110, 'ARMOR BROKEN', '#ff9a6a', 9); }
       if (p.hp <= 0) { if (this.mode === 'battle') p.hp = 0; else { this.say('info', 'Player downed; restored.'); p.hp = p.maxHp; } }
     } else this.text(p.x, p.y - 96, 'HIT', '#9fd0ff', 10);
+    if (p.grab && !p.inv) { this.text(p.x, p.y - 108, 'GRAB BROKEN', '#ff9a6a', 9); this.endGrab(0.5); p.cooldown = c.interruptDelay; }
     if (p.swing) {
       if (p.chain > 0) this.text(p.x, p.y - 108, 'CHAIN BROKEN: hit', '#ff9a6a', 9);
       p.swing = null; p.chain = 0; p.cooldown = c.interruptDelay;

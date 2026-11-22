@@ -105,11 +105,13 @@ import { applySnapshot } from '../server/protocol.js';
     if (typing(e)) return;
     if (e.code === 'KeyP') { togglePause(); return; }
     if (e.code === 'Space') { keys.act = true; e.preventDefault(); return; }    // Clash press
+    if (e.code === 'KeyG') { keys.g = true; e.preventDefault(); return; }       // hold beside a staggered enemy to grab it
+    if (e.code === 'KeyF') { keys.fin = 'throw'; return; } if (e.code === 'KeyV') { keys.fin = 'slam'; return; } if (e.code === 'KeyR') { keys.fin = 'strike'; return; }
     const k = MAP[e.code]; if (!k) return;
     if (e.target && e.target.type === 'range' && e.code.startsWith('Arrow')) return;
     keys[k] = true; e.preventDefault();
   });
-  window.addEventListener('keyup', e => { if (e.code === 'Space') keys.act = false; const k = MAP[e.code]; if (k) keys[k] = false; });
+  window.addEventListener('keyup', e => { if (e.code === 'Space') keys.act = false; if (e.code === 'KeyG') keys.g = false; if ((e.code === 'KeyF' && keys.fin === 'throw') || (e.code === 'KeyV' && keys.fin === 'slam') || (e.code === 'KeyR' && keys.fin === 'strike')) keys.fin = ''; const k = MAP[e.code]; if (k) keys[k] = false; });
   cv.addEventListener('pointerdown', () => { keys.act = true; }); window.addEventListener('pointerup', () => { keys.act = false; });
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
   cv.addEventListener('pointerdown', () => cv.focus());
@@ -227,8 +229,8 @@ import { applySnapshot } from '../server/protocol.js';
 
     for (const it of list) {
       if (it.kind === 'p') {
-        drawFigure({ role: 'p', x: p.x, y: p.y, face: p.face, tier: look.tier, pHead: look.head, pBody: look.body, pLiv: look.liv, pMetal: look.metal, broken: false, two: w.twoHanded, wkind: w.kind || 'sword', shield: false,
-          swing: p.swing, moving: p.moving, walkT: p.walkT, t: sim.t, flash: p.flash, flashMax: 0.2, hurt: p.hurt, hurtMax: 0.6, style: look.style });
+        drawFigure(Object.assign({ role: 'p', x: p.x, y: p.y, face: p.face, tier: look.tier, pHead: look.head, pBody: look.body, pLiv: look.liv, pMetal: look.metal, broken: false, two: w.twoHanded, wkind: w.kind || 'sword', shield: false,
+          swing: p.swing, moving: p.moving, walkT: p.walkT, t: sim.t, flash: p.flash, flashMax: 0.2, hurt: p.hurt, hurtMax: 0.6, style: look.style }, M3.grabAtt(sim, w.twoHanded)));
       } else {
         const e = it.e;
         if (e.state === 'dying') {
@@ -241,8 +243,10 @@ import { applySnapshot } from '../server/protocol.js';
             ctx.beginPath(); ctx.ellipse(Math.round(e.x), Math.round(e.y), 22, 6, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]);
           }
           const atk = e.atk ? { t: e.atk.t, dur: CFG.enemy.atkDur, dur0: CFG.enemy.atkDur, hitAt: CFG.enemy.atkHitAt, extra: 0 } : null;
-          drawFigure(withLook(e, { role: 'e', x: e.x, y: e.y, face: e.face, tier: e.tier, broken: e.broken, shield: true,
-            swing: atk, woundedPose: e.wounded > 0, moving: e.moving, walkT: e.walkT, t: sim.t, flash: e.flash, flashMax: 0.12, hurt: e.hurt, hurtMax: 0.6 }));
+          const gvw = M3.grabVic(sim, e, w.twoHanded), fe = { role: 'e', x: e.x, y: e.y, z: e.z, face: e.face, tier: e.tier, broken: e.broken, shield: true,
+            swing: atk, woundedPose: e.wounded > 0, moving: e.moving, walkT: e.walkT, t: sim.t, flash: e.flash, flashMax: 0.12, hurt: e.hurt, hurtMax: 0.6 };
+          if (gvw) { Object.assign(fe, gvw.fields); fe.x += gvw.dx; fe.swing = null; }
+          drawFigure(withLook(e, fe));
         }
       }
     }
@@ -445,7 +449,7 @@ import { applySnapshot } from '../server/protocol.js';
   function frame(now) {
     const real = Math.min(0.05, (now - last) / 1000); last = now;
     if (net) {                                                   // online: send input when it changes; the room steps the fight
-      const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act }, k = inp.x + ',' + inp.y + ',' + inp.act;
+      const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!keys.g, fin: keys.fin || '' }, k = inp.x + ',' + inp.y + ',' + inp.act + ',' + inp.g + ',' + inp.fin;
       if (k !== net.lastIn) { net.lastIn = k; send(Object.assign({ t: 'input' }, inp)); }
       for (const t of sim.texts) t.life -= real; sim.texts = sim.texts.filter(t => t.life > 0);
     } else if (pb) {                                             // a replay or kill cam is playing
@@ -455,8 +459,8 @@ import { applySnapshot } from '../server/protocol.js';
     } else if (!paused) {
       acc += real * timeScale;
       while (acc >= STEP) {
-        const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act }, s0 = live.input;
-        if (inp.x !== s0.x || inp.y !== s0.y || inp.act !== !!s0.act) cmd(Object.assign({ t: 'input' }, inp));
+        const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!keys.g, fin: keys.fin || '' }, s0 = live.input;
+        if (inp.x !== s0.x || inp.y !== s0.y || inp.act !== !!s0.act || inp.g !== !!s0.g || inp.fin !== (s0.fin || '')) cmd(Object.assign({ t: 'input' }, inp));
         live.step(STEP); acc -= STEP;
         if (rec && live.stepN % 300 === 0) { snaps.push({ step: live.stepN, state: live.saveState(), cfg: clone(live.cfg), moves: Object.assign({}, live.moves), at: rec.cmds.length }); if (snaps.length > 8) snaps.shift(); }
       }
@@ -479,7 +483,7 @@ import { applySnapshot } from '../server/protocol.js';
       for (const x of arr) {
         if (!x.keys || !x.keys.length) continue;
         const two = x.load ? x.load === '2' : !!x.two, typ = x.type || 'attack';
-        if (!M3.registerAnim({ id: x.id || 'legacy', type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit })) continue;
+        if (!M3.registerAnim({ id: x.id || 'legacy', type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit, vm: x.vm })) continue;
         if (typ === 'attack') {
           const op = document.createElement('option'); op.value = 'c_' + (x.id || 'legacy'); op.dataset.custom = 1;
           op.textContent = 'Custom: ' + (x.name || 'attack') + (two ? ' (2H)' : ' (1H)'); sel.appendChild(op); first = first || op.value;

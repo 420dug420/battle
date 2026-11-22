@@ -254,4 +254,40 @@ console.log('PASS shrug off after surviving crit');
   console.log('PASS campaign battle rules: armor, allies, chain styles, outcome');
 }
 
+// 17. grabbing
+{
+  const mk = (tier, stun) => { const s = new Sim(CFG, 7); s.player.cooldown = 0; const e = s.spawn({ tier, dur: 99, ai: 'stand' }); e.hp = e.maxHp = 40; e.x = s.player.x + 30; e.y = s.player.y; e.stun = stun; return [s, e]; };
+  const key = (s, o, secs) => { applyCmd(s, Object.assign({ t: 'input', x: 0, y: 0, act: false, g: false, fin: '' }, o)); run(s, secs); applyCmd(s, { t: 'input', x: 0, y: 0, act: false, g: false, fin: '' }); };
+  // cannot grab a healthy enemy
+  let [s, e] = mk('plate', 0); key(s, { g: true }, 0.1); assert(!s.player.grab && !e.held, 'a healthy enemy cannot be grabbed');
+  // grab a stunned one, hold, slam: heavy damage ignoring armor percent, durability wears by the full amount
+  [s, e] = mk('plate', 1.5); applyCmd(s, { t: 'set', inv: true }); key(s, { g: true }, 0.1);
+  assert(s.player.grab && e.held, 'stunned enemy is seized');
+  run(s, 0.4); assert.strictEqual(s.player.grab.phase, 'hold');
+  const hp0 = e.hp, d0 = e.dur; key(s, { fin: 'slam' }, 0.8);
+  assert.strictEqual(hp0 - e.hp, 12, 'slam = longsword 3 x4 = 12, plate % ignored'); assert.strictEqual(d0 - e.dur, 12, 'durability still wears by the full 12');
+  assert(!s.player.grab && !e.held && e.stun > 0, 'slam ends with the victim downed');
+  // throw: arcs away, lands staggered, bowls over a bystander
+  [s, e] = mk('mail', 1.5); const bystander = s.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); bystander.x = s.player.x + 90; bystander.y = s.player.y; bystander.hp = bystander.maxHp = 40;
+  applyCmd(s, { t: 'set', inv: true }); key(s, { g: true }, 0.5); const bx = e.x, bh = bystander.hp; key(s, { fin: 'throw' }, 1.4);
+  assert(e.x > bx + 40 && !e.fly && e.z === 0, 'thrown enemy flew and landed'); assert(bystander.hp < bh && bystander.stun > 0 || bystander.hp < bh, 'bystander was hit by the thrown body');
+  assert(e.hp === 40 - 9, 'throw = 3 x3 = 9');
+  // strike keeps the hold, at most two
+  [s, e] = mk('leather', 1.5); applyCmd(s, { t: 'set', inv: true }); key(s, { g: true }, 0.5);
+  for (let i = 0; i < 3; i++) { key(s, { fin: 'strike' }, 0.1); key(s, {}, 0.5); }
+  assert(s.player.grab && s.player.grab.phase === 'hold', 'still holding after strikes'); assert.strictEqual(e.hp, 40 - 4 * 2, 'two strikes of 4 (3 x1.5), the third refused');
+  // a hit on the player breaks the grab
+  [s, e] = mk('leather', 1.5); applyCmd(s, { t: 'set', inv: false, hp: 30 }); key(s, { g: true }, 0.5); s.enemyHitsPlayer(e);
+  assert(!s.player.grab && !e.held, 'getting hit breaks the grip');
+  // killing the held enemy ends the grab cleanly
+  [s, e] = mk('leather', 1.5); e.hp = 3; applyCmd(s, { t: 'set', inv: true }); key(s, { g: true }, 0.5); key(s, { fin: 'slam' }, 0.8);
+  assert(e.state === 'dying' && !s.player.grab, 'finisher kill ends the grab');
+  // replay determinism with grabs
+  const a = new Sim(CFG, 9), b = new Sim(CFG, 9); const cmds = [{ t: 'spawn', list: [{ tier: 'mail' }] }];
+  [a, b].forEach(q => { applyCmd(q, cmds[0]); const q1 = q.enemies[0]; q1.x = q.player.x + 30; q1.y = q.player.y; q1.stun = 1.5; applyCmd(q, { t: 'set', inv: true }); });
+  [a, b].forEach(q => { applyCmd(q, { t: 'input', x: 0, y: 0, act: false, g: true, fin: '' }); run(q, 0.5); applyCmd(q, { t: 'input', x: 0, y: 0, act: false, g: false, fin: 'throw' }); run(q, 1.5); });
+  assert.deepStrictEqual(a.saveState(), b.saveState(), 'grab fights replay identically');
+  console.log('PASS grab: gate, hold, slam, throw, strike, break, kill, replay');
+}
+
 console.log('\nALL SIM TESTS PASSED');

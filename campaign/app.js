@@ -26,7 +26,7 @@ function loadLibrary(txt, quiet) {
   const arr = BUILTIN_ANIMS.filter(b => !user.some(u => u.id === b.id)).concat(user);
   M3.clearCustom();
   let n = 0;
-  for (const x of arr) { if (!x.keys || !x.keys.length) continue; if (M3.registerAnim({ id: x.id || 'legacy', type: x.type || 'attack', two: x.load ? x.load === '2' : !!x.two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit })) n++; }
+  for (const x of arr) { if (!x.keys || !x.keys.length) continue; if (M3.registerAnim({ id: x.id || 'legacy', type: x.type || 'attack', two: x.load ? x.load === '2' : !!x.two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit, vm: x.vm })) n++; }
   anims = arr; if (!quiet) { try { localStorage.setItem(LIBKEY, txt); } catch (e) { } }
   return n;
 }
@@ -373,7 +373,7 @@ function startBattle(spec) {
   battle = { sim, spec, tiers, keys: {}, acc: 0, last: 0, paused: false, over: false, endAt: 0, hint: !!spec.tutorial, retreat: false, rain: Array.from({ length: 70 }, (_, i) => [Math.random() * 640, Math.random() * 360, 4 + Math.random() * 3]) };
   scr = 'battle'; modal = null; render(); requestAnimationFrame(battleFrame);
 }
-const HINTS = ['Walk toward the men (WASD or the arrow keys). You swing on your own once one is within reach.', 'Standing still keeps your chain going; moving or being hit breaks it back to your first style.', 'When blades cross mid-swing, the ring closes: press Space or click as it meets the inner ring.', 'Win the training and you learn a second fighting style.'];
+const HINTS = ['Walk toward the men (WASD or the arrow keys). You swing on your own once one is within reach.', 'Standing still keeps your chain going; moving or being hit breaks it back to your first style.', 'When blades cross mid-swing, the ring closes: press Space or click as it meets the inner ring.', 'A staggered or wounded enemy can be grabbed: hold G beside him. Then F throws, V slams, R (or Space) strikes. Finishers ignore armor percent but still wear it down.', 'Win the training and you learn a second fighting style.'];
 function battleHTML() {
   const b = battle, sp = b.spec;
   return `<div class="topbar"><span class="co">${esc(sp.label)}</span><span class="chip">${esc(sp.weather)} · ${esc(sp.time)}</span><span class="chip">Pay <b class="gold">${sp.pay}</b></span><span style="flex:1"></span><button class="btn sm" data-a="bpause">Pause</button><button class="btn sm" data-a="bretreat">${sp.tutorial ? 'Restart' : 'Retreat (counts as a loss)'}</button></div>
@@ -382,8 +382,8 @@ function battleHTML() {
 }
 function bindBattle() { const c = $('bstage'); if (c) { c.focus(); c.addEventListener('pointerdown', () => { battle.keys.act = true; }); } }
 const KMAP = { KeyW: 'u', ArrowUp: 'u', KeyS: 'd', ArrowDown: 'd', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r' };
-window.addEventListener('keydown', e => { if (scr !== 'battle' || !battle) return; if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; if (e.code === 'Space') { battle.keys.act = true; e.preventDefault(); return; } if (e.code === 'KeyP') { battle.paused = !battle.paused; return; } const k = KMAP[e.code]; if (k) { battle.keys[k] = true; e.preventDefault(); } });
-window.addEventListener('keyup', e => { if (!battle) return; if (e.code === 'Space') battle.keys.act = false; const k = KMAP[e.code]; if (k) battle.keys[k] = false; });
+window.addEventListener('keydown', e => { if (scr !== 'battle' || !battle) return; if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; if (e.code === 'Space') { battle.keys.act = true; e.preventDefault(); return; } if (e.code === 'KeyG') { battle.keys.g = true; e.preventDefault(); return; } if (e.code === 'KeyF') { battle.keys.fin = 'throw'; return; } if (e.code === 'KeyV') { battle.keys.fin = 'slam'; return; } if (e.code === 'KeyR') { battle.keys.fin = 'strike'; return; } if (e.code === 'KeyP') { battle.paused = !battle.paused; return; } const k = KMAP[e.code]; if (k) { battle.keys[k] = true; e.preventDefault(); } });
+window.addEventListener('keyup', e => { if (!battle) return; if (e.code === 'Space') battle.keys.act = false; if (e.code === 'KeyG') battle.keys.g = false; if ((e.code === 'KeyF' && battle.keys.fin === 'throw') || (e.code === 'KeyV' && battle.keys.fin === 'slam') || (e.code === 'KeyR' && battle.keys.fin === 'strike')) battle.keys.fin = ''; const k = KMAP[e.code]; if (k) battle.keys[k] = false; });
 window.addEventListener('pointerup', () => { if (battle) battle.keys.act = false; });
 window.addEventListener('blur', () => { if (battle) battle.keys = {}; });
 
@@ -394,7 +394,7 @@ function battleFrame(ts) {
   if (!b.paused && !b.over) {
     b.acc += real;
     while (b.acc >= 1 / 60) {
-      const k = b.keys; s.input = { x: (k.r ? 1 : 0) - (k.l ? 1 : 0), y: (k.d ? 1 : 0) - (k.u ? 1 : 0), act: !!k.act };
+      const k = b.keys; s.input = { x: (k.r ? 1 : 0) - (k.l ? 1 : 0), y: (k.d ? 1 : 0) - (k.u ? 1 : 0), act: !!k.act, g: !!k.g, fin: k.fin || '' };
       s.step(1 / 60); b.acc -= 1 / 60;
       if (s.outcome && !b.endAt) b.endAt = s.t;
     }
@@ -423,8 +423,8 @@ function drawBattle() {
   for (const it of list) {
     if (it.k === 'p') {
       const st = p.swing && p.swing.style ? p.swing.style : 'cut';
-      if (p.hp > 0) drawFigure(ctx, { role: 'p', x: p.x, y: p.y, face: p.face, tier: 'leather', pHead: d.look.head, pBody: d.look.body, pLiv: d.look.liv, pMetal: d.look.metal, broken: p.broken, two: d.hands === 2, wkind: w.kind || 'sword', shield: sh,
-        swing: p.swing, moving: p.moving, walkT: p.walkT, t: sim.t, flash: p.flash, flashMax: 0.2, hurt: p.hurt, hurtMax: 0.6, style: st });
+      if (p.hp > 0) drawFigure(ctx, Object.assign({ role: 'p', x: p.x, y: p.y, face: p.face, tier: 'leather', pHead: d.look.head, pBody: d.look.body, pLiv: d.look.liv, pMetal: d.look.metal, broken: p.broken, two: d.hands === 2, wkind: w.kind || 'sword', shield: sh,
+        swing: p.swing, moving: p.moving, walkT: p.walkT, t: sim.t, flash: p.flash, flashMax: 0.2, hurt: p.hurt, hurtMax: 0.6, style: st }, M3.grabAtt(sim, d.hands === 2)));
       else drawFigure(ctx, { role: 'p', x: p.x, y: p.y, face: p.face, tier: 'leather', pHead: d.look.head, pBody: d.look.body, pLiv: d.look.liv, pMetal: d.look.metal, two: d.hands === 2, wkind: w.kind || 'sword', shield: sh, dead: true, deathT: Math.max(0, sim.t - b.endAt) + 0.01, t: sim.t, flash: 0, swing: null });
     } else if (it.k === 'a') {
       const a = it.a, aw = CFG.weapons[a.weapon], two = CFG.weaponClasses[aw.cls].twoHanded, L = a.look || M3.enemyLook(a.tier, a.lookSeed);
@@ -436,7 +436,7 @@ function drawBattle() {
       const e = it.e, L = e._look || (e._look = M3.enemyLook(e.tier, e.lookSeed));
       const common = { role: 'e', x: e.x, y: e.y, z: e.z, face: e.face, tier: e.tier, broken: e.broken, shield: true, pHead: L.head, pBody: L.body, pLiv: L.liv, pMetal: L.metal, t: sim.t };
       if (e.state === 'dying') drawFigure(ctx, Object.assign(common, { alpha: e.deathT > 1.9 ? Math.max(0, 1 - (e.deathT - 1.9) / 0.7) : 1, dead: true, deathT: e.deathT, dramatic: e.dramatic, flash: 0, swing: null }));
-      else drawFigure(ctx, Object.assign(common, { swing: e.atk ? { t: e.atk.t, dur: CFG.enemy.atkDur, dur0: CFG.enemy.atkDur, hitAt: CFG.enemy.atkHitAt, extra: 0 } : null, woundedPose: e.wounded > 0, moving: e.moving, walkT: e.walkT, flash: e.flash, flashMax: 0.12, hurt: e.hurt, hurtMax: 0.6 }));
+      else { const gvw = M3.grabVic(sim, e, d.hands === 2); if (gvw) { Object.assign(common, gvw.fields, { x: e.x + gvw.dx }); } drawFigure(ctx, Object.assign(common, { swing: gvw ? null : e.atk ? { t: e.atk.t, dur: CFG.enemy.atkDur, dur0: CFG.enemy.atkDur, hitAt: CFG.enemy.atkHitAt, extra: 0 } : null, woundedPose: e.wounded > 0, moving: e.moving, walkT: e.walkT, flash: e.flash, flashMax: 0.12, hurt: e.hurt, hurtMax: 0.6 })); }
     }
   }
   for (const e of sim.enemies) {

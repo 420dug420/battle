@@ -90,7 +90,7 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
     <section class="stagecol" aria-label="Test arena">
       <canvas id="stage" width="640" height="360" tabindex="0" aria-label="Combat arena. Move with W A S D or the arrow keys."></canvas>
       <div class="under">
-        <span><b>W A S D</b> or arrows to move. Attacks are automatic when an enemy is in reach and in your lane. <b>P</b> pauses.</span>
+        <span><b>W A S D</b> or arrows to move. Attacks are automatic when an enemy is in reach and in your lane. Hold <b>G</b> beside a staggered or wounded enemy to grab him, then <b>F</b> throw, <b>V</b> slam, <b>R</b> or Space strike. <b>P</b> pauses.</span>
         <span id="status" aria-live="off">Chain step 1</span>
       </div>
       <div class="sub">Tuning guesses, not design: swing speed, how DEX shortens it, two-hander damage, armor durability, flee SAN. Everything else follows the style guide.</div>
@@ -15253,7 +15253,21 @@ void main(){
     if (!rig) return false;
     let p, aux = {}, free = false;
     const dt = 0.016;
-    if (f.dead) {
+    let gp2 = null;
+    if (f.gx) {
+      gp2 = M3.grabPoseP(f.gx, !!f.two);
+      if (!gp2 && f.gx.kind !== "grab" && f.gx.kind !== "hold") f = Object.assign({}, f, { swing: { t: f.gx.u, dur: 1, hitAt: f.gx.hu || 0.5, extra: 0 }, style: GRAB_FALLBACK[f.gx.kind] || "cut" });
+    }
+    if (f.gv) {
+      const x = M3.victimXf(f.gv, !!f.gv.two);
+      p = KEYS.hit[0];
+      aux.rigRot = [x.rot, 0, 0];
+      aux.rigZ = x.rz || 0;
+      aux.lift = x.lift;
+      free = true;
+    } else if (gp2) {
+      p = gp2;
+    } else if (f.dead) {
       const two = f.two ? 2 : 1, viol = !!f.dramatic, T = f.deathT || 0;
       const cd = ONE["dying" + two], cf2 = ONE["falling" + two], dD = cd ? cd.dur : 0, fD = cf2 ? cf2.dur : DEAD_T(viol);
       const u = Math.min(1, Math.max(0, T - dD) / fD), e = u * u * (3 - 2 * u);
@@ -15315,6 +15329,63 @@ void main(){
     applyPose(rig, p, aux);
     groundLock(rig, aux.lift || 0);
     return rig;
+  };
+  var GRAB_FALLBACK = { strike: "lunge", slam: "chop", throw: "cut" };
+  var grabTau = (A, g) => {
+    const c = A.c == null ? A.len * 0.5 : A.c, hu2 = g.hu || 0.5;
+    return g.u < hu2 ? c * (g.u / hu2) : c + (A.len - 1 - c) * Math.min(1, (g.u - hu2) / Math.max(0.05, 1 - hu2));
+  };
+  M3.grabPoseP = function(g, two) {
+    const A = ONE[(g.kind === "hold" ? "grab" : g.kind) + (two ? 2 : 1)];
+    if (!A) return null;
+    if (g.kind === "grab") return sampleT(A.keys, A.T, g.u * (A.len - 1));
+    if (g.kind === "hold") return sampleT(A.keys, A.T, A.len - 1);
+    return sampleT(A.keys, A.T, grabTau(A, g));
+  };
+  var lerp1 = (a, b, u) => a + (b - a) * Math.max(0, Math.min(1, u));
+  M3.victimDefault = function(kind, u, hu2) {
+    hu2 = hu2 || 0.5;
+    if (kind === "throw") return u < hu2 ? { dz: lerp1(0, -0.2, u / hu2), lift: lerp1(0.12, 0.6, u / hu2), rot: lerp1(-0.2, -0.9, u / hu2) } : { dz: -0.2, lift: 0.6, rot: -0.9 };
+    if (kind === "slam") return u < hu2 ? { dz: lerp1(0, -0.1, u / hu2), lift: lerp1(0.12, 1.1, u / hu2), rot: lerp1(-0.2, -0.7, u / hu2) } : { dz: lerp1(-0.1, 0.2, (u - hu2) / 0.3), lift: lerp1(1.1, 0, (u - hu2) / 0.3), rot: lerp1(-0.7, -1.45, (u - hu2) / 0.3) };
+    if (kind === "strike") return { dz: 0, lift: 0.12, rot: -0.2 - 0.25 * Math.sin(Math.PI * Math.max(0, Math.min(1, u))) };
+    return { dz: 0, lift: 0.12, rot: -0.2 };
+  };
+  function grabPhase(sim) {
+    const p = sim.player, G2 = sim.cfg.grab, g = p.grab;
+    if (!g) return null;
+    const ph2 = g.phase, F = G2[ph2], u = F ? Math.min(1, g.t / F.dur) : ph2 === "reach" ? Math.min(1, g.t / g.dur) : 0;
+    return { ph: ph2, u, hu: F ? F.hitAt / F.dur : 0.5, kind: ph2 === "reach" ? "grab" : ph2, eId: g.eId };
+  }
+  M3.grabAtt = function(sim, two) {
+    const q = grabPhase(sim);
+    return q ? { gx: { kind: q.kind, u: q.u, hu: q.hu } } : null;
+  };
+  M3.grabVic = function(sim, e, two) {
+    const q = grabPhase(sim), p = sim.player;
+    if (q && q.eId === e.id && e.held) {
+      const gv = { kind: q.kind, u: q.u, hu: q.hu, two: !!two }, x = M3.victimXf(gv);
+      return { fields: { gv }, dx: p.face * x.dz * PXU };
+    }
+    if (e.fly) return { fields: { gv: { kind: "fly", u: Math.min(1, (e.z || 0) / 40) } }, dx: 0 };
+    if (e.down && e.stun > 0 && e.state === "alive") return { fields: { gv: { kind: "down", rise: Math.max(0, Math.min(1, 1 - e.stun / 0.4)) } }, dx: 0 };
+    return null;
+  };
+  M3.victimXf = function(v2) {
+    const k = v2.kind, two = v2.two ? 2 : 1;
+    if (k === "fly") return { dz: 0, lift: 0, rot: -1.1 - 0.5 * Math.min(1, v2.u || 0), rz: 0.5 };
+    if (k === "down") {
+      const e = 1 - (v2.rise || 0), ee2 = e * e * (3 - 2 * e);
+      return { dz: 0, lift: 0, rot: -(Math.PI / 2 - 0.12) * ee2, rz: 0.8 * ee2 };
+    }
+    const d = M3.victimDefault(k, v2.u, v2.hu), A = ONE[(k === "hold" ? "grab" : k) + two];
+    if (A && A.vm && A.V) {
+      const tau = k === "hold" ? A.len - 1 : k === "grab" ? v2.u * (A.len - 1) : grabTau(A, v2), V = A.V, T = A.T;
+      let i15 = 0;
+      while (i15 < T.length - 2 && tau >= T[i15 + 1]) i15++;
+      const a = V[i15] || d, b = V[Math.min(T.length - 1, i15 + 1)] || a, u = Math.max(0, Math.min(1, (tau - T[i15]) / Math.max(1e-6, T[i15 + 1] - T[i15])));
+      return { dz: lerp1(a.dz, b.dz, u), lift: lerp1(a.lift, b.lift, u), rot: lerp1(a.rot, b.rot, u) };
+    }
+    return d;
   };
   function applyRun(rig, p) {
     HT.rig = rig;
@@ -15487,6 +15558,23 @@ void main(){
       const id = "c_" + (def.id || "x");
       KEYS[id] = keys;
       KT[id] = { t: T, c: Math.max(1, Math.min(END - 1, def.contact || 36)), lead: ks2[0].f > 0 ? ks2[0].f : null, two, hit: def.hit || null };
+    } else if (typ === "grab" || typ === "throw" || typ === "slam" || typ === "strike") {
+      const L = def.len || 90, V = [];
+      const add2 = (k, t) => {
+        if (T.length && t <= T[T.length - 1]) return;
+        keys.push(M3.buildPose(k, two));
+        T.push(t);
+        V.push(k.vz == null ? null : { dz: k.vz, lift: k.vy || 0, rot: (k.vr || 0) * D2R });
+      };
+      if (ks2[0].f > 0) add2(ks2[0], 0);
+      for (const k of ks2) add2(k, k.f);
+      if (T[T.length - 1] < L - 1) add2(ks2[ks2.length - 1], L - 1);
+      if (keys.length < 2) {
+        keys.push(keys[0]);
+        T.push(L - 1);
+        V.push(V[0]);
+      }
+      ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, c: typ === "grab" ? null : Math.max(1, Math.min(L - 2, def.contact || Math.round(L * 0.4))), V, vm: !!def.vm && V.some(Boolean), dur: 0.5 };
     } else if (typ === "hurt" || typ === "dying" || typ === "falling") {
       const L = def.len || 60;
       for (const k of ks2) add(k, k.f);
@@ -15586,6 +15674,17 @@ void main(){
     // Outcomes are PLACEHOLDERS: win = enemy staggered and your next swing starts at once; lose or no press = you are knocked back.
     clash: { dur: 1, target: 0.6, window: 0.12, early: 0.7, stun: 1, knock: 26, loseDelay: 0.6 },
     // early: how far back into the wind-up blades can meet (fraction of set-to-contact)
+    // Grab: hold G beside a staggered or wounded enemy. Then throw, slam, or strike (short hold-and-strike). Damage = weapon damage x mult, armor PERCENT ignored, durability still wears by the same amount. PLACEHOLDERS.
+    grab: {
+      reach: 36,
+      grip: 22,
+      reachDur: 0.22,
+      holdMax: 2,
+      maxStrikes: 2,
+      throw: { dur: 0.55, hitAt: 0.3, mult: 3, speed: 260, lob: 120, bowl: 1.5, after: 0.35 },
+      slam: { dur: 0.6, hitAt: 0.38, mult: 4, after: 0.35, downed: 1.4 },
+      strike: { dur: 0.35, hitAt: 0.15, mult: 1.5, after: 0 }
+    },
     body: { height: 1.7, radius: 0.2 },
     // PLACEHOLDER: a fighter's hit capsule, metres (side view)
     enemy: { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1, atkHitAt: 0.45, atkCool: 0.8, reach: 38, move: "cut1|sword" },
@@ -15634,12 +15733,12 @@ void main(){
     };
     return f;
   }
-  var SIM_VERSION = 3;
+  var SIM_VERSION = 4;
   var NOT_STATE = ["cfg", "rng", "fxRng", "moves", "fx", "texts", "textOut"];
   function applyCmd(sim, c) {
     switch (c.t) {
       case "input":
-        sim.input = { x: c.x, y: c.y, act: !!c.act };
+        sim.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || "" };
         break;
       case "spawn":
         for (const o of c.list) sim.spawn(Object.assign({}, o, { index: sim.enemies.filter((e) => e.state === "alive").length % 5 }));
@@ -15808,8 +15907,10 @@ void main(){
       this.logVer = 0;
       this.lastHit = null;
       this.moves = this.moves || {};
-      this.input = { x: 0, y: 0, act: false };
+      this.input = { x: 0, y: 0, act: false, g: false, fin: "" };
       this.actPrev = false;
+      this.gPrev = false;
+      this.finPrev = "";
       this.clash = null;
     }
     clearEnemies() {
@@ -15960,6 +16061,11 @@ void main(){
       this.stepN++;
       const act = !!this.input.act, pressed = act && !this.actPrev;
       this.actPrev = act;
+      const gd2 = !!this.input.g, gPress = gd2 && !this.gPrev;
+      this.gPrev = gd2;
+      const fin = this.input.fin || "", finPress = fin && fin !== this.finPrev ? fin : "";
+      this.finPrev = fin;
+      this._press = { act: pressed, g: gPress, fin: finPress };
       if (this.hitstop > 0) {
         this.hitstop -= dtReal;
         return;
@@ -16017,6 +16123,11 @@ void main(){
       }
       p.flash = Math.max(0, p.flash - dt);
       p.hurt = Math.max(0, (p.hurt || 0) - dt);
+      if (p.grab) {
+        p.moving = false;
+        this.updateGrab(dt);
+        return;
+      }
       const swinging = !!p.swing;
       const spd = c.player.speed * (swinging ? c.swingMoveMult : 1);
       p.moving = mag > 0;
@@ -16028,6 +16139,8 @@ void main(){
         if (!swinging && ix2 !== 0) p.face = Math.sign(ix2);
       }
       if (p.cooldown > 0) p.cooldown -= dt;
+      const goG = !!this.input.g;
+      if (goG && this.tryGrab(!!(this._press && this._press.g))) return;
       if (p.swing) {
         const s = p.swing, t02 = s.t;
         s.t += dt;
@@ -16046,7 +16159,7 @@ void main(){
           p.swing = null;
         }
       }
-      if (!p.swing && p.cooldown <= 0) {
+      if (!p.swing && p.cooldown <= 0 && !goG) {
         const tgt = this.findTarget(w);
         if (tgt) {
           const cs2 = p.chainStyles && p.chainStyles.length ? p.chainStyles[p.chain % p.chainStyles.length] : null;
@@ -16054,6 +16167,148 @@ void main(){
           p.swing = { t: 0, dur: w.interval, dur0: w.interval, hitAt: w.interval * 0.45, hit: false, target: tgt.id, whiff: false, dramatic: false, extra: 0, move: cs2 ? cs2.move : p.move || null, style: cs2 ? cs2.style : null };
           p.moved = false;
         }
+      }
+    }
+    /* ---------- Grab: seize a staggered or wounded enemy, then throw, slam or strike ---------- */
+    grabbable(e) {
+      return e.state === "alive" && !e.held && !e.fly && (e.stun > 0 || e.wounded > 0);
+    }
+    tryGrab(announce) {
+      const p = this.player, c = this.cfg;
+      let best = null, bd2 = 1e9;
+      for (const e of this.enemies) {
+        if (!this.grabbable(e)) continue;
+        const dx2 = Math.abs(e.x - p.x), dy = Math.abs(e.y - p.y);
+        if (dy <= c.laneTol && dx2 <= c.grab.reach && dx2 < bd2) {
+          best = e;
+          bd2 = dx2;
+        }
+      }
+      if (!best) {
+        if (announce) this.text(p.x, p.y - 96, "NOTHING TO GRAB", "#b7ab9a", 9);
+        return false;
+      }
+      p.face = best.x >= p.x ? 1 : -1;
+      p.swing = null;
+      p.chain = 0;
+      p.moved = false;
+      best.held = true;
+      best.atk = null;
+      best.stun = 0;
+      best.wounded = 0;
+      p.grab = { eId: best.id, phase: "reach", t: 0, dur: c.grab.reachDur, hit: false, strikes: 0, holdT: 0 };
+      this.say("info", "Grab: seized enemy #" + best.id + ".");
+      return true;
+    }
+    grabVictim() {
+      const g = this.player.grab;
+      return g && this.enemies.find((x) => x.id === g.eId);
+    }
+    endGrab(stun, down) {
+      const p = this.player, e = this.grabVictim();
+      if (e) {
+        e.held = false;
+        if (e.state === "alive" && stun > 0) {
+          e.stun = Math.max(e.stun || 0, stun);
+          if (down) e.down = true;
+        }
+      }
+      p.grab = null;
+    }
+    updateGrab(dt) {
+      const p = this.player, c = this.cfg, G2 = c.grab, g = p.grab, e = this.grabVictim(), pr2 = this._press || {};
+      if (!e || e.state !== "alive") {
+        p.grab = null;
+        return;
+      }
+      g.t += dt;
+      if (e.held) {
+        e.x = this.clampX(p.x + p.face * G2.grip);
+        e.y = p.y;
+        e.face = -p.face;
+      }
+      if (g.phase === "reach") {
+        if (g.t >= g.dur) {
+          g.phase = "hold";
+          g.t = 0;
+        }
+        return;
+      }
+      if (g.phase === "hold") {
+        g.holdT += dt;
+        const pick = pr2.fin === "throw" ? "throw" : pr2.fin === "slam" ? "slam" : pr2.fin === "strike" || pr2.act ? "strike" : null;
+        if (pick === "strike" && g.strikes >= G2.maxStrikes) return;
+        if (pick) {
+          g.phase = pick;
+          g.t = 0;
+          g.dur = G2[pick].dur;
+          g.hit = false;
+          this.say("info", "Grab: " + pick + ".");
+          return;
+        }
+        if (g.holdT >= G2.holdMax) {
+          this.text(p.x, p.y - 100, "LOST GRIP", "#b7ab9a", 9);
+          this.endGrab(0.5);
+        }
+        return;
+      }
+      const F = G2[g.phase];
+      if (!g.hit && g.t >= F.hitAt) {
+        g.hit = true;
+        const w = this.weaponInfo(), raw = Math.max(1, Math.floor(w.dmg * F.mult + 1e-9));
+        this.text(p.x, p.y - 112, g.phase.toUpperCase(), "#ffd27a", 11);
+        this.shake = Math.max(this.shake, 0.14);
+        this.applyHit(e, raw, null, g.phase);
+        if (e.state !== "alive") {
+          e.held = false;
+          p.grab = null;
+          p.cooldown = F.after;
+          return;
+        }
+        if (g.phase === "throw") {
+          e.held = false;
+          e.fly = { vx: p.face * G2.throw.speed, vz: G2.throw.lob, hit: [] };
+          e.z = 1;
+        } else if (g.phase === "slam") {
+          this.burst(e.x, e.y, 10, "#8a7a6a", 90);
+        }
+      }
+      if (g.t >= F.dur) {
+        if (g.phase === "strike") {
+          g.strikes++;
+          g.phase = "hold";
+          g.t = 0;
+          g.holdT = 0;
+          return;
+        }
+        p.cooldown = F.after;
+        if (g.phase === "slam") this.endGrab(G2.slam.downed, true);
+        else p.grab = null;
+      }
+    }
+    // a thrown enemy: flies, knocks over anyone in the way, lands staggered
+    updateFly(e, dt) {
+      const c = this.cfg, f = e.fly;
+      e.x = this.clampX(e.x + f.vx * dt);
+      e.z += f.vz * dt;
+      f.vz -= 620 * dt;
+      f.vx *= 0.985;
+      for (const o of this.enemies) {
+        if (o === e || o.state !== "alive" || o.held || f.hit.includes(o.id) || Math.abs(o.y - e.y) > c.laneTol || Math.abs(o.x - e.x) > 18) continue;
+        f.hit.push(o.id);
+        o.stun = Math.max(o.stun || 0, 1);
+        o.atk = null;
+        const raw = Math.max(1, Math.floor(this.weaponInfo().dmg * c.grab.throw.bowl + 1e-9));
+        this.applyHit(o, raw, null, "bowl");
+        this.text(o.x, o.y - 120, "STRIKE!", "#ffd27a", 10);
+      }
+      if (e.z <= 0 && f.vz < 0 || Math.abs(f.vx) < 6) {
+        e.z = 0;
+        e.fly = null;
+        e.stun = c.grab.slam.downed;
+        e.down = true;
+        this.burst(e.x, e.y, 8, "#8a7a6a", 80);
+        this.shake = Math.max(this.shake, 0.1);
       }
     }
     // the blade's path between the last step and this one, inside the move's hit window, against every enemy in the lane
@@ -16149,11 +16404,11 @@ void main(){
       this.applyHit(e, w.dmg, s);
     }
     /* ---------- the rules under test ---------- */
-    applyHit(e, raw, swing) {
+    applyHit(e, raw, swing, fin) {
       const c = this.cfg, p = this.player;
       const wasW = e.wounded > 0, wasB = e.broken;
-      const crit = wasW || wasB;
-      const pct = wasB ? 0 : e.armorPct;
+      const crit = !fin && (wasW || wasB);
+      const pct = wasB || fin ? 0 : e.armorPct;
       const red = (v2) => Math.max(1, Math.floor(v2 * (1 - pct) + 1e-9));
       let dmg;
       if (crit) dmg = c.critOrder === "before" ? red(raw * c.critMult) : red(raw) * c.critMult;
@@ -16206,6 +16461,8 @@ void main(){
         rec.dramatic = wasW;
         this.kill(e, wasW, swing);
         this.say(wasW ? "kill" : "hit", line + (wasW ? "  | KILLED WHILE WOUNDED (dramatic)" : "  | KILLED"));
+      } else if (fin) {
+        this.say("hit", line + "  | " + fin.toUpperCase() + " (armor % ignored)");
       } else {
         let setW = false, consumed = false;
         if (e.broken) setW = dmg > 0;
@@ -16292,9 +16549,15 @@ void main(){
         return;
       }
       e.moving = false;
+      if (e.held) return;
+      if (e.fly) {
+        this.updateFly(e, dt);
+        return;
+      }
       if (!p) return;
       if (e.stun > 0) {
         e.stun -= dt;
+        if (e.stun <= 0) e.down = false;
         return;
       }
       if (e.wounded > 0) {
@@ -16413,6 +16676,11 @@ void main(){
           }
         }
       } else this.text(p.x, p.y - 96, "HIT", "#9fd0ff", 10);
+      if (p.grab && !p.inv) {
+        this.text(p.x, p.y - 108, "GRAB BROKEN", "#ff9a6a", 9);
+        this.endGrab(0.5);
+        p.cooldown = c.interruptDelay;
+      }
       if (p.swing) {
         if (p.chain > 0) this.text(p.x, p.y - 108, "CHAIN BROKEN: hit", "#ff9a6a", 9);
         p.swing = null;
@@ -17790,7 +18058,7 @@ void main(){
       const target = !p.swing ? sim.findTarget(w) : sim.enemies.find((e) => e.id === p.swing.target);
       for (const it of list) {
         if (it.kind === "p") {
-          drawFigure({
+          drawFigure(Object.assign({
             role: "p",
             x: p.x,
             y: p.y,
@@ -17813,7 +18081,7 @@ void main(){
             hurt: p.hurt,
             hurtMax: 0.6,
             style: look.style
-          });
+          }, model3d_default.grabAtt(sim, w.twoHanded)));
         } else {
           const e = it.e;
           if (e.state === "dying") {
@@ -17846,10 +18114,11 @@ void main(){
               ctx.setLineDash([]);
             }
             const atk = e.atk ? { t: e.atk.t, dur: CFG.enemy.atkDur, dur0: CFG.enemy.atkDur, hitAt: CFG.enemy.atkHitAt, extra: 0 } : null;
-            drawFigure(withLook(e, {
+            const gvw = model3d_default.grabVic(sim, e, w.twoHanded), fe2 = {
               role: "e",
               x: e.x,
               y: e.y,
+              z: e.z,
               face: e.face,
               tier: e.tier,
               broken: e.broken,
@@ -17863,7 +18132,13 @@ void main(){
               flashMax: 0.12,
               hurt: e.hurt,
               hurtMax: 0.6
-            }));
+            };
+            if (gvw) {
+              Object.assign(fe2, gvw.fields);
+              fe2.x += gvw.dx;
+              fe2.swing = null;
+            }
+            drawFigure(withLook(e, fe2));
           }
         }
       }
@@ -18133,7 +18408,7 @@ void main(){
       const real = Math.min(0.05, (now - last) / 1e3);
       last = now;
       if (net) {
-        const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act }, k = inp.x + "," + inp.y + "," + inp.act;
+        const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!keys.g, fin: keys.fin || "" }, k = inp.x + "," + inp.y + "," + inp.act + "," + inp.g + "," + inp.fin;
         if (k !== net.lastIn) {
           net.lastIn = k;
           send(Object.assign({ t: "input" }, inp));
@@ -18150,8 +18425,8 @@ void main(){
       } else if (!paused) {
         acc += real * timeScale;
         while (acc >= STEP) {
-          const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act }, s02 = live.input;
-          if (inp.x !== s02.x || inp.y !== s02.y || inp.act !== !!s02.act) cmd(Object.assign({ t: "input" }, inp));
+          const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!keys.g, fin: keys.fin || "" }, s02 = live.input;
+          if (inp.x !== s02.x || inp.y !== s02.y || inp.act !== !!s02.act || inp.g !== !!s02.g || inp.fin !== (s02.fin || "")) cmd(Object.assign({ t: "input" }, inp));
           live.step(STEP);
           acc -= STEP;
           if (rec && live.stepN % 300 === 0) {
@@ -18178,7 +18453,7 @@ void main(){
         for (const x of arr) {
           if (!x.keys || !x.keys.length) continue;
           const two = x.load ? x.load === "2" : !!x.two, typ = x.type || "attack";
-          if (!model3d_default.registerAnim({ id: x.id || "legacy", type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit })) continue;
+          if (!model3d_default.registerAnim({ id: x.id || "legacy", type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit, vm: x.vm })) continue;
           if (typ === "attack") {
             const op2 = document.createElement("option");
             op2.value = "c_" + (x.id || "legacy");
@@ -18365,6 +18640,23 @@ void main(){
         e.preventDefault();
         return;
       }
+      if (e.code === "KeyG") {
+        keys.g = true;
+        e.preventDefault();
+        return;
+      }
+      if (e.code === "KeyF") {
+        keys.fin = "throw";
+        return;
+      }
+      if (e.code === "KeyV") {
+        keys.fin = "slam";
+        return;
+      }
+      if (e.code === "KeyR") {
+        keys.fin = "strike";
+        return;
+      }
       const k = MAP[e.code];
       if (!k) return;
       if (e.target && e.target.type === "range" && e.code.startsWith("Arrow")) return;
@@ -18373,6 +18665,8 @@ void main(){
     });
     window.addEventListener("keyup", (e) => {
       if (e.code === "Space") keys.act = false;
+      if (e.code === "KeyG") keys.g = false;
+      if (e.code === "KeyF" && keys.fin === "throw" || e.code === "KeyV" && keys.fin === "slam" || e.code === "KeyR" && keys.fin === "strike") keys.fin = "";
       const k = MAP[e.code];
       if (k) keys[k] = false;
     });

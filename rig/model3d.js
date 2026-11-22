@@ -591,7 +591,16 @@ M3.pose = function (role, f) {
   const rig = M3.getRig(role, f); if (!rig) return false;
   let p, aux = {}, free = false;
   const dt = 0.016;
-  if (f.dead) {
+  let gp = null;
+  if (f.gx) {                                                        // the fighter doing the grabbing
+    gp = M3.grabPoseP(f.gx, !!f.two);
+    if (!gp && f.gx.kind !== 'grab' && f.gx.kind !== 'hold') f = Object.assign({}, f, { swing: { t: f.gx.u, dur: 1, hitAt: f.gx.hu || 0.5, extra: 0 }, style: GRAB_FALLBACK[f.gx.kind] || 'cut' });   // no custom move: borrow a standard swing
+  }
+  if (f.gv) {                                                        // the fighter being held, thrown or lying where it landed
+    const x = M3.victimXf(f.gv, !!f.gv.two);
+    p = KEYS.hit[0]; aux.rigRot = [x.rot, 0, 0]; aux.rigZ = x.rz || 0; aux.lift = x.lift; free = true;
+  } else if (gp) { p = gp;
+  } else if (f.dead) {
     const two = f.two ? 2 : 1, viol = !!f.dramatic, T = f.deathT || 0;
     const cd = ONE['dying' + two], cf = ONE['falling' + two], dD = cd ? cd.dur : 0, fD = cf ? cf.dur : DEAD_T(viol);
     const u = Math.min(1, Math.max(0, T - dD) / fD), e = u * u * (3 - 2 * u);
@@ -639,6 +648,53 @@ M3.pose = function (role, f) {
   M3.lastP = p;
   applyPose(rig, p, aux); groundLock(rig, aux.lift || 0);
   return rig;
+};
+/* ---- grabbing: the grabber's moves and where the victim hangs ----
+   grab (reach, then held), throw, slam and strike are one-shot animations like attacks, each with a contact frame.
+   Their keys may also carry the victim's place: vz forward of the grip (m), vy height (m), vr tilt (degrees). */
+const GRAB_FALLBACK = { strike: 'lunge', slam: 'chop', throw: 'cut' };
+const grabTau = (A, g) => { const c = A.c == null ? A.len * 0.5 : A.c, hu = g.hu || 0.5; return g.u < hu ? c * (g.u / hu) : c + (A.len - 1 - c) * Math.min(1, (g.u - hu) / Math.max(0.05, 1 - hu)); };
+M3.grabPoseP = function (g, two) {
+  const A = ONE[(g.kind === 'hold' ? 'grab' : g.kind) + (two ? 2 : 1)]; if (!A) return null;
+  if (g.kind === 'grab') return sampleT(A.keys, A.T, g.u * (A.len - 1));
+  if (g.kind === 'hold') return sampleT(A.keys, A.T, A.len - 1);
+  return sampleT(A.keys, A.T, grabTau(A, g));
+};
+const lerp1 = (a, b, u) => a + (b - a) * Math.max(0, Math.min(1, u));
+M3.victimDefault = function (kind, u, hu) {                         // fixed grip: the victim hangs from the hand, whatever the animation does
+  hu = hu || 0.5;
+  if (kind === 'throw') return u < hu ? { dz: lerp1(0, -0.2, u / hu), lift: lerp1(0.12, 0.6, u / hu), rot: lerp1(-0.2, -0.9, u / hu) } : { dz: -0.2, lift: 0.6, rot: -0.9 };
+  if (kind === 'slam') return u < hu ? { dz: lerp1(0, -0.1, u / hu), lift: lerp1(0.12, 1.1, u / hu), rot: lerp1(-0.2, -0.7, u / hu) } : { dz: lerp1(-0.1, 0.2, (u - hu) / 0.3), lift: lerp1(1.1, 0, (u - hu) / 0.3), rot: lerp1(-0.7, -1.45, (u - hu) / 0.3) };
+  if (kind === 'strike') return { dz: 0, lift: 0.12, rot: -0.2 - 0.25 * Math.sin(Math.PI * Math.max(0, Math.min(1, u))) };
+  return { dz: 0, lift: 0.12, rot: -0.2 };                           // grab, hold
+};
+/* what to draw for a grab in progress. grabAtt: fields for the grabber's figure (or null); grabVic: fields plus an x shift (px) for the enemy
+   that is held, flying or lying down (or null). Merge the result into each figure's draw object. */
+function grabPhase(sim) {
+  const p = sim.player, G = sim.cfg.grab, g = p.grab; if (!g) return null;
+  const ph = g.phase, F = G[ph], u = F ? Math.min(1, g.t / F.dur) : (ph === 'reach' ? Math.min(1, g.t / g.dur) : 0);
+  return { ph, u, hu: F ? F.hitAt / F.dur : 0.5, kind: ph === 'reach' ? 'grab' : ph, eId: g.eId };
+}
+M3.grabAtt = function (sim, two) { const q = grabPhase(sim); return q ? { gx: { kind: q.kind, u: q.u, hu: q.hu } } : null; };
+M3.grabVic = function (sim, e, two) {
+  const q = grabPhase(sim), p = sim.player;
+  if (q && q.eId === e.id && e.held) { const gv = { kind: q.kind, u: q.u, hu: q.hu, two: !!two }, x = M3.victimXf(gv); return { fields: { gv }, dx: p.face * x.dz * PXU }; }
+  if (e.fly) return { fields: { gv: { kind: 'fly', u: Math.min(1, (e.z || 0) / 40) } }, dx: 0 };
+  if (e.down && e.stun > 0 && e.state === 'alive') return { fields: { gv: { kind: 'down', rise: Math.max(0, Math.min(1, 1 - e.stun / 0.4)) } }, dx: 0 };
+  return null;
+};
+M3.victimXf = function (v) {                                         // v: { kind: grab|hold|throw|slam|strike|fly|down, u, hu, two, rise }
+  const k = v.kind, two = v.two ? 2 : 1;
+  if (k === 'fly') return { dz: 0, lift: 0, rot: -1.1 - 0.5 * Math.min(1, v.u || 0), rz: 0.5 };
+  if (k === 'down') { const e = 1 - (v.rise || 0), ee = e * e * (3 - 2 * e); return { dz: 0, lift: 0, rot: -(Math.PI / 2 - 0.12) * ee, rz: 0.8 * ee }; }
+  const d = M3.victimDefault(k, v.u, v.hu), A = ONE[(k === 'hold' ? 'grab' : k) + two];
+  if (A && A.vm && A.V) {                                            // victim posed by hand in the Animator: interpolate its keys
+    const tau = k === 'hold' ? A.len - 1 : k === 'grab' ? v.u * (A.len - 1) : grabTau(A, v), V = A.V, T = A.T;
+    let i = 0; while (i < T.length - 2 && tau >= T[i + 1]) i++;
+    const a = V[i] || d, b = V[Math.min(T.length - 1, i + 1)] || a, u = Math.max(0, Math.min(1, (tau - T[i]) / Math.max(1e-6, T[i + 1] - T[i])));
+    return { dz: lerp1(a.dz, b.dz, u), lift: lerp1(a.lift, b.lift, u), rot: lerp1(a.rot, b.rot, u) };
+  }
+  return d;
 };
 function applyRun(rig, p) {
   // hx wrote the run onto Ri; we need it on this rig instead: run hx against the rig by swapping Ri
@@ -727,6 +783,14 @@ M3.registerAnim = function (def) {
     if (keys.length < 2) { keys.push(keys[0]); T.push(END); }
     const id = 'c_' + (def.id || 'x');
     KEYS[id] = keys; KT[id] = { t: T, c: Math.max(1, Math.min(END - 1, def.contact || 36)), lead: ks[0].f > 0 ? ks[0].f : null, two: two, hit: def.hit || null };
+  } else if (typ === 'grab' || typ === 'throw' || typ === 'slam' || typ === 'strike') {
+    const L = def.len || 90, V = [];
+    const add2 = (k, t) => { if (T.length && t <= T[T.length - 1]) return; keys.push(M3.buildPose(k, two)); T.push(t); V.push(k.vz == null ? null : { dz: k.vz, lift: k.vy || 0, rot: (k.vr || 0) * D2R }); };
+    if (ks[0].f > 0) add2(ks[0], 0);
+    for (const k of ks) add2(k, k.f);
+    if (T[T.length - 1] < L - 1) add2(ks[ks.length - 1], L - 1);
+    if (keys.length < 2) { keys.push(keys[0]); T.push(L - 1); V.push(V[0]); }
+    ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, c: typ === 'grab' ? null : Math.max(1, Math.min(L - 2, def.contact || Math.round(L * 0.4))), V, vm: !!def.vm && V.some(Boolean), dur: 0.5 };
   } else if (typ === 'hurt' || typ === 'dying' || typ === 'falling') {
     const L = def.len || 60;
     for (const k of ks) add(k, k.f);
