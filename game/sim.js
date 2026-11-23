@@ -45,9 +45,25 @@ export const CFG = {
   },
   abreak: { sanMult: 0.5, speedMult: 1.25 },   // design
   pxPerM: 54,                             // sim pixels per metre (the 3D render scale)
-  // Clash: your blade meets an enemy's mid-swing. Both freeze; press (Space or click) as the closing ring meets the inner one.
-  // Outcomes are PLACEHOLDERS: win = enemy staggered and your next swing starts at once; lose or no press = you are knocked back.
-  clash: { dur: 1.0, target: 0.6, window: 0.12, early: 0.7, stun: 1.0, knock: 26, loseDelay: 0.6 },   // early: how far back into the wind-up blades can meet (fraction of set-to-contact)
+  // Clash (design): when two light attacks' hit areas meet, both fighters play a set clash animation and bounce back. No winner.
+  // Only the two clashing fighters freeze (a few frames); nothing else is slowed. Everyone nearby is pushed away (bounded, deterministic).
+  // Heavy attacks never clash. All numbers are PLACEHOLDERS to tune by feel.
+  clash: { dur: 0.34, freeze: 0.07, knock: 200, decay: 9, wave: { radius: 72, push: 190, max: 230 }, enemyCd: 0.5, early: 0.55, late: 0.12,
+           shoveMult: 2.2, shoveStun: 1.1, ripostePause: 0 },
+  // Block / parry / stamina (design): hold to block the front; a well-timed press is a perfect block (parry); blocking and dashing cost stamina.
+  // A normal block stops light hits only. Heavy attacks can only be parried. Empty stamina while blocking breaks the guard: a stun.
+  stamina: { max: 100, regen: 30, regenDelay: 0.6, blockPress: 3, blockHit: 14, parryWin: 0.2, parryRefund: 30, parryStun: 1.1, breakStun: 1.1, dashCost: 22 },
+  dash: { dur: 0.22, speed: 330, iframes: 0.12, atkWin: 0.30, lunge: 150 },
+  attack: { heavy: { durMult: 1.5, hitFrac: 0.6, mult: 2.2, pierce: 0.5, after: 0.4 },
+            dash:  { durMult: 0.9, hitFrac: 0.4, mult: 1.4 },
+            counter: { durMult: 0.8, hitFrac: 0.3, mult: 1.5 } },
+  // Aim (design): the mouse sets the side you face; the cursor aims throws and projectiles.
+  aim: { throwRange: 170, throwAir: 0.387 },
+  proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
+  // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
+  kinds: { fodder: { hp: 5, tier: 'leather', clash: false }, soldier: { clash: true }, tank: { hp: 14, tier: 'plate', clash: true },
+           elite: { hp: 30, tier: 'mail', clash: true, heavyEvery: 3 } },
+  enemyHeavy: { durMult: 1.5, hitMult: 1.6, dmgMult: 2.5 },
   // Grab: hold G beside a staggered or wounded enemy. Then throw, slam, or strike (short hold-and-strike). Damage = weapon damage x mult, armor PERCENT ignored, durability still wears by the same amount. PLACEHOLDERS.
   grab: { reach: 36, grip: 22, reachDur: 0.22, holdMax: 2.0, maxStrikes: 2,
     throw:  { dur: 0.55, hitAt: 0.30, mult: 3,   speed: 260, lob: 120, bowl: 1.5, after: 0.35 },
@@ -87,18 +103,19 @@ export function makeRng(seed) {
 }
 
 /* ---------- replays: rules version, saved state, and the one way anything outside changes a fight ---------- */
-export const SIM_VERSION = 4;                                       // bump when a rule changes, so old replays are flagged
+export const SIM_VERSION = 5;                                       // bump when a rule changes, so old replays are flagged
 const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut'];
 // every outside change (input, spawns, settings) goes through here, live and in replays, so a replay repeats the fight exactly
 export function applyCmd(sim, c) {
   switch (c.t) {
-    case 'input': sim.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || '' }; break;
+    case 'input': sim.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || '', heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay }; break;
+    case 'manual': sim.manual = !!c.on; break;
     case 'spawn': for (const o of c.list) sim.spawn(Object.assign({}, o, { index: sim.enemies.filter(e => e.state === 'alive').length % 5 })); if (c.say) sim.say('info', c.say); break;
     case 'clear': sim.clearEnemies(); sim.say('info', 'Arena cleared.'); break;
     case 'heal': sim.healAll(); break;
     case 'repair': sim.repairAll(); break;
     case 'resetp': sim.resetPlayer(); sim.say('info', 'Player reset.'); break;
-    case 'set': for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr']) if (k in c) sim.player[k] = c[k]; break;
+    case 'set': for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'kindMoves', 'skills', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr']) if (k in c) sim.player[k] = c[k]; break;
     case 'ally': sim.spawnAlly(c.o); break;
     case 'mode': sim.mode = c.mode; break;
     case 'cfg': { const d = JSON.parse(JSON.stringify(c.cfg)); for (const k in d) sim.cfg[k] = d[k]; break; }
@@ -166,18 +183,21 @@ export class Sim {
 
   resetAll() {
     const c = this.cfg;
-    this.t = 0; this.nextId = 1; this.hitstop = 0; this.slow = 0; this.shake = 0;
+    this.t = 0; this.nextId = 1; this.shake = 0; this.manual = this.manual || false; this.proj = [];
     this.player = {
       x: 170, y: 282, face: 1, hp: c.player.hp, maxHp: c.player.hp,
       weapon: 'longsword', dex: 5, dmgOverride: null, inv: true,
       swing: null, chain: 0, cooldown: 0, moved: false, flash: 0, hurt: 0, walkT: 0, moving: false,
-      armorPct: 0, dur: 0, durMax: 0, broken: false, chainStyles: null, san: 5, chr: 5,   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
+      armorPct: 0, dur: 0, durMax: 0, broken: false, chainStyles: null, san: 5, chr: 5,
+      stamina: c.stamina.max, staminaMax: c.stamina.max, stamRegenT: 0, blocking: false, blockT: 0, stunT: 0, freeze: 0, dash: null, dashT: 99, kvx: 0, projCd: 0, counter: null, clashT: 0, clashMax: 0,
+      skills: { riposte: false, shove: false }, kindMoves: {},   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
     };
     this.mode = this.mode || 'arena'; this.outcome = null; this.spawned = 0; this.allies = []; this.fallen = [];   // mode 'battle': a downed player loses the fight instead of being restored
     this.enemies = []; this.fx = []; this.texts = []; this.routed = 0;
     this.log = []; this.logVer = 0; this.lastHit = null;
     this.moves = this.moves || {};                                // baked weapon paths by move id; a move without one uses the reach rule
-    this.input = { x: 0, y: 0, act: false, g: false, fin: '' }; this.actPrev = false; this.gPrev = false; this.finPrev = ''; this.clash = null;
+    this.input = { x: 0, y: 0, act: false, g: false, fin: '', heavy: false, block: false, dash: false, fire: false, ax: null, ay: null };
+    this.actPrev = false; this.gPrev = false; this.finPrev = ''; this.heavyPrev = false; this.blockPrev = false; this.dashPrev = false; this.firePrev = false; this.lastClash = null;
   }
   clearEnemies() { this.enemies = []; this.fx = []; this.texts = []; }
   clearAllies() { this.allies = []; }
@@ -204,19 +224,21 @@ export class Sim {
   /* ---------- spawning ---------- */
   spawn(opts) {
     const c = this.cfg, p = this.player;
-    const tier = c.tiers[opts.tier] ? opts.tier : 'leather';
+    const K = c.kinds[opts.kind] || {};
+    const tier = c.tiers[opts.tier] ? opts.tier : (c.tiers[K.tier] ? K.tier : 'leather');
     const i = opts.index || 0;
     const offs = [0, -26, 26, -52, 52];
     const e = {
       id: this.nextId++, x: Math.min(c.arena.right - 20, 380 + i * 46),
       y: this.clampY(p.y + offs[i % 5]), face: -1,
-      hp: c.enemy.hp, maxHp: c.enemy.hp, san: opts.san != null ? opts.san : c.enemy.san, chr: opts.chr != null ? opts.chr : c.enemy.chr,
+      hp: K.hp || c.enemy.hp, maxHp: K.hp || c.enemy.hp, san: opts.san != null ? opts.san : c.enemy.san, chr: opts.chr != null ? opts.chr : c.enemy.chr,
       tier, armorPct: c.tiers[tier].pct,
       dur: opts.dur != null ? opts.dur : c.tiers[tier].dur,
       durMax: opts.dur != null ? opts.dur : c.tiers[tier].dur,
       broken: false, wounded: 0, state: 'alive', flee: false,
       ai: opts.ai === 'advance' ? 'advance' : 'stand',
       atk: null, atkCd: 0.6, deathT: 0, dramatic: false, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0, hurt: 0,
+      kind: opts.kind || 'soldier', clash: K.clash !== false, heavyEvery: K.heavyEvery || 0, atkN: 0, kvx: 0, freeze: 0, clashT: 0,
     };
     e.lookSeed = hash32(this.seed, e.id);                        // picks this enemy's parts and colours from its rank's pools (client side)
     this.enemies.push(e); this.spawned++;
@@ -229,7 +251,7 @@ export class Sim {
       id: this.nextId++, hid: o.hid || null, name: o.name || 'Hireling', x: Math.max(c.arena.left + 10, p.x - 34 - i * 30), y: this.clampY(p.y + offs[i % 5]), face: 1,
       hp: o.hp || 18, maxHp: o.hp || 18, tier: t, armorPct: o.armorPct != null ? o.armorPct : c.tiers[t].pct,
       dur: o.dur != null ? o.dur : c.tiers[t].dur, durMax: o.dur != null ? o.dur : c.tiers[t].dur, broken: false,
-      weapon: w, dex: o.dex || 5, state: 'alive', atk: null, atkCd: 0.5, deathT: 0, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0, hurt: 0,
+      weapon: w, dex: o.dex || 5, state: 'alive', atk: null, atkCd: 0.5, deathT: 0, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0, hurt: 0, kvx: 0,
       look: o.look || null, lookSeed: hash32(this.seed, this.nextId * 7),
     };
     this.allies.push(a); return a;
@@ -250,22 +272,21 @@ export class Sim {
   effSan(e) { return e.san * (e.broken ? this.cfg.abreak.sanMult : 1); }
 
   /* ---------- main step ---------- */
-  step(dtReal) {
+  step(dt) {
     this.stepN++;
-    const act = !!this.input.act, pressed = act && !this.actPrev; this.actPrev = act;   // a press is the moment the key goes down
-    const gd = !!this.input.g, gPress = gd && !this.gPrev; this.gPrev = gd;
-    const fin = this.input.fin || '', finPress = fin && fin !== this.finPrev ? fin : ''; this.finPrev = fin;
-    this._press = { act: pressed, g: gPress, fin: finPress };
-    if (this.hitstop > 0) { this.hitstop -= dtReal; return; }
-    let dt = dtReal;
-    if (this.slow > 0) { dt *= 0.35; this.slow -= dtReal; }
-    if (this.shake > 0) this.shake -= dtReal;
-    this.t += dt;
-    if (this.clash) this.updateClash(dt, pressed); else this.checkClash();
-    const lock = this.clash ? this.clash.eId : null;                 // the two fighters in a clash stand frozen
-    if (lock == null) this.updatePlayer(dt); else { this.player.moving = false; }
-    for (const e of this.enemies) { if (e.id === lock) { e.moving = false; continue; } this.updateEnemy(e, dt); }
+    const I = this.input, edge = (now, key) => { const v = !!now, pr = v && !this[key]; this[key] = v; return pr; };   // a press is the moment the key goes down
+    const pressed = edge(I.act, 'actPrev'), gPress = edge(I.g, 'gPrev'), heavyP = edge(I.heavy, 'heavyPrev'), blockP = edge(I.block, 'blockPrev'), dashP = edge(I.dash, 'dashPrev'), fireP = edge(I.fire, 'firePrev');
+    const fin = I.fin || '', finPress = fin && fin !== this.finPrev ? fin : ''; this.finPrev = fin;
+    this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP };
+    if (this.shake > 0) this.shake -= dt;
+    this.t += dt;                                                      // one clock for everyone: nothing in the game slows or stops time
+    this.checkClash();
+    const p = this.player;
+    if (p.freeze > 0) { p.freeze -= dt; p.moving = false; if (p.clashT > 0) p.clashT -= dt; }   // only a clashing fighter holds, for a few frames
+    else this.updatePlayer(dt);
+    for (const e of this.enemies) { if (e.freeze > 0) { e.freeze -= dt; e.moving = false; if (e.clashT > 0) e.clashT -= dt; continue; } this.updateEnemy(e, dt); }
     for (const a of this.allies) this.updateAlly(a, dt);
+    this.updateProj(dt);
     this.enemies = this.enemies.filter(e => !(e.state === 'dying' && e.deathT > 2.6) && e.state !== 'routed');
     if (this.mode === 'battle' && !this.outcome) {
       if (this.player.hp <= 0) this.outcome = 'lost';
@@ -273,6 +294,11 @@ export class Sim {
     }
     this.updateFx(dt);
   }
+  kv(o, dt) {                                                          // a push (clash bounce, shockwave): glides and fades, bounded
+    if (!o.kvx) return;
+    o.x = this.clampX(o.x + o.kvx * dt); o.kvx *= Math.max(0, 1 - this.cfg.clash.decay * dt); if (Math.abs(o.kvx) < 4) o.kvx = 0;
+  }
+  regenStamina(dt) { const p = this.player, S = this.cfg.stamina; if (p.stamRegenT > 0) { p.stamRegenT -= dt; return; } if (p.stamina < p.staminaMax) p.stamina = Math.min(p.staminaMax, p.stamina + S.regen * dt); }
 
   /* ---------- player ---------- */
   findTarget(w) {
@@ -286,13 +312,35 @@ export class Sim {
     return best;
   }
 
+  swingDmg(s, w) { return Math.max(1, Math.floor(w.dmg * ((s && s.mult) || 1) + 1e-9)); }
+  // kind: light | heavy | dash | counter. Heavy cannot clash; dash lunges; counter is the free swing after a parry or riposte.
+  startSwing(kind, w, tgt) {
+    const p = this.player, c = this.cfg, A = c.attack[kind] || {}, base = w.interval;
+    const dur = kind === 'light' ? base : base * A.durMult, hitAt = kind === 'light' ? base * 0.45 : dur * A.hitFrac;
+    const cs = kind === 'light' && p.chainStyles && p.chainStyles.length ? p.chainStyles[p.chain % p.chainStyles.length] : null;
+    const move = (p.kindMoves && p.kindMoves[kind]) || (cs ? cs.move : (p.move || null));
+    p.swing = { t: 0, dur, dur0: dur, hitAt, hit: false, target: tgt == null ? null : tgt, whiff: false, dramatic: false, extra: 0, move, style: cs ? cs.style : null, kind, mult: A.mult || 1, pierce: A.pierce || 0, after: A.after || 0 };
+    p.moved = false;
+    if (kind === 'dash') p.lunge = { t: 0.18, v: c.dash.lunge };
+    if (tgt != null) { const e = this.enemies.find(x => x.id === tgt); if (e) p.face = e.x >= p.x ? 1 : -1; }
+    return p.swing;
+  }
+
   updatePlayer(dt) {
-    const p = this.player, c = this.cfg, w = this.weaponInfo();
-    let ix = this.input.x, iy = this.input.y;
+    const p = this.player, c = this.cfg, w = this.weaponInfo(), I = this.input, pr = this._press || {};
+    let ix = I.x, iy = I.y;
     const mag = Math.sqrt(ix * ix + iy * iy);                     // not Math.hypot: identical results on every engine (replays, server)
     if (mag > 1) { ix /= mag; iy /= mag; }
     p.flash = Math.max(0, p.flash - dt); p.hurt = Math.max(0, (p.hurt || 0) - dt);
+    this.kv(p, dt);
+    if (p.clashT > 0) p.clashT -= dt;
+    if (p.projCd > 0) p.projCd -= dt;
+    for (const k of ['parryT', 'shotT', 'blockHitT']) if (p[k] > 0) p[k] -= dt;
+    this.regenStamina(dt);
+    if (I.fire && p.projCd <= 0 && !p.grab && !(p.stunT > 0)) this.fireProj();
     if (p.grab) { p.moving = false; this.updateGrab(dt); return; }   // holding someone: planted until you let go
+    if (p.stunT > 0) { p.stunT -= dt; p.moving = false; p.blocking = false; return; }   // guard broken
+    if (this.manual) { this.updateManual(dt, w, ix, iy, mag); return; }
     const swinging = !!p.swing;
     const spd = c.player.speed * (swinging ? c.swingMoveMult : 1);
     p.moving = mag > 0;
@@ -303,8 +351,8 @@ export class Sim {
       if (!swinging && ix !== 0) p.face = Math.sign(ix);
     }
     if (p.cooldown > 0) p.cooldown -= dt;
-    const goG = !!this.input.g;                                      // holding G: reach for a staggered enemy instead of swinging
-    if (goG && this.tryGrab(!!(this._press && this._press.g))) return;
+    const goG = !!I.g;                                               // holding G: reach for a staggered enemy instead of swinging
+    if (goG && this.tryGrab(!!pr.g)) return;
 
     if (p.swing) {
       const s = p.swing, t0 = s.t; s.t += dt;
@@ -319,13 +367,80 @@ export class Sim {
     }
     if (!p.swing && p.cooldown <= 0 && !goG) {
       const tgt = this.findTarget(w);
-      if (tgt) {
-        const cs = p.chainStyles && p.chainStyles.length ? p.chainStyles[p.chain % p.chainStyles.length] : null;
-        p.face = tgt.x >= p.x ? 1 : -1;
-        p.swing = { t: 0, dur: w.interval, dur0: w.interval, hitAt: w.interval * 0.45, hit: false, target: tgt.id, whiff: false, dramatic: false, extra: 0, move: cs ? cs.move : (p.move || null), style: cs ? cs.style : null };
-        p.moved = false;
+      if (tgt) { p.face = tgt.x >= p.x ? 1 : -1; this.startSwing('light', w, tgt.id); }
+    }
+  }
+
+  /* Manual combat (design): nothing swings by itself. Mouse side = facing; left click light, right click heavy, hold block (press = parry),
+     dash spends stamina and a click during or just after it is a dash attack; the cursor aims throws and shots. */
+  updateManual(dt, w, ix, iy, mag) {
+    const p = this.player, c = this.cfg, I = this.input, pr = this._press || {}, S = c.stamina, D = c.dash;
+    p.dashT = Math.min(99, p.dashT + dt);
+    if (!I.block) p.blockLock = false;
+    if (p.dash) {                                                     // mid-dash: carried along; a click turns it into the dash attack
+      const d = p.dash; d.t += dt;
+      p.x = this.clampX(p.x + d.dx * D.speed * dt); p.y = this.clampY(p.y + d.dy * D.speed * dt * 0.7); p.moving = true; p.walkT += dt;
+      if (pr.act) { p.dash = null; this.startSwing('dash', w); return; }
+      if (d.t >= D.dur) p.dash = null;
+      return;
+    }
+    if (pr.dash && !p.swing && p.stamina >= S.dashCost) {
+      p.stamina -= S.dashCost; p.stamRegenT = S.regenDelay; p.blocking = false;
+      const dx = mag > 0.1 ? ix / mag : p.face, dy = mag > 0.1 ? iy / mag : 0;
+      p.dash = { t: 0, dx, dy }; p.dashT = 0; p.moving = true; return;
+    }
+    const wantBlock = !!I.block && !p.swing && !p.blockLock && p.stamina > 0;
+    if (wantBlock && !p.blocking) { p.blocking = true; p.blockT = 0; p.stamina = Math.max(0, p.stamina - S.blockPress); }
+    else if (!wantBlock) p.blocking = false;
+    if (p.blocking) { p.blockT += dt; p.stamRegenT = S.regenDelay; }
+    const spd = c.player.speed * (p.swing ? c.swingMoveMult : 1) * (p.blocking ? 0.5 : 1);
+    p.moving = mag > 0;
+    if (p.moving) { p.x = this.clampX(p.x + ix * spd * dt); p.y = this.clampY(p.y + iy * spd * dt * 0.7); p.walkT += dt; }
+    if (p.lunge && p.lunge.t > 0) { p.lunge.t -= dt; p.x = this.clampX(p.x + p.face * p.lunge.v * dt); }
+    if (!p.swing) {                                                   // the mouse's side is the way you face
+      if (I.ax != null) { if (Math.abs(I.ax - p.x) > 6) p.face = I.ax >= p.x ? 1 : -1; }
+      else if (ix !== 0) p.face = Math.sign(ix);
+    }
+    if (p.cooldown > 0) p.cooldown -= dt;
+    if (I.g && this.tryGrab(!!pr.g)) return;
+    if (p.swing) {
+      const s = p.swing, t0 = s.t; s.t += dt;
+      const m = s.move && this.moves[s.move];
+      if (m && m.seg) { if (!s.hit) this.bladeCheck(s, m, t0, w); }
+      else if (!s.hit && s.t >= s.hitAt) { s.hit = true; this.playerStrike(s, w); }
+      if (s.t >= s.dur) { p.chain++; p.cooldown = Math.max(p.cooldown, s.after || 0); p.swing = null; }
+    }
+    if (!p.swing && p.counter) { const tg = p.counter.eId; p.counter = null; this.startSwing('counter', w, tg); return; }
+    if (!p.swing && !p.blocking && p.cooldown <= 0 && !I.g) {
+      if (pr.heavy) this.startSwing('heavy', w);
+      else if (pr.act && p.dashT <= D.atkWin) this.startSwing('dash', w);
+      else if (I.act) this.startSwing('light', w);
+    }
+  }
+
+  /* ---------- projectiles: fired toward the cursor ---------- */
+  fireProj() {
+    const p = this.player, P = this.cfg.proj, I = this.input;
+    let dx = I.ax == null ? p.face : I.ax - p.x, dy = I.ay == null ? 0 : I.ay - p.y;
+    const L = Math.sqrt(dx * dx + dy * dy) || 1; dx /= L; dy /= L;
+    if (dx * p.face < 0.2) dx = p.face * 0.2;                          // the shot goes the way you face
+    dy = Math.max(-0.6 * Math.abs(dx), Math.min(0.6 * Math.abs(dx), dy));
+    const L2 = Math.sqrt(dx * dx + dy * dy); dx /= L2; dy /= L2;
+    this.proj.push({ id: this.nextId++, x: p.x + p.face * 14, y: p.y, vx: dx * P.speed, vy: dy * P.speed, life: P.range / P.speed, dmg: P.dmg });
+    p.projCd = P.cd; p.shotT = 0.25;
+  }
+  updateProj(dt) {
+    const c = this.cfg;
+    for (const q of this.proj) {
+      q.x += q.vx * dt; q.y = this.clampY(q.y + q.vy * dt); q.life -= dt;
+      if (q.x < c.arena.left || q.x > c.arena.right) q.life = 0;
+      if (q.life <= 0) continue;
+      for (const e of this.enemies) {
+        if (e.state !== 'alive' || e.held || e.fly) continue;
+        if (Math.abs(e.x - q.x) <= c.proj.hitR && Math.abs(e.y - q.y) <= c.laneTol) { this.applyHit(e, q.dmg, null); this.burst(q.x, q.y - 40, 5, '#f4ecd8', 90); q.life = 0; break; }
       }
     }
+    this.proj = this.proj.filter(q => q.life > 0);
   }
 
   /* ---------- Grab: seize a staggered or wounded enemy, then throw, slam or strike ---------- */
@@ -369,7 +484,11 @@ export class Sim {
       this.text(p.x, p.y - 112, g.phase.toUpperCase(), '#ffd27a', 11); this.shake = Math.max(this.shake, 0.14);
       this.applyHit(e, raw, null, g.phase);
       if (e.state !== 'alive') { e.held = false; p.grab = null; p.cooldown = F.after; return; }
-      if (g.phase === 'throw') { e.held = false; e.fly = { vx: p.face * G.throw.speed, vz: G.throw.lob, hit: [] }; e.z = 1; }
+      if (g.phase === 'throw') {                                       // thrown toward the cursor, up to a range
+        const I = this.input, A = c.aim; let dx = I.ax == null ? p.face * 100 : I.ax - e.x, dy = I.ay == null ? 0 : I.ay - e.y;
+        const L = Math.sqrt(dx * dx + dy * dy) || 1, R = Math.max(30, Math.min(A.throwRange, L)); dx = dx / L * R; dy = dy / L * R * 0.7;
+        e.held = false; e.fly = { vx: dx / A.throwAir, vy: dy / A.throwAir, vz: G.throw.lob, hit: [], fr: 1 }; e.z = 1;
+      }
       else if (g.phase === 'slam') { this.burst(e.x, e.y, 10, '#8a7a6a', 90); }
     }
     if (g.t >= F.dur) {
@@ -381,65 +500,92 @@ export class Sim {
   // a thrown enemy: flies, knocks over anyone in the way, lands staggered
   updateFly(e, dt) {
     const c = this.cfg, f = e.fly;
-    e.x = this.clampX(e.x + f.vx * dt); e.z += f.vz * dt; f.vz -= 620 * dt; f.vx *= 0.985;
+    e.x = this.clampX(e.x + f.vx * dt); if (f.vy) e.y = this.clampY(e.y + f.vy * dt); e.z += f.vz * dt; f.vz -= 620 * dt; f.vx *= (f.fr || 0.985);
     for (const o of this.enemies) {
       if (o === e || o.state !== 'alive' || o.held || f.hit.includes(o.id) || Math.abs(o.y - e.y) > c.laneTol || Math.abs(o.x - e.x) > 18) continue;
       f.hit.push(o.id); o.stun = Math.max(o.stun || 0, 1.0); o.atk = null;
       const raw = Math.max(1, Math.floor(this.weaponInfo().dmg * c.grab.throw.bowl + 1e-9));
       this.applyHit(o, raw, null, 'bowl'); this.text(o.x, o.y - 120, 'STRIKE!', '#ffd27a', 10);
     }
-    if ((e.z <= 0 && f.vz < 0) || Math.abs(f.vx) < 6) { e.z = 0; e.fly = null; e.stun = c.grab.slam.downed; e.down = true; this.burst(e.x, e.y, 8, '#8a7a6a', 80); this.shake = Math.max(this.shake, 0.1); }
+    if ((e.z <= 0 && f.vz < 0) || (!f.fr && Math.abs(f.vx) < 6)) { e.z = 0; e.fly = null; e.stun = c.grab.slam.downed; e.down = true; this.burst(e.x, e.y, 8, '#8a7a6a', 80); this.shake = Math.max(this.shake, 0.1); }
   }
 
   // the blade's path between the last step and this one, inside the move's hit window, against every enemy in the lane
   bladeCheck(s, m, tPrev, w) {
     const p = this.player, r = sweepHit(this.cfg, m, s, tPrev, p.x, p.y, p.face, this.enemies.filter(e => e.state === 'alive'));
     if (r === 'past') { s.hit = true; s.whiff = true; this.text(p.x + p.face * 40, p.y - 70, 'MISS', '#b7ab9a', 10); }
-    else if (r) { s.hit = true; s.target = r.id; this.applyHit(r, w.dmg, s); }
+    else if (r) { s.hit = true; s.target = r.id; this.applyHit(r, this.swingDmg(s, w), s); }
   }
 
   /* ---------- Clash ---------- */
+  checkClash() {
+    const p = this.player, c = this.cfg, K = c.clash, s = p.swing;
+    if (!s || s.hit || s.kind === 'heavy' || p.grab || p.freeze > 0) return;
+    const inWin = (t, hitAt) => t >= hitAt * K.early && t <= hitAt + K.late;
+    if (!inWin(s.t, s.hitAt)) return;
+    const w = this.weaponInfo(), pm = s.move && this.moves[s.move], em = this.moves[c.enemy.move];
+    let best = null, bd = 1e9;
+    for (const e of this.enemies) {                                   // one clash at a time: the nearest opposing swing (a multi-clash skill comes later)
+      const a = e.atk;
+      if (e.state !== 'alive' || !a || a.hit || a.heavy || e.clash === false || e.freeze > 0 || e.held || e.fly) continue;
+      if (Math.abs(e.y - p.y) > c.laneTol || Math.sign(e.x - p.x) !== p.face) continue;
+      const aDur = a.dur || c.enemy.atkDur, aHit = a.hitAt || c.enemy.atkHitAt;
+      if (!inWin(a.t, aHit)) continue;
+      let ok;
+      if (pm && pm.seg && em && em.seg) {                             // baked blades: the two blade segments cross
+        const es = { t: a.t, dur: aDur, hitAt: aHit, extra: 0 };
+        const A = this.bladePx(pm, s, s.t, p.x, p.face), B = this.bladePx(em, es, es.t, e.x, e.face);
+        ok = segSegDist(A, B) <= ((pm.hit.w || 0.12) + (em.hit.w || 0.12)) * c.pxPerM / 2;
+      } else ok = Math.abs(e.x - p.x) <= w.reach + c.enemy.reach;     // no baked path: the two reaches overlap
+      if (ok) { const d = Math.abs(e.x - p.x); if (d < bd) { best = e; bd = d; } }
+    }
+    if (best) this.doClash(best);
+  }
   bladePx(m, s, t, x, face) {                                        // a swing's blade as a segment in sim px, height up
     const g = segAt(m, moveTau(m, s, t)), P = this.cfg.pxPerM;
     return [x + face * g[0] * P, g[1] * P, x + face * g[2] * P, g[3] * P];
   }
-  checkClash() {
-    const p = this.player, c = this.cfg, s = p.swing; if (!s || s.hit) return;
-    const pm = s.move && this.moves[s.move], em = this.moves[c.enemy.move]; if (!pm || !pm.seg || !em || !em.seg) return;
-    const from = m => m.c - c.clash.early * (m.c - m.t0), pt = moveTau(pm, s, s.t); if (pt < Math.min(from(pm), pm.hit.f0) || pt > pm.hit.f1) return;
-    for (const e of this.enemies) {
-      if (e.state !== 'alive' || !e.atk || e.atk.hit || Math.abs(e.y - p.y) > c.laneTol || Math.sign(e.x - p.x) !== p.face) continue;
-      const es = { t: e.atk.t, dur: c.enemy.atkDur, hitAt: c.enemy.atkHitAt, extra: 0 }, et = moveTau(em, es, es.t);
-      if (et < Math.min(from(em), em.hit.f0) || et > em.hit.f1) continue;
-      const a = this.bladePx(pm, s, s.t, p.x, p.face), b = this.bladePx(em, es, es.t, e.x, e.face);
-      if (segSegDist(a, b) > ((pm.hit.w || 0.12) + (em.hit.w || 0.12)) * c.pxPerM / 2) continue;
-      // where they cross (closest approach), for sparks and the timing rings
-      const cx = (a[0] + a[2] + b[0] + b[2]) / 4, cy = (a[1] + a[3] + b[1] + b[3]) / 4;
-      this.clash = { eId: e.id, t: 0, dur: c.clash.dur, target: c.clash.target, x: cx, y: p.y, h: cy, result: null };
-      this.burst(cx, p.y - cy, 10, '#ffe7a0', 120); this.shake = 0.12;
-      this.say('clash', 'CLASH: blades met (enemy #' + e.id + ').');
-      return;
-    }
+  // No winner: both swings stop, both fighters hold a few frames and bounce back, everyone nearby is shoved away.
+  doClash(e) {
+    const p = this.player, c = this.cfg, K = c.clash, sk = p.skills || {};
+    const cx = (p.x + e.x) / 2, dir = Math.sign(e.x - p.x) || 1;
+    p.swing = null; p.chain = 0; p.cooldown = Math.max(p.cooldown, 0.1); p.moved = false; p.lunge = null;
+    p.freeze = K.freeze; p.clashT = K.dur; p.clashMax = K.dur;
+    e.atk = null; e.atkCd = K.enemyCd; e.freeze = K.freeze; e.clashT = K.dur; e.clashMax = K.dur;
+    if (sk.riposte) p.counter = { eId: e.id }; else p.kvx = -dir * K.knock;        // riposte (passive): no bounce, a counter-swing at once
+    if (sk.shove) { e.kvx = dir * K.knock * K.shoveMult; e.stun = Math.max(e.stun || 0, K.shoveStun); e.down = false; }   // break guard: shoved far and stunned
+    else e.kvx = dir * K.knock;
+    this.shockwave(cx, p.y, [e.id]);
+    this.burst(cx, p.y - 60, 12, '#ffe7a0', 130); this.text(cx, p.y - 96, 'CLASH', '#ffe27a', 11); this.shake = Math.max(this.shake, 0.1);
+    this.lastClash = { at: this.t, eId: e.id, x: cx };
+    this.say('clash', 'CLASH with enemy #' + e.id + (sk.riposte ? ' (riposte)' : '') + (sk.shove ? ' (shove)' : '') + '.');
   }
-  updateClash(dt, pressed) {
-    const k = this.clash, c = this.cfg, p = this.player, e = this.enemies.find(x => x.id === k.eId);
-    if (!e || e.state !== 'alive') { this.clash = null; return; }
-    k.t += dt;
-    let won = null;
-    if (pressed) won = Math.abs(k.t - k.target) <= c.clash.window;
-    else if (k.t >= k.dur) won = false;
-    if (won === null) return;
-    k.result = won ? 'win' : 'lose'; this.lastClash = { result: k.result, t: k.t, at: this.t };
-    if (won) {                                                         // PLACEHOLDER outcome
-      e.atk = null; e.atkCd = c.enemy.atkCool; e.stun = c.clash.stun; p.swing = null; p.cooldown = 0;
-      this.text(e.x, e.y - 100, 'STAGGER', '#ffd27a', 11); this.burst(k.x, p.y - k.h, 8, '#fff2c0', 140);
-      this.say('clash', 'Clash won (pressed at ' + k.t.toFixed(2) + ' s): enemy staggered.');
-    } else {
-      p.swing = null; p.chain = 0; p.cooldown = c.clash.loseDelay; p.x = this.clampX(p.x - p.face * c.clash.knock);
-      e.atk = null; e.atkCd = 0.2;
-      this.say('clash', pressed ? 'Clash lost (pressed at ' + k.t.toFixed(2) + ' s): knocked back.' : 'Clash lost (no press): knocked back.');
+  shockwave(cx, cy, skip) {                                          // bounded and deterministic: a push that fades with distance
+    const K = this.cfg.clash.wave, lane = this.cfg.laneTol * 3;
+    const push = o => {
+      if (o.state !== 'alive' || o.held || o.fly || skip.includes(o.id)) return;
+      const dx = o.x - cx, d = Math.abs(dx); if (d > K.radius || Math.abs(o.y - cy) > lane) return;
+      o.kvx = Math.max(-K.max, Math.min(K.max, (o.kvx || 0) + (Math.sign(dx) || 1) * K.push * (1 - d / K.radius)));
+    };
+    for (const o of this.enemies) push(o); for (const a of this.allies) push(a);
+  }
+  // a hit on you while blocking: a dodge in the first dash frames, a parry if the block was just pressed, a block for light hits
+  defend(e, heavy) {
+    const p = this.player, c = this.cfg, S = c.stamina;
+    if (p.dash && p.dash.t < c.dash.iframes) { this.text(p.x, p.y - 96, 'DODGE', '#9fd0ff', 10); return true; }
+    if (!p.blocking || Math.sign(e.x - p.x) !== p.face) return false;
+    if (p.blockT <= S.parryWin) {                                     // perfect block
+      e.atk = null; e.atkCd = 0.6; e.stun = Math.max(e.stun || 0, S.parryStun); e.down = false;
+      p.stamina = Math.min(p.staminaMax, p.stamina + S.parryRefund); p.blocking = false; p.blockLock = true; p.counter = { eId: e.id }; p.parryT = 0.3;
+      this.text(p.x, p.y - 100, 'PARRY!', '#ffe27a', 12); this.burst(p.x + p.face * 20, p.y - 60, 14, '#fff2c0', 150); this.shake = Math.max(this.shake, 0.12);
+      this.say('clash', 'Parry: enemy #' + e.id + ' staggered, stamina back, free counter.');
+      return true;
     }
-    this.clash = null;
+    if (heavy) return false;                                          // a plain block does not stop a heavy
+    p.stamina -= S.blockHit; p.stamRegenT = S.regenDelay; p.blockHitT = 0.2;
+    this.burst(p.x + p.face * 18, p.y - 56, 6, '#cfd8e6', 90); this.text(p.x, p.y - 96, 'BLOCK', '#cfd8e6', 10);
+    if (p.stamina <= 0) { p.stamina = 0; p.blocking = false; p.blockLock = true; p.stunT = S.breakStun; this.text(p.x, p.y - 110, 'GUARD BROKEN', '#ff9a6a', 10); this.say('info', 'Guard broken: stunned.'); }
+    return true;
   }
 
   breakChain(why) {
@@ -454,7 +600,7 @@ export class Sim {
     const ok = e && e.state === 'alive' && Math.abs(e.y - p.y) <= this.cfg.laneTol && Math.abs(e.x - p.x) <= w.reach + 8;
     if (!ok) e = this.findTarget(w);
     if (!e) { s.whiff = true; this.text(p.x + p.face * 40, p.y - 70, 'MISS', '#b7ab9a', 10); return; }
-    this.applyHit(e, w.dmg, s);
+    this.applyHit(e, this.swingDmg(s, w), s);
   }
 
   /* ---------- the rules under test ---------- */
@@ -462,7 +608,7 @@ export class Sim {
     const c = this.cfg, p = this.player;   // fin: a grab finisher; armor percent ignored, durability still wears, no crit or wound rules
     const wasW = e.wounded > 0, wasB = e.broken;
     const crit = !fin && (wasW || wasB);
-    const pct = (wasB || fin) ? 0 : e.armorPct;
+    const pct = (wasB || fin) ? 0 : e.armorPct * (1 - ((swing && swing.pierce) || 0));
     const red = v => Math.max(1, Math.floor(v * (1 - pct) + 1e-9));
     let dmg;
     if (crit) dmg = c.critOrder === 'before' ? red(raw * c.critMult) : red(raw) * c.critMult;
@@ -486,8 +632,6 @@ export class Sim {
     e.flash = 0.12; e.hurt = 0.6;                                  // flash is the white blink; hurt times the custom damaged animation (visual only)
     this.burst(e.x, e.y - 48, crit ? 14 : 8, crit ? '#ffe08a' : '#f4ecd8', crit ? 150 : 100);
     this.text(e.x, e.y - 96, (crit ? 'CRIT ' : '') + '-' + dmg, crit ? '#ffd27a' : '#ffffff', crit ? 12 : 10);
-    if (dead) { this.hitstop = Math.max(this.hitstop, 0.05); }
-    else this.hitstop = Math.max(this.hitstop, crit ? 0.08 : 0.04);
 
     let line = (crit ? 'CRIT x2 (' + rec.critCause + ') ' : '') + 'Hit ' + raw + ' vs ' + rec.tier + ' -' + rec.pct + '% = ' + dmg + ' dmg, HP ' + hpBefore + '>' + e.hp;
     if (brokeNow) { this.say('break', 'ARMOR BREAK: durability gone (' + durBefore + ' > 0). SAN -50%, speed +25%, armor 0, crits on every hit.'); rec.notes.push('Armor broke on this hit'); this.burst(e.x, e.y - 40, 16, '#9aa7b6', 170); this.text(e.x, e.y - 110, 'ARMOR BREAK', '#ff9a6a', 10); }
@@ -519,8 +663,8 @@ export class Sim {
     const dir = Math.sign(e.x - p.x) || 1;
     if (dramatic) {
       e.vx = dir * 230; e.vz = 190;
-      if (swing) { swing.dramatic = true; swing.dur += this.cfg.dramaticExtend; swing.extra = this.cfg.dramaticExtend; }
-      this.hitstop = 0.16; this.slow = 0.45; this.shake = 0.3;
+      if (swing && !this.manual) { swing.dramatic = true; swing.dur += this.cfg.dramaticExtend; swing.extra = this.cfg.dramaticExtend; }   // legacy modes only: a held pose
+      this.shake = 0.3;
       this.burst(e.x, e.y - 48, 30, '#ff8a5c', 260);
       this.burst(e.x, e.y - 48, 12, '#ffe08a', 200);
     } else {
@@ -550,6 +694,8 @@ export class Sim {
       return;
     }
     e.moving = false;
+    if (e.clashT > 0) e.clashT -= dt;
+    if (e.held || e.fly) e.kvx = 0; else this.kv(e, dt);
     if (e.held) return;                                              // in the player's grip: pinned by updateGrab
     if (e.fly) { this.updateFly(e, dt); return; }
     if (!p) return;                                                  // nobody left standing to fight
@@ -584,21 +730,24 @@ export class Sim {
       const m = this.moves[c.enemy.move];
       if (m && m.seg) {                                            // blade path: the swing lands only if the sword reaches you
         if (!e.atk.hit) {
-          const s = { t: e.atk.t, dur: c.enemy.atkDur, hitAt: c.enemy.atkHitAt, extra: 0 };
+          const s = { t: e.atk.t, dur: e.atk.dur || c.enemy.atkDur, hitAt: e.atk.hitAt || c.enemy.atkHitAt, extra: 0 };
           const r = sweepHit(c, m, s, t0, e.x, e.y, e.face, [p]);
           if (r === 'past') e.atk.hit = true; else if (r) { e.atk.hit = true; this.enemyHits(e, p); }
         }
-      } else if (!e.atk.hit && e.atk.t >= c.enemy.atkHitAt) {
+      } else if (!e.atk.hit && e.atk.t >= (e.atk.hitAt || c.enemy.atkHitAt)) {
         e.atk.hit = true;
         if (Math.abs(dx) <= c.enemy.reach + 8 && Math.abs(dy) <= c.laneTol) this.enemyHits(e, p);
       }
-      if (e.atk.t >= c.enemy.atkDur) { e.atk = null; e.atkCd = c.enemy.atkCool; }
+      if (e.atk && e.atk.t >= (e.atk.dur || c.enemy.atkDur)) { e.atk = null; e.atkCd = c.enemy.atkCool; }
       return;
     }
     e.atkCd -= dt;
     if (Math.abs(dy) > c.laneTol * 0.5) { e.y = this.clampY(e.y + Math.sign(dy) * spd * 0.7 * dt); e.moving = true; }
     if (Math.abs(dx) > c.enemy.reach * 0.8) { e.x = this.clampX(e.x + Math.sign(dx) * spd * dt); e.moving = true; }
-    else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0) e.atk = { t: 0, hit: false };
+    else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0) {
+      e.atkN = (e.atkN || 0) + 1; const H = c.enemyHeavy, heavy = !!e.heavyEvery && e.atkN % e.heavyEvery === 0;
+      e.atk = heavy ? { t: 0, hit: false, heavy: true, dur: c.enemy.atkDur * H.durMult, hitAt: c.enemy.atkHitAt * H.hitMult } : { t: 0, hit: false, dur: c.enemy.atkDur, hitAt: c.enemy.atkHitAt };
+    }
     if (e.moving) e.walkT += dt;
   }
 
@@ -616,10 +765,11 @@ export class Sim {
     return { dmg, broke };
   }
   enemyHitsPlayer(e) {
-    const p = this.player, c = this.cfg;
-    p.flash = 0.2; p.hurt = 0.6;
+    const p = this.player, c = this.cfg, heavy = !!(e.atk && e.atk.heavy);
+    if ((p.blocking || p.dash) && this.defend(e, heavy)) return;
+    p.flash = 0.2; p.hurt = 0.6; p.blocking = false; p.blockLock = !!this.input.block;
     if (!p.inv) {
-      const r = this.takeHit(p, c.enemy.atkDmg);
+      const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));
       this.text(p.x, p.y - 96, '-' + r.dmg, '#ff7a6a', 10);
       if (r.broke) { this.say('break', 'Your armor broke.'); this.text(p.x, p.y - 110, 'ARMOR BROKEN', '#ff9a6a', 9); }
       if (p.hp <= 0) { if (this.mode === 'battle') p.hp = 0; else { this.say('info', 'Player downed; restored.'); p.hp = p.maxHp; } }
@@ -644,7 +794,7 @@ export class Sim {
   }
   updateAlly(a, dt) {
     const c = this.cfg, p = this.player;
-    a.flash = Math.max(0, a.flash - dt); a.hurt = Math.max(0, (a.hurt || 0) - dt);
+    a.flash = Math.max(0, a.flash - dt); a.hurt = Math.max(0, (a.hurt || 0) - dt); this.kv(a, dt);
     if (a.state === 'dying') { a.deathT += dt; a.x = this.clampX(a.x + a.vx * dt); a.vx *= 0.9; return; }
     a.moving = false;
     const w = weaponStats(c, a.weapon), iv = swingInterval(c, a.weapon, a.dex || 5), spd = c.player.speed * 0.8;

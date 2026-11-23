@@ -636,6 +636,31 @@ function groundLock(rig, ys) {
   rig.g.position.y = -m + (ys || 0);
 }
 
+/* ---------- combat states: block, parry, clash, stun, dash, shoot ----------
+   First-pass poses drafted in code; an animation of the same type made in the Animator (registerAnim) replaces each one.
+   f.st = { kind, u }: u runs 0 to 1 for one-shot states (clash, parry, shoot, dash); for block it is seconds held. */
+const STATE_POSE = {
+  block:  P({ w: 1, py: -0.03, pel: [6, -22, 0], head: [2, 2], hand: [0.02, 0.46, 0.44], blade: [0, 0.62, 0.78], far: [0.34, 0.42, 0.5], legN: [-34, 0, 46, 0, 0], legF: [30, 0, 40, 0, 0] }),
+  parry:  P({ w: 1, py: -0.02, pel: [12, -6, 0], head: [-2, 0], hand: [0.02, 0.7, 0.62], blade: [0, 0.35, 1], far: [0.34, 0.4, 0.5], legN: [-40, 0, 52, 0, 0], legF: [34, 0, 40, 0, 0] }),
+  clash:  P({ w: 1, py: -0.035, pel: [-14, -26, 3], head: [-8, 0], hand: [-0.1, 0.55, 0.2], blade: [0, 0.8, 0.35], far: [0.3, 0.35, 0.3], legN: [-24, 0, 36, 0, 0], legF: [22, 0, 30, 0, 0] }),
+  dash:   P({ w: 1, py: -0.09, pel: [24, -12, 0], head: [8, 0], hand: [-0.2, 0.18, 0.05], blade: [0, 0.05, 1], far: [0.2, 0.1, 0.1], legN: [-52, 0, 62, 0, 0], legF: [42, 0, 50, 0, 0] }),
+  shoot:  P({ w: 1, py: -0.01, pel: [6, -4, 0], head: [-2, 0], hand: [0, 0.55, 0.62], blade: [0, 0.3, 1], far: [0.1, 0.45, 0.58], legN: [-30, 0, 38, 0, 0], legF: [26, 0, 32, 0, 0] }),
+};
+const STATE_TWO = { two: true, grip: 0.12 };
+const env = u => u < 0.25 ? u / 0.25 : Math.max(0, 1 - (u - 0.25) / 0.75);        // quick snap in, slower recovery
+M3.statePose = function (f) {
+  const st = f.st, two = f.two ? 2 : 1, k = st.kind, u = Math.max(0, Math.min(1, st.u || 0));
+  if (k === 'stun') { const LS = CLOOP['stun' + two]; return LS ? loopSample(LS, f.t || 0) : sample(KEYS.wounded, ((f.t || 0) * 1.5) % 2, true); }
+  const C = ONE[k + two];
+  if (C) return sampleT(C.keys, C.T, u * C.len);                                  // an animation made in the Animator
+  const L = CLOOP[k + two]; if (L) return loopSample(L, st.u || 0);
+  let a = STATE_POSE[k]; if (!a) return null;
+  if (f.two) a = Object.assign({}, a, STATE_TWO, { hand: [0, a.hand[1] - 0.2, a.hand[2] - 0.05] });
+  const idle = f.two ? KEYS.idleTwo[0] : KEYS.idle1[0];
+  if (k === 'block' || k === 'dash') return lerpP(idle, a, Math.min(1, (k === 'block' ? (st.u || 0) * 14 : u * 6) + 0.2));
+  return lerpP(idle, a, env(u));
+};
+
 /* ---------- a pose for each game state ---------- */
 M3.pose = function (role, f) {
   const rig = M3.getRig(role, f); if (!rig) return false;
@@ -661,6 +686,7 @@ M3.pose = function (role, f) {
     aux.rigRot = [-(Math.PI / 2 - 0.12) * e, 0, 0]; aux.rigZ = 0.8 * e;
     free = true;
     if (viol) aux.lift = Math.sin(Math.min(1, u * 1.1) * Math.PI) * 0.5;
+  } else if (f.st && !f.swing && (p = M3.statePose(f))) {
   } else if (f.swing) {
     const sw = f.swing, st = M3.moveKey(f.style, f.two);
     const keys = KEYS[st], cf = KT[st].c, n = keys.length;
@@ -841,13 +867,13 @@ M3.registerAnim = function (def) {
     if (T[T.length - 1] < L - 1) add2(ks[ks.length - 1], L - 1);
     if (keys.length < 2) { keys.push(keys[0]); T.push(L - 1); V.push(V[0]); }
     ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, c: typ === 'grab' ? null : Math.max(1, Math.min(L - 2, def.contact || Math.round(L * 0.4))), V, vm: !!def.vm && V.some(Boolean), dur: 0.5 };
-  } else if (typ === 'hurt' || typ === 'dying' || typ === 'falling') {
+  } else if (typ === 'hurt' || typ === 'dying' || typ === 'falling' || typ === 'clash' || typ === 'parry' || typ === 'dash' || typ === 'shoot') {
     const L = def.len || 60;
     for (const k of ks) add(k, k.f);
     if (T[0] > 0) { keys.unshift(M3.buildPose(ks[0], two)); T.unshift(0); }
-    if (T[T.length - 1] < L) { keys.push(typ === 'hurt' ? M3.buildPose(ks[0], two) : keys[keys.length - 1]); T.push(L); }   // a flinch returns to its first pose; a death holds its last
+    if (T[T.length - 1] < L) { keys.push(typ === 'hurt' || typ === 'clash' || typ === 'parry' || typ === 'shoot' ? M3.buildPose(ks[0], two) : keys[keys.length - 1]); T.push(L); }   // a flinch returns to its first pose; a death holds its last
     if (keys.length < 2) { keys.push(keys[0]); T.push(L); }
-    ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, dur: def.loop || ({ hurt: 0.3, dying: 0.35, falling: 0.5 })[typ] };
+    ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, dur: def.loop || ({ hurt: 0.3, dying: 0.35, falling: 0.5, clash: 0.34, parry: 0.3, dash: 0.22, shoot: 0.25 })[typ] };
   } else {
     const L = def.len || 60;
     for (const k of ks) add(k, k.f);

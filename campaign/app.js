@@ -448,8 +448,6 @@ function drawBattle() {
   for (const a of sim.allies) if (a.state === 'alive') { const x = Math.round(a.x), y = Math.round(a.y) - 88; ctx.fillStyle = '#14101c'; ctx.fillRect(x - 15, y - 1, 30, 6); ctx.fillStyle = '#6fd07a'; ctx.fillRect(x - 14, y, Math.round(28 * a.hp / a.maxHp), 4); label(ctx, a.name.split(' ')[0], x, y - 4, '#cfe8cf', 9); }
   for (const f of sim.fx) { ctx.globalAlpha = Math.max(0, f.life / f.max); ctx.fillStyle = f.col; ctx.fillRect(Math.round(f.x), Math.round(f.y), f.size, f.size); }
   ctx.globalAlpha = 1;
-  if (sim.clash) { const k = sim.clash, X = Math.round(k.x), Y = Math.round(k.y - k.h), C = CFG.clash, r = Math.max(1, 7 + 34 * (k.target - k.t) / k.target);
-    ctx.save(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.arc(X, Y, 7, 0, 7); ctx.stroke(); ctx.strokeStyle = Math.abs(k.t - k.target) <= C.window ? '#ffe27a' : '#e8a040'; ctx.beginPath(); ctx.arc(X, Y, r, 0, 7); ctx.stroke(); ctx.restore(); }
   for (const t of sim.texts) { ctx.globalAlpha = Math.min(1, t.life / 0.3); label(ctx, t.text, t.x, t.y, t.col, t.size + 2); }
   ctx.globalAlpha = 1;
   label(ctx, 'YOU', p.x, p.y - 88, '#f4ecd8', 10);

@@ -83,14 +83,14 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
 <div class="wrap">
   <header>
     <h1>Project <span>War</span> · Combat Test</h1>
-    <div class="sub">Side view, depth band, auto-attack, Wounded and Armor Break. Fighters are live 3D models drawn as pixel art.</div>
+    <div class="sub">Side view, manual combat on mouse and keyboard: clash, block and parry, dash, heavy attacks, aimed throws and shots. Fighters are live 3D models drawn as pixel art.</div>
   </header>
 
   <div class="main">
     <section class="stagecol" aria-label="Test arena">
       <canvas id="stage" width="640" height="360" tabindex="0" aria-label="Combat arena. Move with W A S D or the arrow keys."></canvas>
       <div class="under">
-        <span><b>W A S D</b> or arrows to move. Attacks are automatic when an enemy is in reach and in your lane. Hold <b>G</b> beside a staggered or wounded enemy to grab him, then <b>F</b> throw, <b>V</b> slam, <b>R</b> or Space strike. <b>P</b> pauses.</span>
+        <span><b>Mouse</b>: side sets facing, left click light attack, right click heavy attack, cursor aims. <b>W A S D</b> move, <b>Shift</b> dash (click during it for a dash attack), hold <b>Q</b> to block, tap <b>Q</b> just before a hit to parry (heavies can only be parried), <b>E</b> fire a shot. Hold <b>G</b> beside a staggered enemy to grab it, then <b>F</b> throw toward the cursor, <b>V</b> slam, <b>R</b> or click strike. <b>P</b> pauses. Keys are rebindable below.</span>
         <span id="status" aria-live="off">Chain step 1</span>
       </div>
       <div class="sub">Tuning guesses, not design: swing speed, how DEX shortens it, two-hander damage, armor durability, flee SAN. Everything else follows the style guide.</div>
@@ -109,6 +109,21 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
         <div class="field"><label for="dmgov">Damage override</label><input type="number" id="dmgov" min="1" step="1" placeholder="weapon"></div>
         <div class="field"><label for="inv">Invulnerable</label><input type="checkbox" id="inv" checked></div>
         <div id="readout"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Combat</h2>
+        <div class="field"><label for="manual">Manual combat (off = old auto-attack)</label><input type="checkbox" id="manual" checked></div>
+        <div class="field"><label for="skripo">Skill: Riposte (passive)</label><input type="checkbox" id="skripo"></div>
+        <div class="field"><label for="skshove">Skill: Shove / break guard</label><input type="checkbox" id="skshove"></div>
+        <div class="field"><label for="delay">Input delay (to feel the parry at online lag)</label><span style="display:flex;gap:8px;align-items:center"><input type="range" id="delay" min="0" max="300" step="10" value="0"><span class="val" id="delayv">0 ms</span></span></div>
+      </section>
+
+      <section class="panel">
+        <h2>Controls</h2>
+        <div id="binds"></div>
+        <div class="btns"><button class="btn" id="bindreset" type="button">Reset keys</button></div>
+        <p class="muted" style="margin:0">Mouse: left light, right heavy, cursor aims. Arrow keys always move.</p>
       </section>
 
       <section class="panel">
@@ -160,7 +175,10 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
         <div class="field"><label for="dur">Armor durability</label><input type="number" id="dur" min="1" step="1" value="6"></div>
         <div class="field"><label for="ai">Behavior</label>
           <select id="ai"><option value="stand">Stand still (dummy)</option><option value="advance">Advance and attack</option></select></div>
+        <div class="field"><label for="kind">Kind</label>
+          <select id="kind"><option value="soldier">Soldier (armor tier below)</option><option value="fodder">Fodder (swarm, no clash)</option><option value="tank">Tank (plate, 14 HP)</option><option value="elite">Elite (heavy every 3rd swing)</option></select></div>
         <div class="field"><label for="count">Count</label><input type="number" id="count" min="1" max="5" step="1" value="1"></div>
+        <div class="btns"><button class="btn" id="squad" type="button">Spawn test squad</button></div>
         <div class="btns">
           <button class="btn primary" id="spawn" type="button">Spawn man-at-arms</button>
           <button class="btn" id="clear" type="button">Clear</button>

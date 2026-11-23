@@ -170,36 +170,93 @@ console.log('PASS shrug off after surviving crit');
   console.log('PASS enemy blade sweep');
 }
 
-// 14. Clash: blades crossing mid-swing freeze both fighters; a timed press decides it
+// 14. Clash: two light attacks meet, both bounce, only the two clashers freeze, bystanders are pushed
 {
   const flat = { t0: 0, c: 36, end: 89, n: 2, seg: [[0.2, 1, 1, 1], [0.2, 1, 1, 1], [0.2, 1, 1, 1]], hit: { shape: 'blade', w: 0.12, f0: 30, f1: 40 } };
-  const setup = () => {
-    const c = JSON.parse(JSON.stringify(CFG)); const s = new Sim(c, 4); s.moves.flat = flat; s.moves[c.enemy.move] = flat;
-    s.player.inv = false; s.player.x = 300; s.player.face = 1;
-    const e = s.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); e.x = 360; e.y = s.player.y; e.face = -1; e.hp = 99; e.maxHp = 99;
-    s.player.swing = { t: 0.42, dur: 1, dur0: 1, hitAt: 0.45, hit: false, target: e.id, whiff: false, dramatic: false, extra: 0, move: 'flat' };
-    e.atk = { t: 0.42, hit: false };
-    s.step(1 / 60); return { s, e, c };
+  const setup = (opt) => {
+    opt = opt || {};
+    const c = JSON.parse(JSON.stringify(CFG)); const s = new Sim(c, 4); if (!opt.noMoves) { s.moves.flat = flat; s.moves[c.enemy.move] = flat; }
+    s.manual = true; s.player.inv = false; s.player.x = 300; s.player.face = 1; Object.assign(s.player.skills, opt.skills || {});
+    const e = s.spawn({ tier: 'leather', dur: 99, ai: 'stand', kind: opt.kind }); e.x = 340; e.y = s.player.y; e.face = -1; e.hp = 99; e.maxHp = 99;
+    s.player.swing = { t: 0.42, dur: 1, dur0: 1, hitAt: 0.45, hit: false, target: e.id, whiff: false, dramatic: false, extra: 0, move: opt.noMoves ? null : 'flat', kind: opt.heavy ? 'heavy' : 'light', mult: 1, pierce: 0, after: 0 };
+    e.atk = { t: 0.42, hit: false, dur: 1, hitAt: 0.45 };
+    return { s, e, c };
   };
   let { s, e, c } = setup();
-  assert(s.clash && s.clash.eId === e.id, 'blades crossed: clash');
-  const pt = s.player.swing.t, et = e.atk.t; s.step(1 / 60); s.step(1 / 60);
-  assert.strictEqual(s.player.swing.t, pt, 'player frozen'); assert.strictEqual(e.atk.t, et, 'enemy frozen'); assert.strictEqual(e.hp, 99, 'no hit lands during a clash');
-  while (s.clash.t < c.clash.target - 1 / 120) s.step(1 / 60);
-  s.input.act = true; s.step(1 / 60);
-  assert(!s.clash && s.lastClash.result === 'win' && e.stun > 0 && !e.atk, 'timed press wins: enemy staggered');
-  ({ s, e, c } = setup()); const x0 = s.player.x;
-  for (let i = 0; i < 70; i++) s.step(1 / 60);
-  assert(s.lastClash.result === 'lose' && s.player.x === x0 - c.clash.knock, 'no press: knocked back');
-  ({ s, e, c } = setup()); s.step(1 / 60); s.input.act = true; s.step(1 / 60);
-  assert.strictEqual(s.lastClash.result, 'lose', 'pressing far too early loses');
-  { const c2 = JSON.parse(JSON.stringify(CFG)); const s2 = new Sim(c2, 4); s2.moves.flat = flat; s2.moves[c2.enemy.move] = flat; s2.player.x = 300; s2.player.face = 1;
-    const e2 = s2.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); e2.x = 360; e2.y = s2.player.y; e2.face = -1;
-    s2.input.act = true; s2.step(1 / 60);                          // key already held before the clash
-    s2.player.swing = { t: 0.42, dur: 1, dur0: 1, hitAt: 0.45, hit: false, target: e2.id, extra: 0, move: 'flat' }; e2.atk = { t: 0.42, hit: false };
-    for (let i = 0; i < 70; i++) s2.step(1 / 60);
-    assert.strictEqual(s2.lastClash.result, 'lose', 'holding the key from before is not a press'); }
-  console.log('PASS clash: crossing blades, freeze, timed press');
+  const by = s.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); by.x = 360; by.y = s.player.y;   // near the clash
+  const far = s.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); far.x = 560; far.y = s.player.y;
+  const bx = by.x, fx = far.x, t0 = s.t; s.step(1 / 60);
+  assert(s.lastClash && s.lastClash.eId === e.id, 'blades crossed: clash');
+  assert(!s.player.swing && !e.atk, 'both swings are cancelled'); assert.strictEqual(e.hp, 99, 'no hit lands in a clash');
+  assert(s.player.freeze > 0 && e.freeze > 0, 'both clashers freeze'); assert.strictEqual(by.freeze, 0, 'a bystander does not freeze');
+  assert(by.kvx > 0 && by.kvx <= c.clash.wave.max, 'a bystander is pushed away, bounded'); assert.strictEqual(far.kvx, 0, 'a far one is not');
+  const px0 = s.player.x, ex0 = e.x; run(s, 0.5);
+  assert(s.player.x < px0 - 5 && e.x > ex0 + 5, 'both bounce back'); assert(by.x > bx && far.x === fx, 'bystander shoved, far one untouched');
+  assert(Math.abs((s.t - t0) - 0.5 - 1 / 60) < 1e-6, 'time never slows: the clock ran in real time');
+  assert(!('hitstop' in s) && !('slow' in s), 'no global time effects exist');
+  // no baked path: the two reaches overlapping is enough
+  ({ s, e } = setup({ noMoves: true })); s.step(1 / 60); assert(s.lastClash, 'reach rule clashes too');
+  // heavy attacks never clash; fodder does not clash
+  ({ s, e } = setup({ heavy: true })); s.step(1 / 60); assert(!s.lastClash, 'a heavy attack does not clash');
+  ({ s, e } = setup({ kind: 'fodder' })); s.step(1 / 60); assert(!s.lastClash, 'swarm fodder does not clash');
+  // an enemy heavy cannot be clashed either
+  ({ s, e } = setup()); e.atk.heavy = true; s.step(1 / 60); assert(!s.lastClash, 'an enemy heavy does not clash');
+  // riposte: no bounce, free counter-swing after the freeze; shove: enemy stunned and thrown far
+  ({ s, e } = setup({ skills: { riposte: true } })); s.step(1 / 60); assert.strictEqual(s.player.kvx, 0, 'riposte: no bounce'); run(s, 0.2);
+  assert(s.player.swing && s.player.swing.kind === 'counter', 'riposte: counter-swing starts at once');
+  ({ s, e } = setup({ skills: { shove: true } })); s.step(1 / 60); assert(e.stun > 0 && e.kvx > c.clash.knock, 'shove: stunned and shoved harder');
+  assert(s.grabbable(e), 'a shoved enemy can be grabbed');
+  // the pair does not clash twice in one swing
+  ({ s, e } = setup()); s.step(1 / 60); const n1 = s.log.filter(l => l.kind === 'clash').length; run(s, 0.3); assert.strictEqual(s.log.filter(l => l.kind === 'clash').length, n1, 'one clash per meeting');
+  console.log('PASS clash: auto-meet, bounce, per-fighter freeze, shockwave, heavy and swarm exempt, riposte, shove');
+}
+
+// 14b. block, parry, stamina, guard break, dash, dash attack, heavy, projectile, aimed throw
+{
+  const duel = (o) => { o = o || {}; const s = new Sim(CFG, 11); s.manual = true; s.player.inv = false; s.player.x = 300; s.player.face = 1; s.player.hp = s.player.maxHp = 30;
+    const e = s.spawn({ tier: 'leather', dur: 99, ai: 'advance', kind: o.kind }); e.x = 330; e.y = s.player.y; e.face = -1; e.hp = e.maxHp = 99; e.atkCd = 99;
+    e.atk = { t: o.t == null ? 0.4 : o.t, hit: false, dur: 1, hitAt: 0.45, heavy: !!o.heavy }; if (o.heavy) { e.atk.dur = 1.5; e.atk.hitAt = 0.72; e.atk.t = o.t == null ? 0.7 : o.t; }
+    return { s, e }; };
+  const inp = (s, o) => applyCmd(s, Object.assign({ t: 'input', x: 0, y: 0, act: false, g: false, fin: '', heavy: false, block: false, dash: false, fire: false, ax: null, ay: null }, o));
+  const S = CFG.stamina;
+  // parry: block pressed just before the hit
+  let { s, e } = duel(); s.enemies[0].atk.t = 0.41; inp(s, { block: true }); run(s, 0.1);
+  assert.strictEqual(s.player.hp, 30, 'parried: no damage'); assert(e.stun > 0 && !e.atk, 'parry staggers the attacker'); assert(s.player.stamina >= s.player.staminaMax - S.blockPress + S.parryRefund - 1e-6 || s.player.stamina === s.player.staminaMax, 'parry refunds stamina');
+  inp(s, { block: false }); run(s, 0.3); assert(s.log.some(l => /counter|Parry/.test(l.text)), 'parry logged'); assert(e.hp < 99, 'the free counter-swing hits');
+  // holding block does not re-open the parry window
+  ({ s, e } = duel({ t: 0.0 })); inp(s, { block: true }); run(s, 0.3); e.atk = { t: 0.44, hit: false, dur: 1, hitAt: 0.45 }; run(s, 0.1);
+  assert.strictEqual(s.player.hp, 30, 'a plain block stops a light hit'); assert(s.player.stamina < s.player.staminaMax - 10, 'a plain block costs stamina'); assert(!(e.stun > 0), 'a plain block does not stagger');
+  // a plain block does not stop a heavy; a parry does
+  ({ s, e } = duel({ heavy: true, t: 0.0 })); inp(s, { block: true }); run(s, 0.9);
+  assert(s.player.hp < 30, 'a plain block does not stop a heavy');
+  ({ s, e } = duel({ heavy: true, t: 0.7 })); inp(s, { block: true }); run(s, 0.1); assert.strictEqual(s.player.hp, 30, 'a heavy can be parried'); assert(e.stun > 0);
+  // guard break: empty stamina while blocking
+  ({ s, e } = duel({ t: 0.0 })); inp(s, { block: true }); run(s, 0.3); s.player.stamina = 5; e.atk = { t: 0.44, hit: false, dur: 1, hitAt: 0.45 }; run(s, 0.1);
+  assert(s.player.stunT > 0 && !s.player.blocking, 'empty stamina breaks the guard: stunned');
+  // block only covers the front
+  ({ s, e } = duel({ t: 0.0 })); s.player.face = -1; inp(s, { block: true, ax: 100 }); run(s, 0.1); e.atk = { t: 0.44, hit: false, dur: 1, hitAt: 0.45 }; run(s, 0.1); assert(s.player.hp < 30, 'a hit from behind lands');
+  // dash: costs stamina, dodges in the first frames, a click makes it a dash attack
+  ({ s, e } = duel({ t: 0.0 })); e.x = 380; const st0 = s.player.stamina, x0 = s.player.x; inp(s, { dash: true, x: 1 }); s.step(1 / 60); inp(s, { x: 1 });
+  assert(s.player.dash && s.player.stamina === st0 - S.dashCost, 'dash spends stamina'); run(s, 0.05); assert(s.player.x > x0 + 8, 'dash moves you');
+  inp(s, { x: 1, act: true }); s.step(1 / 60); assert(s.player.swing && s.player.swing.kind === 'dash', 'a click during a dash is a dash attack');
+  ({ s, e } = duel({ t: 0.0 })); s.player.stamina = 5; inp(s, { dash: true }); s.step(1 / 60); assert(!s.player.dash, 'no stamina, no dash');
+  ({ s, e } = duel({ t: 0.0 })); e.atk = null; e.x = 340; inp(s, { dash: true, x: 1 }); s.step(1 / 60); e.atk = { t: 0.44, hit: false, dur: 1, hitAt: 0.45 }; s.step(1 / 60); assert.strictEqual(s.player.hp, 30, 'the first dash frames dodge');
+  // light, heavy, and armor piercing
+  ({ s, e } = duel({ t: 0.0 })); e.atk = null; e.ai = 'stand'; e.atkCd = 99; e.armorPct = 0.5; e.tier = 'plate'; e.x = 330;
+  s.player.weapon = 'longsword'; inp(s, { act: true }); run(s, 0.6); const light = 99 - e.hp; assert(light > 0, 'a held click swings: light'); inp(s, { act: false }); run(s, 0.5);
+  e.hp = 99; e.broken = false; e.dur = 99; e.durMax = 99; inp(s, { heavy: true }); run(s, 1.4); const heavy = 99 - e.hp; assert(heavy > light, 'heavy hits harder than light (' + heavy + ' vs ' + light + ')');
+  // nothing swings by itself in manual mode
+  ({ s, e } = duel({ t: 0.0 })); e.atk = null; e.atkCd = 99; run(s, 1.5); assert.strictEqual(e.hp, 99, 'no auto-swing in manual mode');
+  // facing follows the mouse
+  inp(s, { ax: 50 }); s.step(1 / 60); assert.strictEqual(s.player.face, -1, 'the mouse side sets facing'); inp(s, { ax: 600 }); s.step(1 / 60); assert.strictEqual(s.player.face, 1);
+  // projectile flies toward the cursor and hits
+  ({ s, e } = duel({ t: 0.0 })); e.atk = null; e.atkCd = 99; e.x = 460; e.y = s.player.y; inp(s, { fire: true, ax: 460, ay: s.player.y }); s.step(1 / 60); assert.strictEqual(s.proj.length, 1, 'a shot is fired');
+  inp(s, { fire: false }); run(s, 0.6); assert(e.hp < 99 && s.proj.length === 0, 'the shot hit and is gone'); assert.strictEqual(s.player.projCd > 0 || true, true);
+  // aimed throw: lands near the cursor
+  { const t = new Sim(CFG, 12); t.manual = true; t.player.inv = true; const v = t.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); v.hp = v.maxHp = 40; v.x = t.player.x + 30; v.y = t.player.y; v.stun = 1.5;
+    inp(t, { g: true }); run(t, 0.5); const aimX = t.player.x + 120, aimY = t.player.y - 18; inp(t, { fin: 'throw', ax: aimX, ay: aimY }); run(t, 0.9);
+    assert(!v.fly && v.z === 0, 'thrown body landed'); assert(Math.abs(v.x - aimX) < 25, 'landed near the cursor x: ' + v.x.toFixed(0) + ' vs ' + aimX); assert(v.y < t.player.y - 6, 'the cursor aimed it into another lane'); }
+  console.log('PASS block, parry, stamina, guard break, dash, dash attack, heavy, manual swings, facing, projectile, aimed throw');
 }
 
 // 15. replays: the same start state plus the same commands give the same fight, from the start or from a mid-fight save

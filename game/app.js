@@ -92,29 +92,55 @@ import { applySnapshot } from '../server/protocol.js';
     ctx.fillStyle = col; ctx.fillText(text, Math.round(x), Math.round(y));
   }
 
-  /* ---------- keyboard ---------- */
-  const keys = {};
-  const MAP = { KeyW: 'u', ArrowUp: 'u', KeyS: 'd', ArrowDown: 'd', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r' };
+  /* ---------- keyboard and mouse ---------- */
+  // Mouse side = facing, left click = light attack, right click = heavy attack, cursor = aim for throws and shots. Keys are rebindable.
+  const keys = {}, aim = { x: null, y: null };
+  const DEF = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', dash: 'ShiftLeft', block: 'KeyQ', grab: 'KeyG', throw: 'KeyF', slam: 'KeyV', strike: 'KeyR', fire: 'KeyE' };
+  const NAMES = { up: 'Move up', down: 'Move down', left: 'Move left', right: 'Move right', dash: 'Dash (stamina)', block: 'Block (hold) / parry (tap)', grab: 'Grab (hold)', throw: 'Throw', slam: 'Slam', strike: 'Strike', fire: 'Fire shot' };
+  let binds = Object.assign({}, DEF); try { Object.assign(binds, JSON.parse(localStorage.getItem('pw.binds') || '{}')); } catch (e) { }
+  const ARROW = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const norm = c => c.startsWith('Shift') ? 'ShiftLeft' : c;
+  const actOf = code => { if (ARROW[code]) return ARROW[code]; code = norm(code); for (const a in binds) if (binds[a] === code) return a; return null; };
+  const keyLabel = c => c.replace(/^Key/, '').replace(/^Digit/, '').replace('ShiftLeft', 'Shift').replace('Space', 'Space');
+  let rebinding = null;
   function typing(e) {
     const t = e.target, tag = t && t.tagName;
     if (tag === 'SELECT') return true;
     if (tag === 'INPUT' && t.type !== 'range' && t.type !== 'checkbox') return true;
     return false;
   }
+  const setKey = (a, v) => {
+    if (a === 'up') keys.u = v; else if (a === 'down') keys.d = v; else if (a === 'left') keys.l = v; else if (a === 'right') keys.r = v;
+    else if (a === 'dash') keys.dash = v; else if (a === 'block') keys.block = v; else if (a === 'grab') keys.g = v; else if (a === 'fire') keys.fire = v;
+    else if (v) keys.fin = a;                                          // throw / slam / strike: the last one pressed
+    else if (keys.fin === a) keys.fin = '';
+  };
   window.addEventListener('keydown', e => {
+    if (rebinding) { e.preventDefault(); if (e.code !== 'Escape') { binds[rebinding] = norm(e.code); try { localStorage.setItem('pw.binds', JSON.stringify(binds)); } catch (x) { } } rebinding = null; drawBinds(); return; }
     if (typing(e)) return;
     if (e.code === 'KeyP') { togglePause(); return; }
-    if (e.code === 'Space') { keys.act = true; e.preventDefault(); return; }    // Clash press
-    if (e.code === 'KeyG') { keys.g = true; e.preventDefault(); return; }       // hold beside a staggered enemy to grab it
-    if (e.code === 'KeyF') { keys.fin = 'throw'; return; } if (e.code === 'KeyV') { keys.fin = 'slam'; return; } if (e.code === 'KeyR') { keys.fin = 'strike'; return; }
-    const k = MAP[e.code]; if (!k) return;
+    if (e.code === 'Space') { keys.act = true; e.preventDefault(); return; }    // Space: light attack too (and strike while holding)
+    const a = actOf(e.code); if (!a) return;
     if (e.target && e.target.type === 'range' && e.code.startsWith('Arrow')) return;
-    keys[k] = true; e.preventDefault();
+    setKey(a, true); e.preventDefault();
   });
-  window.addEventListener('keyup', e => { if (e.code === 'Space') keys.act = false; if (e.code === 'KeyG') keys.g = false; if ((e.code === 'KeyF' && keys.fin === 'throw') || (e.code === 'KeyV' && keys.fin === 'slam') || (e.code === 'KeyR' && keys.fin === 'strike')) keys.fin = ''; const k = MAP[e.code]; if (k) keys[k] = false; });
-  cv.addEventListener('pointerdown', () => { keys.act = true; }); window.addEventListener('pointerup', () => { keys.act = false; });
+  window.addEventListener('keyup', e => { if (e.code === 'Space') keys.act = false; const a = actOf(e.code); if (a) setKey(a, false); });
+  const toSim = ev => { const r = cv.getBoundingClientRect(); aim.x = Math.round((ev.clientX - r.left) / r.width * CFG.W); aim.y = Math.round((ev.clientY - r.top) / r.height * CFG.H); };
+  cv.addEventListener('pointermove', toSim);
+  cv.addEventListener('pointerdown', ev => { toSim(ev); cv.focus(); if (ev.button === 2) keys.heavy = true; else if (ev.button === 0) keys.act = true; ev.preventDefault(); });
+  window.addEventListener('pointerup', ev => { if (ev.button === 2) keys.heavy = false; else if (ev.button === 0) keys.act = false; });
+  cv.addEventListener('contextmenu', e => e.preventDefault());
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-  cv.addEventListener('pointerdown', () => cv.focus());
+  function drawBinds() {
+    const el = $('binds'); if (!el) return;
+    el.innerHTML = Object.keys(NAMES).map(a => '<div class="field"><label>' + NAMES[a] + '</label><button class="btn" type="button" data-bind="' + a + '">' + (rebinding === a ? 'press a key...' : keyLabel(binds[a])) + '</button></div>').join('');
+    el.querySelectorAll('button').forEach(b => b.onclick = () => { rebinding = b.dataset.bind; drawBinds(); });
+  }
+  drawBinds();
+  const resetBinds = $('bindreset'); if (resetBinds) resetBinds.onclick = () => { binds = Object.assign({}, DEF); try { localStorage.removeItem('pw.binds'); } catch (e) { } rebinding = null; drawBinds(); };
+  const curInput = () => ({ x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!keys.g, fin: keys.fin || '', heavy: !!keys.heavy, block: !!keys.block, dash: !!keys.dash, fire: !!keys.fire, ax: aim.x, ay: aim.y });
+  const sameInput = (a, b) => ['x', 'y', 'act', 'g', 'fin', 'heavy', 'block', 'dash', 'fire', 'ax', 'ay'].every(k => (a[k] == null ? null : a[k]) === (b[k] == null ? null : b[k]));
+  let delayQ = [];                                                    // input delay (ms) to feel the parry and clash timing at online lag
 
   /* ---------- menu wiring ---------- */
   let paused = false, timeScale = 1;
@@ -135,6 +161,7 @@ import { applySnapshot } from '../server/protocol.js';
       '<div class="rrow"><span>Two-hit kill on 9 HP, no armor</span><b class="' + (killsIn2 ? 'ok' : 'bad') + '">' + (killsIn2 ? 'yes' : 'no') + '</b></div>';
   }
   const look = { tier: 'leather', head: '', body: '', liv: '', metal: '', style: 'cut' };
+  let roleStyle = {};                                               // custom attacks the Animator marked as heavy, dash or counter
   function readLook() {
     const w = live.weaponInfo(), sel = $('atkstyle'), lg = sel.querySelector('option[value=lunge]');
     if (lg) { lg.disabled = !w.twoHanded; if (!w.twoHanded && sel.value === 'lunge') sel.value = 'chop'; }
@@ -145,6 +172,9 @@ import { applySnapshot } from '../server/protocol.js';
     const key = M3.moveKey(look.style, w.twoHanded), id = key + '|' + (w.kind || 'sword');
     if (!live.moves[id]) { const m = M3.bakeMove(key, { two: w.twoHanded, wkind: w.kind || 'sword' }); if (m) cmd({ t: 'move', id, data: m }); }
     const mv = live.moves[id] ? id : null; if (live.player.move !== mv) cmd({ t: 'set', move: mv });
+    const bakeStyle = st => { const k = M3.moveKey(st, w.twoHanded), id2 = k + '|' + (w.kind || 'sword'); if (!live.moves[id2]) { const m = M3.bakeMove(k, { two: w.twoHanded, wkind: w.kind || 'sword' }); if (m) cmd({ t: 'move', id: id2, data: m }); } return live.moves[id2] ? id2 : null; };
+    const km = { heavy: bakeStyle(roleStyle.heavy || 'chop'), dash: bakeStyle(roleStyle.dash || (w.twoHanded ? 'lunge' : 'cut')), counter: bakeStyle(roleStyle.counter || 'cut') };   // heavy, dash and counter swings use their own blade paths
+    if (JSON.stringify(km) !== JSON.stringify(live.player.kindMoves)) cmd({ t: 'set', kindMoves: km });
     netSync();
   }
   ['ptier', 'lkhead', 'lkbody', 'lkliv', 'lkmetal', 'atkstyle'].forEach(id => $(id).addEventListener('change', readLook));
@@ -158,16 +188,21 @@ import { applySnapshot } from '../server/protocol.js';
     nc.critOrder = $('critorder').value; nc.fleeSan = num('flee', 3); nc.enemy.san = num('esan', 5);
     if (JSON.stringify(nc) !== JSON.stringify(CFG)) cmd({ t: 'cfg', cfg: nc });
     timeScale = num('ts', 1); $('tsv').textContent = timeScale.toFixed(2) + 'x';
+    const sk = { riposte: $('skripo').checked, shove: $('skshove').checked };
+    if (JSON.stringify(sk) !== JSON.stringify(live.player.skills)) cmd({ t: 'set', skills: sk });
+    if ($('manual').checked !== !!live.manual) cmd({ t: 'manual', on: $('manual').checked });
+    $('delayv').textContent = Math.round(num('delay', 0)) + ' ms';
     readout(); readLook();
   }
-  ['weapon', 'dex', 'dmgov', 'inv', 'thr', 'chance', 'wdur', 'critorder', 'flee', 'esan', 'ts'].forEach(id => { $(id).addEventListener('input', applySettings); $(id).addEventListener('change', applySettings); });
+  ['weapon', 'dex', 'dmgov', 'inv', 'thr', 'chance', 'wdur', 'critorder', 'flee', 'esan', 'ts', 'manual', 'skripo', 'skshove', 'delay'].forEach(id => { $(id).addEventListener('input', applySettings); $(id).addEventListener('change', applySettings); });
   $('tier').addEventListener('change', tierDefaults);
   $('spawn').addEventListener('click', () => {
     const n = Math.max(1, Math.min(5, parseInt($('count').value, 10) || 1));
     if (net) { send({ t: 'spawn', tier: $('tier').value, n, ai: $('ai').value }); return; }
-    const o = { tier: $('tier').value, dur: Math.max(1, num('dur', 6)), ai: $('ai').value };
-    cmd({ t: 'spawn', list: Array.from({ length: n }, () => o), say: 'Spawned ' + n + ' ' + CFG.tiers[$('tier').value].label + ' man-at-arms (' + $('ai').value + ').' });
+    const kd = $('kind').value, o = { dur: Math.max(1, num('dur', 6)), ai: $('ai').value, kind: kd }; if (kd === 'soldier') o.tier = $('tier').value;
+    cmd({ t: 'spawn', list: Array.from({ length: n }, () => o), say: 'Spawned ' + n + ' ' + kd + ' (' + $('ai').value + ').' });
   });
+  $('squad').addEventListener('click', () => cmd({ t: 'spawn', list: [{ kind: 'fodder', ai: 'advance' }, { kind: 'fodder', ai: 'advance' }, { kind: 'fodder', ai: 'advance' }, { kind: 'fodder', ai: 'advance' }, { kind: 'fodder', ai: 'advance' }, { kind: 'tank', ai: 'advance' }, { kind: 'elite', ai: 'advance' }], say: 'Test squad: 5 fodder, a tank and an elite.' }));
   $('clear').addEventListener('click', () => { if (net) { send({ t: 'clear' }); return; } cmd({ t: 'clear' }); if (!pb) startRec(); });   // a cleared arena starts a fresh recording
   $('heal').addEventListener('click', () => cmd({ t: 'heal' }));
   $('repair').addEventListener('click', () => cmd({ t: 'repair' }));
@@ -201,10 +236,20 @@ import { applySnapshot } from '../server/protocol.js';
   }
   function renderStatus() {
     const p = sim.player;
-    $('status').textContent = 'Chain step ' + (p.chain + 1) + (p.swing ? '  ·  swinging' : '') + (sim.slow > 0 ? '  ·  slow-mo' : '');
+    $('status').textContent = fpsTxt + '  ·  ' + (sim.manual ? 'Manual' : 'Auto') + '  ·  stamina ' + Math.round(p.stamina) + '/' + p.staminaMax + (p.blocking ? '  ·  blocking' : '') + (p.swing ? '  ·  ' + (p.swing.kind || 'light') : '') + '  ·  chain ' + p.chain;
   }
 
   /* ---------- render ---------- */
+  function playerState(p) {                                          // which combat pose to draw when nothing else (swing, grab) is playing
+    if (p.grab || p.swing) return null;
+    if (p.stunT > 0) return { kind: 'stun' };
+    if (p.clashT > 0) return { kind: 'clash', u: 1 - p.clashT / (p.clashMax || 0.34) };
+    if (p.parryT > 0) return { kind: 'parry', u: 1 - p.parryT / 0.3 };
+    if (p.dash) return { kind: 'dash', u: p.dash.t / CFG.dash.dur };
+    if (p.blocking) return { kind: 'block', u: p.blockT };
+    if (p.shotT > 0) return { kind: 'shoot', u: 1 - p.shotT / 0.25 };
+    return null;
+  }
   function render() {
     ctx.imageSmoothingEnabled = false;
     ctx.save();
@@ -230,7 +275,8 @@ import { applySnapshot } from '../server/protocol.js';
     for (const it of list) {
       if (it.kind === 'p') {
         drawFigure(Object.assign({ role: 'p', x: p.x, y: p.y, face: p.face, tier: look.tier, pHead: look.head, pBody: look.body, pLiv: look.liv, pMetal: look.metal, broken: false, two: w.twoHanded, wkind: w.kind || 'sword', shield: false,
-          swing: p.swing, moving: p.moving, walkT: p.walkT, t: sim.t, flash: p.flash, flashMax: 0.2, hurt: p.hurt, hurtMax: 0.6, style: look.style }, M3.grabAtt(sim, w.twoHanded)));
+          swing: p.swing, moving: p.moving, walkT: p.walkT, t: sim.t, flash: p.flash, flashMax: 0.2, hurt: p.hurt, hurtMax: 0.6, st: playerState(p),
+          style: p.swing && p.swing.kind && p.swing.kind !== 'light' ? (roleStyle[p.swing.kind] || ({ heavy: 'chop', dash: w.twoHanded ? 'lunge' : 'cut', counter: 'cut' })[p.swing.kind]) : look.style }, M3.grabAtt(sim, w.twoHanded)));
       } else {
         const e = it.e;
         if (e.state === 'dying') {
@@ -242,9 +288,11 @@ import { applySnapshot } from '../server/protocol.js';
             ctx.strokeStyle = 'rgba(240,195,90,.9)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.5;
             ctx.beginPath(); ctx.ellipse(Math.round(e.x), Math.round(e.y), 22, 6, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]);
           }
-          const atk = e.atk ? { t: e.atk.t, dur: CFG.enemy.atkDur, dur0: CFG.enemy.atkDur, hitAt: CFG.enemy.atkHitAt, extra: 0 } : null;
+          const aDur = e.atk && e.atk.dur || CFG.enemy.atkDur, aHit = e.atk && e.atk.hitAt || CFG.enemy.atkHitAt;
+          const atk = e.atk ? { t: e.atk.t, dur: aDur, dur0: aDur, hitAt: aHit, extra: 0 } : null;
+          const est = e.atk ? null : e.clashT > 0 ? { kind: 'clash', u: 1 - e.clashT / (e.clashMax || 0.34) } : (e.stun > 0 && !e.down && !e.held && !e.fly) ? { kind: 'stun' } : null;
           const gvw = M3.grabVic(sim, e, w.twoHanded), fe = { role: 'e', x: e.x, y: e.y, z: e.z, face: e.face, tier: e.tier, broken: e.broken, shield: true,
-            swing: atk, woundedPose: e.wounded > 0, moving: e.moving, walkT: e.walkT, t: sim.t, flash: e.flash, flashMax: 0.12, hurt: e.hurt, hurtMax: 0.6 };
+            swing: atk, st: est, style: e.atk && e.atk.heavy ? 'chop' : undefined, woundedPose: e.wounded > 0, moving: e.moving, walkT: e.walkT, t: sim.t, flash: e.flash, flashMax: 0.12, hurt: e.hurt, hurtMax: 0.6 };
           if (gvw) { Object.assign(fe, gvw.fields); fe.x += gvw.dx; fe.swing = null; }
           drawFigure(withLook(e, fe));
         }
@@ -269,22 +317,27 @@ import { applySnapshot } from '../server/protocol.js';
         ctx.fillStyle = '#14101c'; ctx.fillRect(x - 15, ty + 6, 30, 3); ctx.fillStyle = '#ffd27a'; ctx.fillRect(x - 14, ty + 7, Math.round(28 * e.wounded / CFG.woundedDur), 1);
       }
       if (e.flee) label('FLEEING', x, ty, '#9fd0ff', 9);
+      if (e.kind && e.kind !== 'soldier') label(e.kind.toUpperCase(), x, y + 20, e.kind === 'elite' ? '#ff9a6a' : '#cfd8e6', 8);
+      if (e.atk && e.atk.heavy && !e.atk.hit) { const u = Math.min(1, e.atk.t / (e.atk.hitAt || 1)); ctx.strokeStyle = 'rgba(255,90,74,' + (0.35 + 0.5 * u) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(Math.round(e.x), Math.round(e.y), 26, 8, 0, 0, 7); ctx.stroke(); label('HEAVY: PARRY IT', x, y - 24, '#ff7a6a', 9); }
     }
 
+    // shots, the clash shockwave ring, the cursor
+    ctx.strokeStyle = '#ffe9a8'; ctx.lineWidth = 2;
+    for (const q of sim.proj || []) { const m = Math.sqrt(q.vx * q.vx + q.vy * q.vy) || 1; ctx.beginPath(); ctx.moveTo(Math.round(q.x), Math.round(q.y - 46)); ctx.lineTo(Math.round(q.x - q.vx / m * 9), Math.round(q.y - 46 - q.vy / m * 9)); ctx.stroke(); }
+    if (sim.lastClash && sim.t - sim.lastClash.at < 0.28) { const u = (sim.t - sim.lastClash.at) / 0.28; ctx.strokeStyle = 'rgba(255,231,160,' + (1 - u) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(Math.round(sim.lastClash.x), Math.round(p.y), CFG.clash.wave.radius * u, CFG.clash.wave.radius * u * 0.3, 0, 0, 7); ctx.stroke(); }
+    if (aim.x != null && !pb) { const X = aim.x, Y = aim.y; ctx.strokeStyle = 'rgba(255,240,200,.85)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(X, Y, 5, 0, 7); ctx.moveTo(X - 9, Y); ctx.lineTo(X - 3, Y); ctx.moveTo(X + 3, Y); ctx.lineTo(X + 9, Y); ctx.moveTo(X, Y - 9); ctx.lineTo(X, Y - 3); ctx.moveTo(X, Y + 3); ctx.lineTo(X, Y + 9); ctx.stroke(); }
     // fx + texts
     for (const f of sim.fx) { ctx.globalAlpha = Math.max(0, f.life / f.max); ctx.fillStyle = f.col; ctx.fillRect(Math.round(f.x), Math.round(f.y), f.size, f.size); }
     ctx.globalAlpha = 1;
-    if (sim.clash) {                                               // Clash: the ring closes on the inner ring; press as they meet
-      const k = sim.clash, X = Math.round(k.x), Y = Math.round(k.y - k.h), C = CFG.clash, r = Math.max(1, 7 + 34 * (k.target - k.t) / k.target);
-      ctx.save(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.arc(X, Y, 7, 0, 7); ctx.stroke();
-      ctx.strokeStyle = Math.abs(k.t - k.target) <= C.window ? '#ffe27a' : '#e8a040'; ctx.beginPath(); ctx.arc(X, Y, r, 0, 7); ctx.stroke(); ctx.restore();
-    }
     for (const t of sim.texts) { ctx.globalAlpha = Math.min(1, t.life / 0.3); label(t.text, t.x, t.y, t.col, t.size + 2); }
     ctx.globalAlpha = 1;
 
     // player hp + swing
     label('YOU', p.x, p.y - 88, '#f4ecd8', 10);
     ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 15, p.y - 84, 30, 5); ctx.fillStyle = '#6fd07a'; ctx.fillRect(p.x - 14, p.y - 83, Math.round(28 * p.hp / p.maxHp), 3);
+    ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 15, p.y - 79, 30, 4); ctx.fillStyle = p.stunT > 0 ? '#ff7a6a' : '#e8c24a'; ctx.fillRect(p.x - 14, p.y - 78, Math.round(28 * p.stamina / p.staminaMax), 2);
+    if (p.blocking && p.blockT <= CFG.stamina.parryWin) { ctx.strokeStyle = '#ffe27a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(Math.round(p.x), Math.round(p.y), 24, 7, 0, 0, 7); ctx.stroke(); }
+    if (p.stunT > 0) label('GUARD BROKEN', p.x, p.y - 94, '#ff9a6a', 9);
     if (dbg && p.swing && p.swing.move && sim.moves[p.swing.move]) {
       const m = sim.moves[p.swing.move], s = p.swing, tau = moveTau(m, s, s.t), g = segAt(m, tau), P = CFG.pxPerM, live = tau >= m.hit.f0 && tau <= m.hit.f1;
       ctx.strokeStyle = live ? '#ff5a4a' : 'rgba(255,255,255,.5)'; ctx.lineWidth = 2; ctx.beginPath();
@@ -445,11 +498,12 @@ import { applySnapshot } from '../server/protocol.js';
   });
 
   /* ---------- loop ---------- */
-  let last = performance.now(), acc = 0;
+  let last = performance.now(), acc = 0, fpsN = 0, fpsT = performance.now(), fpsTxt = '';
   function frame(now) {
     const real = Math.min(0.05, (now - last) / 1000); last = now;
+    fpsN++; if (now - fpsT >= 1000) { fpsTxt = Math.round(fpsN * 1000 / (now - fpsT)) + ' fps · ' + (1 + sim.enemies.length) + ' fighters drawn'; fpsN = 0; fpsT = now; }   // measure the live 3D cost on your own machine
     if (net) {                                                   // online: send input when it changes; the room steps the fight
-      const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!keys.g, fin: keys.fin || '' }, k = inp.x + ',' + inp.y + ',' + inp.act + ',' + inp.g + ',' + inp.fin;
+      const inp = curInput(), k = inp.x + ',' + inp.y + ',' + inp.act + ',' + inp.g + ',' + inp.fin;
       if (k !== net.lastIn) { net.lastIn = k; send(Object.assign({ t: 'input' }, inp)); }
       for (const t of sim.texts) t.life -= real; sim.texts = sim.texts.filter(t => t.life > 0);
     } else if (pb) {                                             // a replay or kill cam is playing
@@ -459,8 +513,10 @@ import { applySnapshot } from '../server/protocol.js';
     } else if (!paused) {
       acc += real * timeScale;
       while (acc >= STEP) {
-        const inp = { x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!keys.g, fin: keys.fin || '' }, s0 = live.input;
-        if (inp.x !== s0.x || inp.y !== s0.y || inp.act !== !!s0.act || inp.g !== !!s0.g || inp.fin !== (s0.fin || '')) cmd(Object.assign({ t: 'input' }, inp));
+        const want = curInput(), dsteps = Math.round(num('delay', 0) / (1000 / 60));
+        let inp = want;
+        if (dsteps > 0) { delayQ.push({ s: live.stepN + dsteps, inp: want }); inp = live.input; while (delayQ.length && delayQ[0].s <= live.stepN) inp = delayQ.shift().inp; } else delayQ.length = 0;
+        if (!sameInput(inp, live.input)) cmd(Object.assign({ t: 'input' }, inp));
         live.step(STEP); acc -= STEP;
         if (rec && live.stepN % 300 === 0) { snaps.push({ step: live.stepN, state: live.saveState(), cfg: clone(live.cfg), moves: Object.assign({}, live.moves), at: rec.cmds.length }); if (snaps.length > 8) snaps.shift(); }
       }
@@ -479,11 +535,12 @@ import { applySnapshot } from '../server/protocol.js';
       const arr = BUILTIN_ANIMS.filter(b => !user.some(u => u.id === b.id)).concat(user);
       M3.clearCustom(); for (const k in sim.moves) if (k.slice(0, 2) === 'c_') delete sim.moves[k];
       const sel = $('atkstyle'); sel.querySelectorAll('option[data-custom]').forEach(x => x.remove());
-      const info = []; let first = null;
+      const info = []; let first = null; roleStyle = {};
       for (const x of arr) {
         if (!x.keys || !x.keys.length) continue;
         const two = x.load ? x.load === '2' : !!x.two, typ = x.type || 'attack';
         if (!M3.registerAnim({ id: x.id || 'legacy', type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit, vm: x.vm })) continue;
+        if (typ === 'attack' && x.role) { roleStyle[x.role] = 'c_' + (x.id || 'legacy'); info.push((x.name || 'attack') + ' [' + x.role + ' attack]'); continue; }
         if (typ === 'attack') {
           const op = document.createElement('option'); op.value = 'c_' + (x.id || 'legacy'); op.dataset.custom = 1;
           op.textContent = 'Custom: ' + (x.name || 'attack') + (two ? ' (2H)' : ' (1H)'); sel.appendChild(op); first = first || op.value;
@@ -505,7 +562,7 @@ import { applySnapshot } from '../server/protocol.js';
   { let saved = null; try { saved = localStorage.getItem('pwlib2'); } catch (e) { } const f0 = loadLibrary(saved || '{"anims":[]}', true); if (f0) $('atkstyle').value = f0; }
 
   /* ---------- boot (keeps menu values across a republish) ---------- */
-  const IDS = ['ptier', 'lkhead', 'lkbody', 'lkliv', 'lkmetal', 'atkstyle', 'weapon', 'dex', 'dmgov', 'thr', 'chance', 'wdur', 'critorder', 'flee', 'esan', 'ts', 'tier', 'dur', 'ai', 'count'];
+  const IDS = ['ptier', 'lkhead', 'lkbody', 'lkliv', 'lkmetal', 'atkstyle', 'weapon', 'dex', 'dmgov', 'thr', 'chance', 'wdur', 'critorder', 'flee', 'esan', 'ts', 'tier', 'dur', 'ai', 'count', 'kind', 'delay'];
   { const P = M3.parts || null, fill = (id, list, none) => { const e = $(id); if (!e || !P) return; e.innerHTML = '<option value="">' + none + '</option>' + list.map(x => '<option value="' + x[0] + '">' + x[1] + '</option>').join(''); };
     if (P && P.presets) { const s = $('ptier'); s.innerHTML = P.presets.map(x => '<option value="' + x[0] + '">' + x[1] + '</option>').join(''); }
     fill('lkhead', P ? P.heads : [], 'from armor'); fill('lkbody', P ? P.bodies : [], 'from armor'); fill('lkliv', P ? P.liveries : [], 'from armor'); fill('lkmetal', P ? P.metals : [], 'from armor'); }
@@ -515,15 +572,16 @@ import { applySnapshot } from '../server/protocol.js';
     { const m = M3.bakeMove('cut1', { role: 'e', two: false, wkind: 'sword', shield: true }); if (m) cmd({ t: 'move', id: CFG.enemy.move, data: m }); }   // enemy swing path
     IDS.forEach(id => { if (saved[id] != null) $(id).value = saved[id]; });
     if (saved.inv != null) $('inv').checked = !!saved.inv;
+    ['manual', 'skripo', 'skshove'].forEach(id => { if (saved[id] != null) $(id).checked = !!saved[id]; });
     if (saved.dbg != null) $('dbg').checked = !!saved.dbg;
     if (saved.dur == null) tierDefaults();
     applySettings();
     try { if (saved.atkstyle && saved.atkstyle.slice(0, 2) === 'c_') $('atkstyle').value = saved.atkstyle; } catch (e) { }
-    cmd({ t: 'say', text: 'Test arena ready. Walk into range; attacks are automatic.' });
+    cmd({ t: 'say', text: 'Manual combat: mouse aims and attacks, Q blocks, Shift dashes, E fires, G grabs.' });
     cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] });
     requestAnimationFrame(frame);
   }
-  try { window.claude && window.claude.hot && window.claude.hot.snapshot && window.claude.hot.snapshot(() => { const o = {}; IDS.forEach(id => o[id] = $(id).value); o.inv = $('inv').checked; o.dbg = $('dbg').checked; return o; }); } catch (e) { }
+  try { window.claude && window.claude.hot && window.claude.hot.snapshot && window.claude.hot.snapshot(() => { const o = {}; IDS.forEach(id => o[id] = $(id).value); o.inv = $('inv').checked; o.dbg = $('dbg').checked; ['manual', 'skripo', 'skshove'].forEach(id => o[id] = $(id).checked); return o; }); } catch (e) { }
   const hot = window.claude && window.claude.hot;
   if (hot && hot.ready) hot.ready(boot); else boot((hot && hot.data) || {});
 }
