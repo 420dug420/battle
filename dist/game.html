@@ -16557,7 +16557,7 @@ void main(){
       }
       if (g.phase === "hold") {
         g.holdT += dt;
-        const pick2 = pr2.fin === "throw" ? "throw" : pr2.fin === "slam" ? "slam" : pr2.fin === "strike" || pr2.act ? "strike" : null;
+        const pick2 = pr2.fin === "throw" || pr2.heavy ? "throw" : pr2.fin === "slam" ? "slam" : pr2.fin === "strike" || pr2.act ? "strike" : null;
         if (pick2 === "strike" && g.strikes >= G3.maxStrikes) return;
         if (pick2) {
           g.phase = pick2;

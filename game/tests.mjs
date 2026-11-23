@@ -333,6 +333,10 @@ console.log('PASS shrug off after surviving crit');
   [s, e] = mk('leather', 1.5); applyCmd(s, { t: 'set', inv: true }); key(s, { g: true }, 0.5);
   for (let i = 0; i < 3; i++) { key(s, { fin: 'strike' }, 0.1); key(s, {}, 0.5); }
   assert(s.player.grab && s.player.grab.phase === 'hold', 'still holding after strikes'); assert.strictEqual(e.hp, 40 - 4 * 2, 'two strikes of 4 (3 x1.5), the third refused');
+  // mouse: left click while holding = quick strike, right click = throw
+  [s, e] = mk('leather', 1.5); applyCmd(s, { t: 'set', inv: true }); key(s, { g: true }, 0.5); const h1 = e.hp;
+  key(s, { act: true }, 0.1); key(s, {}, 0.5); assert(s.player.grab && s.player.grab.phase === 'hold' && e.hp < h1, 'left click while holding strikes and keeps the hold');
+  const bx2 = e.x; key(s, { heavy: true }, 1.4); assert(!s.player.grab && e.x > bx2 + 40 && e.z === 0, 'right click while holding throws');
   // a hit on the player breaks the grab
   [s, e] = mk('leather', 1.5); applyCmd(s, { t: 'set', inv: false, hp: 30 }); key(s, { g: true }, 0.5); s.enemyHitsPlayer(e);
   assert(!s.player.grab && !e.held, 'getting hit breaks the grip');

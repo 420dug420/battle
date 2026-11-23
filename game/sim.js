@@ -472,7 +472,7 @@ export class Sim {
     if (g.phase === 'reach') { if (g.t >= g.dur) { g.phase = 'hold'; g.t = 0; } return; }
     if (g.phase === 'hold') {
       g.holdT += dt;
-      const pick = pr.fin === 'throw' ? 'throw' : pr.fin === 'slam' ? 'slam' : (pr.fin === 'strike' || pr.act) ? 'strike' : null;
+      const pick = (pr.fin === 'throw' || pr.heavy) ? 'throw' : pr.fin === 'slam' ? 'slam' : (pr.fin === 'strike' || pr.act) ? 'strike' : null;   // right click throws, left click strikes
       if (pick === 'strike' && g.strikes >= G.maxStrikes) return;
       if (pick) { g.phase = pick; g.t = 0; g.dur = G[pick].dur; g.hit = false; this.say('info', 'Grab: ' + pick + '.'); return; }
       if (g.holdT >= G.holdMax) { this.text(p.x, p.y - 100, 'LOST GRIP', '#b7ab9a', 9); this.endGrab(0.5); }
