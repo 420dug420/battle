@@ -636,7 +636,7 @@ function groundLock(rig, ys) {
   rig.g.position.y = -m + (ys || 0);
 }
 
-/* ---------- combat states: block, parry, clash, stun, dash, shoot ----------
+/* ---------- combat states: block, parry, clash, stun, dash, jump, shoot ----------
    First-pass poses drafted in code; an animation of the same type made in the Animator (registerAnim) replaces each one.
    f.st = { kind, u }: u runs 0 to 1 for one-shot states (clash, parry, shoot, dash); for block it is seconds held. */
 const STATE_POSE = {
@@ -644,6 +644,7 @@ const STATE_POSE = {
   parry:  P({ w: 1, py: -0.02, pel: [12, -6, 0], head: [-2, 0], hand: [0.02, 0.7, 0.62], blade: [0, 0.35, 1], far: [0.34, 0.4, 0.5], legN: [-40, 0, 52, 0, 0], legF: [34, 0, 40, 0, 0] }),
   clash:  P({ w: 1, py: -0.035, pel: [-14, -26, 3], head: [-8, 0], hand: [-0.1, 0.55, 0.2], blade: [0, 0.8, 0.35], far: [0.3, 0.35, 0.3], legN: [-24, 0, 36, 0, 0], legF: [22, 0, 30, 0, 0] }),
   dash:   P({ w: 1, py: -0.09, pel: [24, -12, 0], head: [8, 0], hand: [-0.2, 0.18, 0.05], blade: [0, 0.05, 1], far: [0.2, 0.1, 0.1], legN: [-52, 0, 62, 0, 0], legF: [42, 0, 50, 0, 0] }),
+  jump:   P({ w: 1, py: -0.05, pel: [10, -6, 0], head: [-6, 0], hand: [-0.05, 0.6, 0.3], blade: [0, 0.4, 0.8], far: [0.3, 0.55, 0.45], legN: [-62, 0, 78, 0, 0], legF: [30, 0, 70, 0, 0] }),
   shoot:  P({ w: 1, py: -0.01, pel: [6, -4, 0], head: [-2, 0], hand: [0, 0.55, 0.62], blade: [0, 0.3, 1], far: [0.1, 0.45, 0.58], legN: [-30, 0, 38, 0, 0], legF: [26, 0, 32, 0, 0] }),
 };
 const STATE_TWO = { two: true, grip: 0.12 };
@@ -867,13 +868,13 @@ M3.registerAnim = function (def) {
     if (T[T.length - 1] < L - 1) add2(ks[ks.length - 1], L - 1);
     if (keys.length < 2) { keys.push(keys[0]); T.push(L - 1); V.push(V[0]); }
     ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, c: typ === 'grab' ? null : Math.max(1, Math.min(L - 2, def.contact || Math.round(L * 0.4))), V, vm: !!def.vm && V.some(Boolean), dur: 0.5 };
-  } else if (typ === 'hurt' || typ === 'dying' || typ === 'falling' || typ === 'clash' || typ === 'parry' || typ === 'dash' || typ === 'shoot') {
+  } else if (typ === 'hurt' || typ === 'dying' || typ === 'falling' || typ === 'clash' || typ === 'parry' || typ === 'dash' || typ === 'jump' || typ === 'shoot') {
     const L = def.len || 60;
     for (const k of ks) add(k, k.f);
     if (T[0] > 0) { keys.unshift(M3.buildPose(ks[0], two)); T.unshift(0); }
     if (T[T.length - 1] < L) { keys.push(typ === 'hurt' || typ === 'clash' || typ === 'parry' || typ === 'shoot' ? M3.buildPose(ks[0], two) : keys[keys.length - 1]); T.push(L); }   // a flinch returns to its first pose; a death holds its last
     if (keys.length < 2) { keys.push(keys[0]); T.push(L); }
-    ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, dur: def.loop || ({ hurt: 0.3, dying: 0.35, falling: 0.5, clash: 0.34, parry: 0.3, dash: 0.22, shoot: 0.25 })[typ] };
+    ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, dur: def.loop || ({ hurt: 0.3, dying: 0.35, falling: 0.5, clash: 0.34, parry: 0.3, dash: 0.22, jump: 0.6, shoot: 0.25 })[typ] };
   } else {
     const L = def.len || 60;
     for (const k of ks) add(k, k.f);
