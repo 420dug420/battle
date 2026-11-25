@@ -6,13 +6,15 @@ import M3 from '../rig/model3d.js';
 import { CFG, Sim, applyCmd, SIM_VERSION, fitsWindow, minDexForWindow, moveTau, segAt } from './sim.js';
 import BUILTIN_ANIMS from './anims.json';
 import { applySnapshot } from '../server/protocol.js';
+import { initRunUI } from './runui.js';
 {
   const $ = id => document.getElementById(id);
   const cv = $('stage');
   let ctx = cv.getContext('2d');
   const live = new Sim(CFG);
+  let runui = null;                                      // the camp and run layer (game/runui.js), set up at boot
   let sim = live;                                       // what is drawn: the live fight, or a replay while one plays
-  window.PW = { get sim() { return sim; }, live, M3, CFG, get rec() { return rec; },     // console and test handle
+  window.PW = { get sim() { return sim; }, get runui() { return runui; }, live, M3, CFG, get rec() { return rec; },     // console and test handle
     checkReplay() { const s = Sim.fromState(rec.state, clone(rec.cfg), Object.assign({}, rec.moves)); let i = 0; const c = rec.cmds;   // re-run the recording; true if it ends exactly like the live fight
       while (s.stepN < live.stepN) { while (i < c.length && c[i].s <= s.stepN) applyCmd(s, c[i++].c); s.step(1 / 60); }
       const A = s.saveState(), B = live.saveState(); delete A.events; delete B.events; const out = [];
@@ -95,8 +97,8 @@ import { applySnapshot } from '../server/protocol.js';
   /* ---------- keyboard and mouse ---------- */
   // Mouse side = facing, left click = light attack, right click = heavy attack, cursor = aim for throws and shots. Keys are rebindable.
   const keys = {}, aim = { x: null, y: null };
-  const DEF = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', dash: 'ShiftLeft', block: 'KeyQ', grab: 'KeyG', throw: 'KeyF', slam: 'KeyV', strike: 'KeyR', fire: 'KeyE', jump: 'Space' };
-  const NAMES = { up: 'Move up', down: 'Move down', left: 'Move left', right: 'Move right', dash: 'Dash (stamina)', block: 'Block (hold) / parry (tap)', grab: 'Grab (hold)', throw: 'Throw', slam: 'Slam', strike: 'Strike', fire: 'Fire shot', jump: 'Jump (click in the air = jump attack)' };
+  const DEF = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', dash: 'ShiftLeft', block: 'KeyQ', grab: 'KeyG', throw: 'KeyF', slam: 'KeyV', strike: 'KeyR', fire: 'KeyE', jump: 'Space', use: 'KeyT' };
+  const NAMES = { up: 'Move up', down: 'Move down', left: 'Move left', right: 'Move right', dash: 'Dash (stamina)', block: 'Block (hold) / parry (tap)', grab: 'Grab (hold)', throw: 'Throw', slam: 'Slam', strike: 'Strike', fire: 'Fire shot', jump: 'Jump (click in the air = jump attack)', use: 'Use (walk up to a camp sign)' };
   let binds = Object.assign({}, DEF); try { Object.assign(binds, JSON.parse(localStorage.getItem('pw.binds') || '{}')); } catch (e) { }
   const ARROW = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   const norm = c => c.startsWith('Shift') ? 'ShiftLeft' : c;
@@ -111,13 +113,14 @@ import { applySnapshot } from '../server/protocol.js';
   }
   const setKey = (a, v) => {
     if (a === 'up') keys.u = v; else if (a === 'down') keys.d = v; else if (a === 'left') keys.l = v; else if (a === 'right') keys.r = v;
-    else if (a === 'dash') keys.dash = v; else if (a === 'block') keys.block = v; else if (a === 'grab') keys.g = v; else if (a === 'fire') keys.fire = v; else if (a === 'jump') keys.jump = v;
+    else if (a === 'dash') keys.dash = v; else if (a === 'block') keys.block = v; else if (a === 'grab') keys.g = v; else if (a === 'fire') keys.fire = v; else if (a === 'jump') keys.jump = v; else if (a === 'use') { }
     else if (v) keys.fin = a;                                          // throw / slam / strike: the last one pressed
     else if (keys.fin === a) keys.fin = '';
   };
   window.addEventListener('keydown', e => {
     if (rebinding) { e.preventDefault(); if (e.code !== 'Escape') { binds[rebinding] = norm(e.code); try { localStorage.setItem('pw.binds', JSON.stringify(binds)); } catch (x) { } } rebinding = null; drawBinds(); return; }
     if (typing(e)) return;
+    if (runui && runui.active && runui.key(e.code, actOf(e.code))) { e.preventDefault(); return; }   // camp stations and menus take the key first
     if (e.code === 'KeyP') { togglePause(); return; }
     const a = actOf(e.code); if (!a) return;
     if (e.target && e.target.type === 'range' && e.code.startsWith('Arrow')) return;
@@ -187,13 +190,13 @@ import { applySnapshot } from '../server/protocol.js';
     nc.critOrder = $('critorder').value; nc.fleeSan = num('flee', 3); nc.enemy.san = num('esan', 5);
     if (JSON.stringify(nc) !== JSON.stringify(CFG)) cmd({ t: 'cfg', cfg: nc });
     timeScale = num('ts', 1); $('tsv').textContent = timeScale.toFixed(2) + 'x';
-    const sk = { riposte: $('skripo').checked, shove: $('skshove').checked };
+    const sk = { riposte: $('skripo').checked, shove: $('skshove').checked, multi: $('skmulti').checked };
     if (JSON.stringify(sk) !== JSON.stringify(live.player.skills)) cmd({ t: 'set', skills: sk });
     if ($('manual').checked !== !!live.manual) cmd({ t: 'manual', on: $('manual').checked });
     $('delayv').textContent = Math.round(num('delay', 0)) + ' ms';
     readout(); readLook();
   }
-  ['weapon', 'dex', 'dmgov', 'inv', 'thr', 'chance', 'wdur', 'critorder', 'flee', 'esan', 'ts', 'manual', 'skripo', 'skshove', 'delay'].forEach(id => { $(id).addEventListener('input', applySettings); $(id).addEventListener('change', applySettings); });
+  ['weapon', 'dex', 'dmgov', 'inv', 'thr', 'chance', 'wdur', 'critorder', 'flee', 'esan', 'ts', 'manual', 'skripo', 'skshove', 'skmulti', 'delay'].forEach(id => { $(id).addEventListener('input', applySettings); $(id).addEventListener('change', applySettings); });
   $('tier').addEventListener('change', tierDefaults);
   $('spawn').addEventListener('click', () => {
     const n = Math.max(1, Math.min(5, parseInt($('count').value, 10) || 1));
@@ -256,6 +259,7 @@ import { applySnapshot } from '../server/protocol.js';
     if (pb && pb.zoom) { const W = cv.width, H = cv.height, z = 2, zx = Math.max(W / z / 2, Math.min(W - W / z / 2, pb.zoom.x)), zy = Math.max(H / z / 2, Math.min(H - H / z / 2, pb.zoom.y)); ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-zx, -zy); }
     if (sim.shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * 5), Math.round((Math.random() - 0.5) * 3));
     ctx.drawImage(bg, 0, 0);
+    if (runui && runui.active) runui.drawBack(ctx);
     const p = sim.player, w = sim.weaponInfo();
     const dbg = $('dbg').checked;
 
@@ -268,7 +272,7 @@ import { applySnapshot } from '../server/protocol.js';
       ctx.fillRect(x0, p.y - CFG.laneTol, w.reach + 8, CFG.laneTol * 2);
     }
 
-    const list = [{ kind: 'p', y: p.y }].concat(sim.enemies.map(e => ({ kind: 'e', e, y: e.y - (e.state === 'dying' ? 0.5 : 0) })));
+    const list = [{ kind: 'p', y: p.y }].concat(sim.enemies.map(e => ({ kind: 'e', e, y: e.y - (e.state === 'dying' ? 0.5 : 0) }))).concat(sim.allies.map(a => ({ kind: 'a', a, y: a.y - (a.state === 'dying' ? 0.5 : 0) })));
     list.sort((a, b) => a.y - b.y);
     const target = (!p.swing) ? sim.findTarget(w) : sim.enemies.find(e => e.id === p.swing.target);
 
@@ -277,6 +281,12 @@ import { applySnapshot } from '../server/protocol.js';
         drawFigure(Object.assign({ role: 'p', x: p.x, y: p.y, z: p.z || 0, face: p.face, tier: look.tier, pHead: look.head, pBody: look.body, pLiv: look.liv, pMetal: look.metal, broken: false, two: w.twoHanded, wkind: w.kind || 'sword', shield: false,
           swing: p.swing, moving: p.moving, walkT: p.walkT, t: sim.t, flash: p.flash, flashMax: 0.2, hurt: p.hurt, hurtMax: 0.6, st: playerState(p),
           style: p.swing && p.swing.kind && p.swing.kind !== 'light' ? (roleStyle[p.swing.kind] || ({ heavy: 'chop', dash: w.twoHanded ? 'lunge' : 'cut', counter: 'cut', jump: 'chop' })[p.swing.kind]) : look.style }, M3.grabAtt(sim, w.twoHanded)));
+      } else if (it.kind === 'a') {                                  // a hireling: a fighter on your side
+        const a = it.a, aw = CFG.weapons[a.weapon], two = CFG.weaponClasses[aw.cls].twoHanded, L = a.look || M3.enemyLook(a.tier, a.lookSeed);
+        const swing = a.atk ? { t: a.atk.t, dur: 1.0, dur0: 1.0, hitAt: 0.45, extra: 0 } : null;
+        const base = { role: 'p', x: a.x, y: a.y, face: a.face, tier: 'leather', pHead: L.head, pBody: L.body, pLiv: L.liv || look.liv, pMetal: L.metal, two, wkind: aw.kind || 'sword', shield: !two, t: sim.t };
+        if (a.state === 'dying') drawFigure(Object.assign(base, { dead: true, deathT: a.deathT, alpha: a.deathT > 1.9 ? Math.max(0, 1 - (a.deathT - 1.9) / 0.7) : 1, flash: 0, swing: null }));
+        else drawFigure(Object.assign(base, { swing, moving: a.moving, walkT: a.walkT, flash: a.flash, flashMax: 0.2, hurt: a.hurt, hurtMax: 0.6, broken: a.broken }));
       } else {
         const e = it.e;
         if (e.state === 'dying') {
@@ -321,6 +331,7 @@ import { applySnapshot } from '../server/protocol.js';
       if (e.atk && e.atk.heavy && !e.atk.hit) { const u = Math.min(1, e.atk.t / (e.atk.hitAt || 1)); ctx.strokeStyle = 'rgba(255,90,74,' + (0.35 + 0.5 * u) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(Math.round(e.x), Math.round(e.y), 26, 8, 0, 0, 7); ctx.stroke(); label('HEAVY: PARRY IT', x, y - 24, '#ff7a6a', 9); }
     }
 
+    for (const a of sim.allies) if (a.state === 'alive') { const x = Math.round(a.x), y = Math.round(a.y) - 88; ctx.fillStyle = '#14101c'; ctx.fillRect(x - 15, y - 1, 30, 6); ctx.fillStyle = '#6fd07a'; ctx.fillRect(x - 14, y, Math.round(28 * a.hp / a.maxHp), 4); label(a.name.split(' ')[0], x, y - 4, '#cfe8cf', 9); }
     // shots, the clash shockwave ring, the cursor
     ctx.strokeStyle = '#ffe9a8'; ctx.lineWidth = 2;
     for (const q of sim.proj || []) { const m = Math.sqrt(q.vx * q.vx + q.vy * q.vy) || 1; ctx.beginPath(); ctx.moveTo(Math.round(q.x), Math.round(q.y - 46)); ctx.lineTo(Math.round(q.x - q.vx / m * 9), Math.round(q.y - 46 - q.vy / m * 9)); ctx.stroke(); }
@@ -357,6 +368,7 @@ import { applySnapshot } from '../server/protocol.js';
       ctx.fillStyle = '#ffffff'; ctx.fillRect(p.x - 19 + Math.round(38 * s.hitAt / s.dur), p.y - 101, 1, 6);
     }
     ctx.restore();
+    if (runui && runui.active) runui.drawFront(ctx);
     if (pb) { ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(8, 8, 74, 14); label(pb.label + (pb.speed < 1 ? ' ' + pb.speed + 'x' : ''), 45, 19, '#ffd27a', 9); }
   }
 
@@ -517,7 +529,7 @@ import { applySnapshot } from '../server/protocol.js';
         let inp = want;
         if (dsteps > 0) { delayQ.push({ s: live.stepN + dsteps, inp: want }); inp = live.input; while (delayQ.length && delayQ[0].s <= live.stepN) inp = delayQ.shift().inp; } else delayQ.length = 0;
         if (!sameInput(inp, live.input)) cmd(Object.assign({ t: 'input' }, inp));
-        live.step(STEP); acc -= STEP;
+        live.step(STEP); acc -= STEP; if (runui && runui.active) runui.update(STEP);
         if (rec && live.stepN % 300 === 0) { snaps.push({ step: live.stepN, state: live.saveState(), cfg: clone(live.cfg), moves: Object.assign({}, live.moves), at: rec.cmds.length }); if (snaps.length > 8) snaps.shift(); }
       }
     }
@@ -572,13 +584,24 @@ import { applySnapshot } from '../server/protocol.js';
     { const m = M3.bakeMove('cut1', { role: 'e', two: false, wkind: 'sword', shield: true }); if (m) cmd({ t: 'move', id: CFG.enemy.move, data: m }); }   // enemy swing path
     IDS.forEach(id => { if (saved[id] != null) $(id).value = saved[id]; });
     if (saved.inv != null) $('inv').checked = !!saved.inv;
-    ['manual', 'skripo', 'skshove'].forEach(id => { if (saved[id] != null) $(id).checked = !!saved[id]; });
+    ['manual', 'skripo', 'skshove', 'skmulti'].forEach(id => { if (saved[id] != null) $(id).checked = !!saved[id]; });
     if (saved.dbg != null) $('dbg').checked = !!saved.dbg;
     if (saved.dur == null) tierDefaults();
     applySettings();
     try { if (saved.atkstyle && saved.atkstyle.slice(0, 2) === 'c_') $('atkstyle').value = saved.atkstyle; } catch (e) { }
     cmd({ t: 'say', text: 'Manual combat: mouse aims and attacks, Q blocks, Shift dashes, E fires, G grabs.' });
     cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] });
+    const clearKeys = () => { for (const k in keys) keys[k] = k === 'fin' ? '' : false; };
+    runui = initRunUI({ $, live, FONT, readLook, stopRec: () => { rec = null; snaps = []; }, clearKeys, focusStage: () => cv.focus(),
+      afterLeave: () => { startRec(); cmd({ t: 'manual', on: true }); cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] }); applySettings(); } });
+    const setMode = m => {
+      document.body.classList.toggle('runmode', m === 'run'); $('mRun').setAttribute('aria-pressed', m === 'run'); $('mTest').setAttribute('aria-pressed', m !== 'run');
+      if (m === 'run') runui.enter(); else if (runui.active) runui.leave();
+      try { localStorage.setItem('pw.mode', m); } catch (e) { }
+    };
+    $('mRun').onclick = () => setMode('run'); $('mTest').onclick = () => setMode('test');
+    let mode = 'run'; try { mode = localStorage.getItem('pw.mode') || 'run'; } catch (e) { }
+    setMode(mode);
     requestAnimationFrame(frame);
   }
   try { window.claude && window.claude.hot && window.claude.hot.snapshot && window.claude.hot.snapshot(() => { const o = {}; IDS.forEach(id => o[id] = $(id).value); o.inv = $('inv').checked; o.dbg = $('dbg').checked; ['manual', 'skripo', 'skshove'].forEach(id => o[id] = $(id).checked); return o; }); } catch (e) { }

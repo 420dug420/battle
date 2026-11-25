@@ -77,12 +77,36 @@ table.anims input[type=number] { width: 54px; min-height: 28px; padding: 3px 6px
 table.anims input.frm { width: 128px; min-height: 28px; padding: 3px 6px; background: var(--ink); color: var(--bone); border: 1px solid var(--line); border-radius: 4px; font: inherit; }
 canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid var(--line); background: #2a2336; }
 [hidden] { display: none !important; }
+
+.modes { display: flex; gap: 6px; } .modes .btn[aria-pressed=true] { background: var(--gold); color: var(--ink); border-color: var(--gold); font-weight: 600; }
+.runmode .side, .runmode .under .sub, .runmode > .wrap .stagecol > .sub { display: none; }
+.runmode .stagecol { flex: 1 1 900px; max-width: 1100px; margin: 0 auto; }
+.stagecol { position: relative; }
+/* camp and run windows: the old Final Fantasy look, blue gradient and a white frame */
+#runui { position: absolute; left: 0; top: 0; right: 0; aspect-ratio: 16 / 9; pointer-events: none; }
+#runui .rback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(2, 4, 30, .45); pointer-events: auto; }
+.ff { background: linear-gradient(#3550d0, #0a1260); border: 2px solid #f2f4ff; box-shadow: 0 0 0 2px #04062a, inset 0 0 0 2px rgba(120, 140, 235, .8); border-radius: 6px; color: #fff; font-family: var(--display); }
+.rpanel { width: min(86%, 620px); max-height: 92%; overflow-y: auto; padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; text-shadow: 1px 1px 0 #000; }
+.rpanel .rhead { display: flex; align-items: center; gap: 12px; font-size: 18px; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,.35); padding-bottom: 4px; }
+.rpanel .rhead span:first-child { flex: 1; } .rpanel .gold, .rpanel .big b { color: #ffe27a; } .rpanel .big { font-size: 20px; text-align: center; padding: 4px 0; } .rpanel .big.bad { color: #ff9a8a; }
+.rpanel .sec { color: #9fc0ff; margin-top: 6px; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; }
+.rpanel .d, .rpanel small, .rpanel p { color: #c6d2ff; font-size: 12px; margin: 0; }
+.rpanel .dim { opacity: .55; }
+.rpanel .arow, .rpanel .srow, .rpanel .map { display: grid; grid-template-columns: 46px 70px 1fr 34px; gap: 8px; align-items: center; padding: 2px 0; }
+.rpanel .srow { grid-template-columns: 1.1fr 1.6fr auto; } .rpanel .map { grid-template-columns: 1fr 1.4fr auto auto; }
+.rpanel .pts, .rpanel .lvl, .rpanel .sum { color: #dfe8ff; } .rpanel .sum { font-size: 12px; border-top: 1px dashed rgba(255,255,255,.3); padding-top: 4px; }
+.rpanel .note { color: #ffd0a0; font-size: 12px; } .rpanel .foot { text-align: right; margin-top: 4px; } .rpanel .btnrow { display: flex; gap: 10px; justify-content: center; margin-top: 6px; }
+.rb { background: rgba(4, 6, 42, .55); color: #fff; border: 1px solid #f2f4ff; border-radius: 4px; padding: 3px 10px; min-height: 26px; font: inherit; font-size: 13px; cursor: pointer; text-shadow: 1px 1px 0 #000; }
+.rb:hover:not(:disabled) { background: #f2f4ff; color: #0a1260; text-shadow: none; } .rb:disabled { opacity: .5; cursor: default; } .rb.go { border-color: #ffe27a; color: #ffe27a; } .rb.warn { border-color: #ff9a8a; color: #ff9a8a; } .rb.x { padding: 0 8px; }
+.rb:focus-visible { outline: 2px solid #ffe27a; outline-offset: 2px; }
+i.bar { display: block; height: 6px; background: #04062a; border: 1px solid #f2f4ff; margin-top: 2px; } i.bar b { display: block; height: 100%; background: #6fb0ff; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>Project <span>War</span> · Combat Test</h1>
+    <h1>Project <span>War</span></h1>
+    <nav class="modes" aria-label="Mode"><button class="btn" id="mRun" type="button" aria-pressed="true">Camp &amp; run</button><button class="btn" id="mTest" type="button" aria-pressed="false">Test arena</button></nav>
     <div class="sub">Side view, manual combat on mouse and keyboard: clash, block and parry, dash, heavy attacks, aimed throws and shots. Fighters are live 3D models drawn as pixel art.</div>
   </header>
 
@@ -116,6 +140,7 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
         <div class="field"><label for="manual">Manual combat (off = old auto-attack)</label><input type="checkbox" id="manual" checked></div>
         <div class="field"><label for="skripo">Skill: Riposte (passive)</label><input type="checkbox" id="skripo"></div>
         <div class="field"><label for="skshove">Skill: Shove / break guard</label><input type="checkbox" id="skshove"></div>
+        <div class="field"><label for="skmulti">Skill: Multi-clash (up to 4 swings)</label><input type="checkbox" id="skmulti"></div>
         <div class="field"><label for="delay">Input delay (to feel the parry at online lag)</label><span style="display:flex;gap:8px;align-items:center"><input type="range" id="delay" min="0" max="300" step="10" value="0"><span class="val" id="delayv">0 ms</span></span></div>
       </section>
 

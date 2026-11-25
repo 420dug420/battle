@@ -109,7 +109,7 @@ export function makeRng(seed) {
 
 /* ---------- replays: rules version, saved state, and the one way anything outside changes a fight ---------- */
 export const SIM_VERSION = 6;                                       // bump when a rule changes, so old replays are flagged
-const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut'];
+const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut', 'feed'];   // feed: what happened this frame, for a run layer to read (xp, gold, style rank)
 // every outside change (input, spawns, settings) goes through here, live and in replays, so a replay repeats the fight exactly
 export function applyCmd(sim, c) {
   switch (c.t) {
@@ -120,7 +120,7 @@ export function applyCmd(sim, c) {
     case 'heal': sim.healAll(); break;
     case 'repair': sim.repairAll(); break;
     case 'resetp': sim.resetPlayer(); sim.say('info', 'Player reset.'); break;
-    case 'set': for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'kindMoves', 'skills', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr']) if (k in c) sim.player[k] = c[k]; break;
+    case 'set': for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'kindMoves', 'skills', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr', 'dmgMult', 'spdMult', 'regenMult', 'staminaMax', 'stamina']) if (k in c) sim.player[k] = c[k]; break;
     case 'ally': sim.spawnAlly(c.o); break;
     case 'mode': sim.mode = c.mode; break;
     case 'cfg': { const d = JSON.parse(JSON.stringify(c.cfg)); for (const k in d) sim.cfg[k] = d[k]; break; }
@@ -188,14 +188,14 @@ export class Sim {
 
   resetAll() {
     const c = this.cfg;
-    this.t = 0; this.nextId = 1; this.shake = 0; this.manual = this.manual || false; this.proj = [];
+    this.feed = []; this.t = 0; this.nextId = 1; this.shake = 0; this.manual = this.manual || false; this.proj = [];
     this.player = {
       x: 170, y: 282, face: 1, hp: c.player.hp, maxHp: c.player.hp,
       weapon: 'longsword', dex: 5, dmgOverride: null, inv: true,
       swing: null, chain: 0, cooldown: 0, moved: false, flash: 0, hurt: 0, walkT: 0, moving: false,
       armorPct: 0, dur: 0, durMax: 0, broken: false, chainStyles: null, san: 5, chr: 5,
-      stamina: c.stamina.max, staminaMax: c.stamina.max, stamRegenT: 0, blocking: false, blockT: 0, stunT: 0, freeze: 0, dash: null, dashT: 99, kvx: 0, projCd: 0, counter: null, clashT: 0, clashMax: 0, z: 0, vz: 0, air: false, jumpT: 0,
-      skills: { riposte: false, shove: false }, kindMoves: {},   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
+      stamina: c.stamina.max, staminaMax: c.stamina.max, stamRegenT: 0, blocking: false, blockT: 0, stunT: 0, freeze: 0, dash: null, dashT: 99, kvx: 0, projCd: 0, counter: null, clashT: 0, clashMax: 0, z: 0, vz: 0, air: false, jumpT: 0, dmgMult: 1, spdMult: 1, regenMult: 1,
+      skills: { riposte: false, shove: false, multi: false }, kindMoves: {},   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
     };
     this.mode = this.mode || 'arena'; this.outcome = null; this.spawned = 0; this.allies = []; this.fallen = [];   // mode 'battle': a downed player loses the fight instead of being restored
     this.enemies = []; this.fx = []; this.texts = []; this.routed = 0;
@@ -221,7 +221,7 @@ export class Sim {
     const p = this.player, w = weaponStats(this.cfg, p.weapon);
     return {
       key: p.weapon, cls: w.cls, label: w.label, reach: w.reach, twoHanded: w.twoHanded, kind: w.kind, posture: w.posture,
-      dmg: p.dmgOverride != null ? p.dmgOverride : w.dmg,
+      dmg: p.dmgOverride != null ? p.dmgOverride : w.dmg * (p.dmgMult || 1),
       interval: swingInterval(this.cfg, p.weapon, p[w.speedStat] != null ? p[w.speedStat] : 5),
     };
   }
@@ -256,7 +256,7 @@ export class Sim {
       id: this.nextId++, hid: o.hid || null, name: o.name || 'Hireling', x: Math.max(c.arena.left + 10, p.x - 34 - i * 30), y: this.clampY(p.y + offs[i % 5]), face: 1,
       hp: o.hp || 18, maxHp: o.hp || 18, tier: t, armorPct: o.armorPct != null ? o.armorPct : c.tiers[t].pct,
       dur: o.dur != null ? o.dur : c.tiers[t].dur, durMax: o.dur != null ? o.dur : c.tiers[t].dur, broken: false,
-      weapon: w, dex: o.dex || 5, state: 'alive', atk: null, atkCd: 0.5, deathT: 0, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0, hurt: 0, kvx: 0,
+      weapon: w, dex: o.dex || 5, dmgMult: o.dmgMult || 1, state: 'alive', atk: null, atkCd: 0.5, deathT: 0, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0, hurt: 0, kvx: 0,
       look: o.look || null, lookSeed: hash32(this.seed, this.nextId * 7),
     };
     this.allies.push(a); return a;
@@ -304,7 +304,7 @@ export class Sim {
     if (!o.kvx) return;
     o.x = this.clampX(o.x + o.kvx * dt); o.kvx *= Math.max(0, 1 - this.cfg.clash.decay * dt); if (Math.abs(o.kvx) < 4) o.kvx = 0;
   }
-  regenStamina(dt) { const p = this.player, S = this.cfg.stamina; if (p.stamRegenT > 0) { p.stamRegenT -= dt; return; } if (p.stamina < p.staminaMax) p.stamina = Math.min(p.staminaMax, p.stamina + S.regen * dt); }
+  regenStamina(dt) { const p = this.player, S = this.cfg.stamina; if (p.stamRegenT > 0) { p.stamRegenT -= dt; return; } if (p.stamina < p.staminaMax) p.stamina = Math.min(p.staminaMax, p.stamina + S.regen * (p.regenMult || 1) * dt); }
 
   /* ---------- player ---------- */
   findTarget(w) {
@@ -348,7 +348,7 @@ export class Sim {
     if (p.stunT > 0) { p.stunT -= dt; p.moving = false; p.blocking = false; return; }   // guard broken
     if (this.manual) { this.updateManual(dt, w, ix, iy, mag); return; }
     const swinging = !!p.swing;
-    const spd = c.player.speed * (swinging ? c.swingMoveMult : 1);
+    const spd = c.player.speed * (p.spdMult || 1) * (swinging ? c.swingMoveMult : 1);
     p.moving = mag > 0;
     if (p.moving) {
       p.x = this.clampX(p.x + ix * spd * dt);
@@ -390,7 +390,7 @@ export class Sim {
     if (pr.jump && !p.air && !p.dash && !p.swing && !p.blocking && !p.grab) { p.air = true; p.vz = c.jump.vz; p.z = 0.01; p.jumpT = 0; }
     if (p.dash) {                                                     // mid-dash: carried along; a click turns it into the dash attack
       const d = p.dash; d.t += dt;
-      p.x = this.clampX(p.x + d.dx * D.speed * dt); p.y = this.clampY(p.y + d.dy * D.speed * dt * 0.7); p.moving = true; p.walkT += dt;
+      p.x = this.clampX(p.x + d.dx * D.speed * (p.spdMult || 1) * dt); p.y = this.clampY(p.y + d.dy * D.speed * dt * 0.7); p.moving = true; p.walkT += dt;
       if (pr.act) { p.dash = null; this.startSwing('dash', w); return; }
       if (d.t >= D.dur) p.dash = null;
       return;
@@ -404,7 +404,7 @@ export class Sim {
     if (wantBlock && !p.blocking) { p.blocking = true; p.blockT = 0; p.stamina = Math.max(0, p.stamina - S.blockPress); }
     else if (!wantBlock) p.blocking = false;
     if (p.blocking) { p.blockT += dt; p.stamRegenT = S.regenDelay; }
-    const spd = c.player.speed * (p.swing ? c.swingMoveMult : 1) * (p.blocking ? 0.5 : 1);
+    const spd = c.player.speed * (p.spdMult || 1) * (p.swing ? c.swingMoveMult : 1) * (p.blocking ? 0.5 : 1);
     p.moving = mag > 0;
     if (p.moving) { p.x = this.clampX(p.x + ix * spd * dt); p.y = this.clampY(p.y + iy * spd * dt * 0.7); p.walkT += dt; }
     if (p.lunge && p.lunge.t > 0) { p.lunge.t -= dt; p.x = this.clampX(p.x + p.face * p.lunge.v * dt); }
@@ -536,8 +536,8 @@ export class Sim {
     const inWin = (t, hitAt) => t >= hitAt * K.early && t <= hitAt + K.late;
     if (!inWin(s.t, s.hitAt)) return;
     const w = this.weaponInfo(), pm = s.move && this.moves[s.move], em = this.moves[c.enemy.move];
-    let best = null, bd = 1e9;
-    for (const e of this.enemies) {                                   // one clash at a time: the nearest opposing swing (a multi-clash skill comes later)
+    let best = null, bd = 1e9; const all = [];                        // one clash at a time: the nearest opposing swing, unless the multi-clash skill is learned
+    for (const e of this.enemies) {
       const a = e.atk;
       if (e.state !== 'alive' || !a || a.hit || a.heavy || e.clash === false || e.freeze > 0 || e.held || e.fly) continue;
       if (Math.abs(e.y - p.y) > c.laneTol || Math.sign(e.x - p.x) !== p.face) continue;
@@ -549,17 +549,17 @@ export class Sim {
         const A = this.bladePx(pm, s, s.t, p.x, p.face), B = this.bladePx(em, es, es.t, e.x, e.face);
         ok = segSegDist(A, B) <= ((pm.hit.w || 0.12) + (em.hit.w || 0.12)) * c.pxPerM / 2;
       } else ok = Math.abs(e.x - p.x) <= w.reach + c.enemy.reach;     // no baked path: the two reaches overlap
-      if (ok) { const d = Math.abs(e.x - p.x); if (d < bd) { best = e; bd = d; } }
+      if (ok) { const d = Math.abs(e.x - p.x); all.push([d, e]); if (d < bd) { best = e; bd = d; } }
     }
-    if (best) this.doClash(best);
+    if (best) this.doClash(best, p.skills && p.skills.multi ? all.sort((x, y) => x[0] - y[0]).slice(1, 4).map(x => x[1]) : []);
   }
   bladePx(m, s, t, x, face) {                                        // a swing's blade as a segment in sim px, height up
     const g = segAt(m, moveTau(m, s, t)), P = this.cfg.pxPerM;
     return [x + face * g[0] * P, g[1] * P, x + face * g[2] * P, g[3] * P];
   }
   // No winner: both swings stop, both fighters hold a few frames and bounce back, everyone nearby is shoved away.
-  doClash(e) {
-    const p = this.player, c = this.cfg, K = c.clash, sk = p.skills || {};
+  doClash(e, extra) {
+    const p = this.player, c = this.cfg, K = c.clash, sk = p.skills || {}; extra = extra || [];
     const cx = (p.x + e.x) / 2, dir = Math.sign(e.x - p.x) || 1;
     p.swing = null; p.chain = 0; p.cooldown = Math.max(p.cooldown, 0.1); p.moved = false; p.lunge = null;
     p.freeze = K.freeze; p.clashT = K.dur; p.clashMax = K.dur;
@@ -567,10 +567,14 @@ export class Sim {
     if (sk.riposte) p.counter = { eId: e.id }; else p.kvx = -dir * K.knock;        // riposte (passive): no bounce, a counter-swing at once
     if (sk.shove) { e.kvx = dir * K.knock * K.shoveMult; e.stun = Math.max(e.stun || 0, K.shoveStun); e.down = false; }   // break guard: shoved far and stunned
     else e.kvx = dir * K.knock;
-    this.shockwave(cx, p.y, [e.id]);
+    for (const x of extra) {                                          // multi-clash: every other swing that met yours bounces too
+      x.atk = null; x.atkCd = K.enemyCd; x.freeze = K.freeze; x.clashT = K.dur; x.clashMax = K.dur;
+      if (sk.shove) { x.kvx = dir * K.knock * K.shoveMult; x.stun = Math.max(x.stun || 0, K.shoveStun); x.down = false; } else x.kvx = dir * K.knock;
+    }
+    this.shockwave(cx, p.y, [e.id].concat(extra.map(x => x.id)));
     this.burst(cx, p.y - 60, 12, '#ffe7a0', 130); this.text(cx, p.y - 96, 'CLASH', '#ffe27a', 11); this.shake = Math.max(this.shake, 0.1);
     this.lastClash = { at: this.t, eId: e.id, x: cx };
-    this.say('clash', 'CLASH with enemy #' + e.id + (sk.riposte ? ' (riposte)' : '') + (sk.shove ? ' (shove)' : '') + '.');
+    this.say('clash', 'CLASH with enemy #' + e.id + (extra.length ? ' and ' + extra.length + ' more' : '') + (sk.riposte ? ' (riposte)' : '') + (sk.shove ? ' (shove)' : '') + '.');
   }
   shockwave(cx, cy, skip) {                                          // bounded and deterministic: a push that fades with distance
     const K = this.cfg.clash.wave, lane = this.cfg.laneTol * 3;
@@ -619,6 +623,7 @@ export class Sim {
   /* ---------- the rules under test ---------- */
   applyHit(e, raw, swing, fin) {
     const c = this.cfg, p = this.player;   // fin: a grab finisher; armor percent ignored, durability still wears, no crit or wound rules
+    if (swing || fin) { this.feed.push({ t: 'hit', move: fin || swing.kind || 'light' }); if (this.feed.length > 300) this.feed.shift(); }
     const wasW = e.wounded > 0, wasB = e.broken;
     const crit = !fin && (wasW || wasB);
     const pct = (wasB || fin) ? 0 : e.armorPct * (1 - ((swing && swing.pierce) || 0));
@@ -671,6 +676,7 @@ export class Sim {
 
   kill(e, dramatic, swing) {
     const p = this.player;
+    this.feed.push({ t: 'kill', kind: e.kind || 'soldier', tier: e.tier, x: e.x, y: e.y }); if (this.feed.length > 300) this.feed.shift();
     e.state = 'dying'; e.deathT = 0; e.dramatic = dramatic; e.wounded = 0; e.atk = null; e.flee = false;
     this.events.push({ kind: dramatic ? 'dramatic' : 'kill', step: this.stepN, x: e.x, y: e.y, id: e.id }); if (this.events.length > 20) this.events.shift();   // kill cams
     const dir = Math.sign(e.x - p.x) || 1;
@@ -816,9 +822,9 @@ export class Sim {
     p.flash = 0.2; p.hurt = 0.6; p.blocking = false; p.blockLock = !!this.input.block;
     if (!p.inv) {
       const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));
-      this.text(p.x, p.y - 96, '-' + r.dmg, '#ff7a6a', 10);
+      this.text(p.x, p.y - 96, '-' + r.dmg, '#ff7a6a', 10); this.feed.push({ t: 'hurt', dmg: r.dmg });
       if (r.broke) { this.say('break', 'Your armor broke.'); this.text(p.x, p.y - 110, 'ARMOR BROKEN', '#ff9a6a', 9); }
-      if (p.hp <= 0) { if (this.mode === 'battle') p.hp = 0; else { this.say('info', 'Player downed; restored.'); p.hp = p.maxHp; } }
+      if (p.hp <= 0) { if (this.mode === 'battle' || this.mode === 'run') p.hp = 0; else { this.say('info', 'Player downed; restored.'); p.hp = p.maxHp; } }
     } else this.text(p.x, p.y - 96, 'HIT', '#9fd0ff', 10);
     if (p.grab && !p.inv) { this.text(p.x, p.y - 108, 'GRAB BROKEN', '#ff9a6a', 9); this.endGrab(0.5); p.cooldown = c.interruptDelay; }
     if (p.swing) {
@@ -851,12 +857,15 @@ export class Sim {
       if (!a.atk.hit && a.atk.t >= iv * 0.45) {
         a.atk.hit = true;
         const e = this.enemies.find(q => q.id === a.atk.target);
-        if (e && e.state === 'alive' && Math.abs(e.x - a.x) <= w.reach + 8 && Math.abs(e.y - a.y) <= c.laneTol) this.applyHit(e, w.dmg, null);
+        if (e && e.state === 'alive' && Math.abs(e.x - a.x) <= w.reach + 8 && Math.abs(e.y - a.y) <= c.laneTol) this.applyHit(e, Math.max(1, Math.floor(w.dmg * (a.dmgMult || 1) + 1e-9)), null);
       }
       if (a.atk.t >= iv) { a.atk = null; a.atkCd = 0.15; }
       return;
     }
     a.atkCd -= dt;
+    if (tgt && a.hp < a.maxHp * 0.35 && (tgt.x - a.x) ** 2 < 90 * 90) {   // badly hurt: backs off toward you and lets the others cover
+      const dir = Math.sign(a.x - tgt.x) || -1; a.x = this.clampX(a.x + dir * spd * 1.1 * dt); a.face = -dir; a.moving = true; a.walkT += dt; return;
+    }
     if (!tgt) {                                                       // nothing to fight: keep near you
       const dx = p.x - 40 - a.x; if (Math.abs(dx) > 40) { a.x = this.clampX(a.x + Math.sign(dx) * spd * dt); a.face = Math.sign(dx); a.moving = true; a.walkT += dt; }
       return;

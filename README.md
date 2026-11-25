@@ -19,3 +19,13 @@
 ## Manual combat (arena, `sim.manual`)
 
 Mouse side = facing, left click light, right click heavy, cursor aims throws and shots. Shift dashes (stamina), a click during or just after a dash is a dash attack. Hold Q to block, tap Q just before a hit to parry (heavies can only be parried; empty stamina while blocking breaks the guard). Two light swings that meet clash: both bounce, only the two fighters freeze for a few frames, bystanders are pushed away. Heavy attacks and swarm fodder never clash. Passive skills: riposte (no bounce, counter-swing) and shove (stuns the clashed enemy). There is no global hit-stop or slow-motion. All numbers are placeholders in `CFG` (`clash`, `stamina`, `dash`, `attack`, `aim`, `proj`, `kinds`).
+
+## Camp and run mode (arena page, default tab "Camp & run")
+
+Walk the camp hub (A/D) and press T beside a station: Trainer (attribute points), Smith (weapons, armor, upgrades), Style (equip skills), Hire board, Cart (pick a map, depart). The dummy at the left is for practice.
+
+Run loop: waves escalate, every 5 waves you choose to leave with the run gold or press on. Dying loses only the gold from that run; gear, levels, skills, hirelings and banked gold stay. Style rank (D to S) rises with varied hits, falls when you repeat a move or get hit, and boosts gold and damage.
+
+Attributes (3 points per level, plus slow growth from use): STR damage, DEX swing speed, AGI move/dash speed and stamina regen, CON max HP/stamina, LDR hireling slots and strength, CHR cheaper hires. INT, WIS and SAN have no effect yet. All numbers are placeholders.
+
+Code: game/run.js (rules, pure), game/runui.js (camp, menus, HUD), game/run-tests.mjs. `npm test` runs all suites. Online play does not carry the manual inputs yet.

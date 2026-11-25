@@ -77,12 +77,36 @@ table.anims input[type=number] { width: 54px; min-height: 28px; padding: 3px 6px
 table.anims input.frm { width: 128px; min-height: 28px; padding: 3px 6px; background: var(--ink); color: var(--bone); border: 1px solid var(--line); border-radius: 4px; font: inherit; }
 canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid var(--line); background: #2a2336; }
 [hidden] { display: none !important; }
+
+.modes { display: flex; gap: 6px; } .modes .btn[aria-pressed=true] { background: var(--gold); color: var(--ink); border-color: var(--gold); font-weight: 600; }
+.runmode .side, .runmode .under .sub, .runmode > .wrap .stagecol > .sub { display: none; }
+.runmode .stagecol { flex: 1 1 900px; max-width: 1100px; margin: 0 auto; }
+.stagecol { position: relative; }
+/* camp and run windows: the old Final Fantasy look, blue gradient and a white frame */
+#runui { position: absolute; left: 0; top: 0; right: 0; aspect-ratio: 16 / 9; pointer-events: none; }
+#runui .rback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(2, 4, 30, .45); pointer-events: auto; }
+.ff { background: linear-gradient(#3550d0, #0a1260); border: 2px solid #f2f4ff; box-shadow: 0 0 0 2px #04062a, inset 0 0 0 2px rgba(120, 140, 235, .8); border-radius: 6px; color: #fff; font-family: var(--display); }
+.rpanel { width: min(86%, 620px); max-height: 92%; overflow-y: auto; padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; text-shadow: 1px 1px 0 #000; }
+.rpanel .rhead { display: flex; align-items: center; gap: 12px; font-size: 18px; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,.35); padding-bottom: 4px; }
+.rpanel .rhead span:first-child { flex: 1; } .rpanel .gold, .rpanel .big b { color: #ffe27a; } .rpanel .big { font-size: 20px; text-align: center; padding: 4px 0; } .rpanel .big.bad { color: #ff9a8a; }
+.rpanel .sec { color: #9fc0ff; margin-top: 6px; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; }
+.rpanel .d, .rpanel small, .rpanel p { color: #c6d2ff; font-size: 12px; margin: 0; }
+.rpanel .dim { opacity: .55; }
+.rpanel .arow, .rpanel .srow, .rpanel .map { display: grid; grid-template-columns: 46px 70px 1fr 34px; gap: 8px; align-items: center; padding: 2px 0; }
+.rpanel .srow { grid-template-columns: 1.1fr 1.6fr auto; } .rpanel .map { grid-template-columns: 1fr 1.4fr auto auto; }
+.rpanel .pts, .rpanel .lvl, .rpanel .sum { color: #dfe8ff; } .rpanel .sum { font-size: 12px; border-top: 1px dashed rgba(255,255,255,.3); padding-top: 4px; }
+.rpanel .note { color: #ffd0a0; font-size: 12px; } .rpanel .foot { text-align: right; margin-top: 4px; } .rpanel .btnrow { display: flex; gap: 10px; justify-content: center; margin-top: 6px; }
+.rb { background: rgba(4, 6, 42, .55); color: #fff; border: 1px solid #f2f4ff; border-radius: 4px; padding: 3px 10px; min-height: 26px; font: inherit; font-size: 13px; cursor: pointer; text-shadow: 1px 1px 0 #000; }
+.rb:hover:not(:disabled) { background: #f2f4ff; color: #0a1260; text-shadow: none; } .rb:disabled { opacity: .5; cursor: default; } .rb.go { border-color: #ffe27a; color: #ffe27a; } .rb.warn { border-color: #ff9a8a; color: #ff9a8a; } .rb.x { padding: 0 8px; }
+.rb:focus-visible { outline: 2px solid #ffe27a; outline-offset: 2px; }
+i.bar { display: block; height: 6px; background: #04062a; border: 1px solid #f2f4ff; margin-top: 2px; } i.bar b { display: block; height: 100%; background: #6fb0ff; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>Project <span>War</span> · Combat Test</h1>
+    <h1>Project <span>War</span></h1>
+    <nav class="modes" aria-label="Mode"><button class="btn" id="mRun" type="button" aria-pressed="true">Camp &amp; run</button><button class="btn" id="mTest" type="button" aria-pressed="false">Test arena</button></nav>
     <div class="sub">Side view, manual combat on mouse and keyboard: clash, block and parry, dash, heavy attacks, aimed throws and shots. Fighters are live 3D models drawn as pixel art.</div>
   </header>
 
@@ -116,6 +140,7 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
         <div class="field"><label for="manual">Manual combat (off = old auto-attack)</label><input type="checkbox" id="manual" checked></div>
         <div class="field"><label for="skripo">Skill: Riposte (passive)</label><input type="checkbox" id="skripo"></div>
         <div class="field"><label for="skshove">Skill: Shove / break guard</label><input type="checkbox" id="skshove"></div>
+        <div class="field"><label for="skmulti">Skill: Multi-clash (up to 4 swings)</label><input type="checkbox" id="skmulti"></div>
         <div class="field"><label for="delay">Input delay (to feel the parry at online lag)</label><span style="display:flex;gap:8px;align-items:center"><input type="range" id="delay" min="0" max="300" step="10" value="0"><span class="val" id="delayv">0 ms</span></span></div>
       </section>
 
@@ -15960,7 +15985,7 @@ void main(){
     return f;
   }
   var SIM_VERSION = 6;
-  var NOT_STATE = ["cfg", "rng", "fxRng", "moves", "fx", "texts", "textOut"];
+  var NOT_STATE = ["cfg", "rng", "fxRng", "moves", "fx", "texts", "textOut", "feed"];
   function applyCmd(sim, c) {
     switch (c.t) {
       case "input":
@@ -15988,7 +16013,7 @@ void main(){
         sim.say("info", "Player reset.");
         break;
       case "set":
-        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move", "kindMoves", "skills", "chainStyles", "armorPct", "dur", "durMax", "broken", "hp", "maxHp", "san", "chr"]) if (k in c) sim.player[k] = c[k];
+        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move", "kindMoves", "skills", "chainStyles", "armorPct", "dur", "durMax", "broken", "hp", "maxHp", "san", "chr", "dmgMult", "spdMult", "regenMult", "staminaMax", "stamina"]) if (k in c) sim.player[k] = c[k];
         break;
       case "ally":
         sim.spawnAlly(c.o);
@@ -16091,6 +16116,7 @@ void main(){
     }
     resetAll() {
       const c = this.cfg;
+      this.feed = [];
       this.t = 0;
       this.nextId = 1;
       this.shake = 0;
@@ -16139,7 +16165,10 @@ void main(){
         vz: 0,
         air: false,
         jumpT: 0,
-        skills: { riposte: false, shove: false },
+        dmgMult: 1,
+        spdMult: 1,
+        regenMult: 1,
+        skills: { riposte: false, shove: false, multi: false },
         kindMoves: {}
         // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
       };
@@ -16201,7 +16230,7 @@ void main(){
         twoHanded: w.twoHanded,
         kind: w.kind,
         posture: w.posture,
-        dmg: p.dmgOverride != null ? p.dmgOverride : w.dmg,
+        dmg: p.dmgOverride != null ? p.dmgOverride : w.dmg * (p.dmgMult || 1),
         interval: swingInterval(this.cfg, p.weapon, p[w.speedStat] != null ? p[w.speedStat] : 5)
       };
     }
@@ -16273,6 +16302,7 @@ void main(){
         broken: false,
         weapon: w,
         dex: o.dex || 5,
+        dmgMult: o.dmgMult || 1,
         state: "alive",
         atk: null,
         atkCd: 0.5,
@@ -16371,7 +16401,7 @@ void main(){
         p.stamRegenT -= dt;
         return;
       }
-      if (p.stamina < p.staminaMax) p.stamina = Math.min(p.staminaMax, p.stamina + S.regen * dt);
+      if (p.stamina < p.staminaMax) p.stamina = Math.min(p.staminaMax, p.stamina + S.regen * (p.regenMult || 1) * dt);
     }
     /* ---------- player ---------- */
     findTarget(w) {
@@ -16437,7 +16467,7 @@ void main(){
         return;
       }
       const swinging = !!p.swing;
-      const spd = c.player.speed * (swinging ? c.swingMoveMult : 1);
+      const spd = c.player.speed * (p.spdMult || 1) * (swinging ? c.swingMoveMult : 1);
       p.moving = mag > 0;
       if (p.moving) {
         p.x = this.clampX(p.x + ix2 * spd * dt);
@@ -16502,7 +16532,7 @@ void main(){
       if (p.dash) {
         const d = p.dash;
         d.t += dt;
-        p.x = this.clampX(p.x + d.dx * D.speed * dt);
+        p.x = this.clampX(p.x + d.dx * D.speed * (p.spdMult || 1) * dt);
         p.y = this.clampY(p.y + d.dy * D.speed * dt * 0.7);
         p.moving = true;
         p.walkT += dt;
@@ -16534,7 +16564,7 @@ void main(){
         p.blockT += dt;
         p.stamRegenT = S.regenDelay;
       }
-      const spd = c.player.speed * (p.swing ? c.swingMoveMult : 1) * (p.blocking ? 0.5 : 1);
+      const spd = c.player.speed * (p.spdMult || 1) * (p.swing ? c.swingMoveMult : 1) * (p.blocking ? 0.5 : 1);
       p.moving = mag > 0;
       if (p.moving) {
         p.x = this.clampX(p.x + ix2 * spd * dt);
@@ -16787,6 +16817,7 @@ void main(){
       if (!inWin(s.t, s.hitAt)) return;
       const w = this.weaponInfo(), pm2 = s.move && this.moves[s.move], em2 = this.moves[c.enemy.move];
       let best = null, bd2 = 1e9;
+      const all = [];
       for (const e of this.enemies) {
         const a = e.atk;
         if (e.state !== "alive" || !a || a.hit || a.heavy || e.clash === false || e.freeze > 0 || e.held || e.fly) continue;
@@ -16801,21 +16832,23 @@ void main(){
         } else ok = Math.abs(e.x - p.x) <= w.reach + c.enemy.reach;
         if (ok) {
           const d = Math.abs(e.x - p.x);
+          all.push([d, e]);
           if (d < bd2) {
             best = e;
             bd2 = d;
           }
         }
       }
-      if (best) this.doClash(best);
+      if (best) this.doClash(best, p.skills && p.skills.multi ? all.sort((x, y) => x[0] - y[0]).slice(1, 4).map((x) => x[1]) : []);
     }
     bladePx(m, s, t, x, face) {
       const g = segAt(m, moveTau(m, s, t)), P2 = this.cfg.pxPerM;
       return [x + face * g[0] * P2, g[1] * P2, x + face * g[2] * P2, g[3] * P2];
     }
     // No winner: both swings stop, both fighters hold a few frames and bounce back, everyone nearby is shoved away.
-    doClash(e) {
+    doClash(e, extra) {
       const p = this.player, c = this.cfg, K = c.clash, sk = p.skills || {};
+      extra = extra || [];
       const cx2 = (p.x + e.x) / 2, dir = Math.sign(e.x - p.x) || 1;
       p.swing = null;
       p.chain = 0;
@@ -16837,12 +16870,24 @@ void main(){
         e.stun = Math.max(e.stun || 0, K.shoveStun);
         e.down = false;
       } else e.kvx = dir * K.knock;
-      this.shockwave(cx2, p.y, [e.id]);
+      for (const x of extra) {
+        x.atk = null;
+        x.atkCd = K.enemyCd;
+        x.freeze = K.freeze;
+        x.clashT = K.dur;
+        x.clashMax = K.dur;
+        if (sk.shove) {
+          x.kvx = dir * K.knock * K.shoveMult;
+          x.stun = Math.max(x.stun || 0, K.shoveStun);
+          x.down = false;
+        } else x.kvx = dir * K.knock;
+      }
+      this.shockwave(cx2, p.y, [e.id].concat(extra.map((x) => x.id)));
       this.burst(cx2, p.y - 60, 12, "#ffe7a0", 130);
       this.text(cx2, p.y - 96, "CLASH", "#ffe27a", 11);
       this.shake = Math.max(this.shake, 0.1);
       this.lastClash = { at: this.t, eId: e.id, x: cx2 };
-      this.say("clash", "CLASH with enemy #" + e.id + (sk.riposte ? " (riposte)" : "") + (sk.shove ? " (shove)" : "") + ".");
+      this.say("clash", "CLASH with enemy #" + e.id + (extra.length ? " and " + extra.length + " more" : "") + (sk.riposte ? " (riposte)" : "") + (sk.shove ? " (shove)" : "") + ".");
     }
     shockwave(cx2, cy, skip) {
       const K = this.cfg.clash.wave, lane = this.cfg.laneTol * 3;
@@ -16922,6 +16967,10 @@ void main(){
     /* ---------- the rules under test ---------- */
     applyHit(e, raw, swing, fin) {
       const c = this.cfg, p = this.player;
+      if (swing || fin) {
+        this.feed.push({ t: "hit", move: fin || swing.kind || "light" });
+        if (this.feed.length > 300) this.feed.shift();
+      }
       const wasW = e.wounded > 0, wasB = e.broken;
       const crit = !fin && (wasW || wasB);
       const pct = wasB || fin ? 0 : e.armorPct * (1 - (swing && swing.pierce || 0));
@@ -17001,6 +17050,8 @@ void main(){
     }
     kill(e, dramatic, swing) {
       const p = this.player;
+      this.feed.push({ t: "kill", kind: e.kind || "soldier", tier: e.tier, x: e.x, y: e.y });
+      if (this.feed.length > 300) this.feed.shift();
       e.state = "dying";
       e.deathT = 0;
       e.dramatic = dramatic;
@@ -17242,12 +17293,13 @@ void main(){
       if (!p.inv) {
         const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));
         this.text(p.x, p.y - 96, "-" + r.dmg, "#ff7a6a", 10);
+        this.feed.push({ t: "hurt", dmg: r.dmg });
         if (r.broke) {
           this.say("break", "Your armor broke.");
           this.text(p.x, p.y - 110, "ARMOR BROKEN", "#ff9a6a", 9);
         }
         if (p.hp <= 0) {
-          if (this.mode === "battle") p.hp = 0;
+          if (this.mode === "battle" || this.mode === "run") p.hp = 0;
           else {
             this.say("info", "Player downed; restored.");
             p.hp = p.maxHp;
@@ -17311,7 +17363,7 @@ void main(){
         if (!a.atk.hit && a.atk.t >= iv * 0.45) {
           a.atk.hit = true;
           const e = this.enemies.find((q) => q.id === a.atk.target);
-          if (e && e.state === "alive" && Math.abs(e.x - a.x) <= w.reach + 8 && Math.abs(e.y - a.y) <= c.laneTol) this.applyHit(e, w.dmg, null);
+          if (e && e.state === "alive" && Math.abs(e.x - a.x) <= w.reach + 8 && Math.abs(e.y - a.y) <= c.laneTol) this.applyHit(e, Math.max(1, Math.floor(w.dmg * (a.dmgMult || 1) + 1e-9)), null);
         }
         if (a.atk.t >= iv) {
           a.atk = null;
@@ -17320,6 +17372,14 @@ void main(){
         return;
       }
       a.atkCd -= dt;
+      if (tgt && a.hp < a.maxHp * 0.35 && (tgt.x - a.x) ** 2 < 90 * 90) {
+        const dir = Math.sign(a.x - tgt.x) || -1;
+        a.x = this.clampX(a.x + dir * spd * 1.1 * dt);
+        a.face = -dir;
+        a.moving = true;
+        a.walkT += dt;
+        return;
+      }
       if (!tgt) {
         const dx3 = p.x - 40 - a.x;
         if (Math.abs(dx3) > 40) {
@@ -18461,6 +18521,988 @@ void main(){
     if (m.lastHit) sim.lastHit = m.lastHit;
   }
 
+  // game/run.js
+  var ATTRS = ["str", "dex", "agi", "int", "con", "wis", "ldr", "chr", "san"];
+  var ATTR_INFO = {
+    str: { n: "STR", d: "More damage on every swing, throw and slam." },
+    dex: { n: "DEX", d: "Faster swings." },
+    agi: { n: "AGI", d: "Faster walking and dashing, quicker stamina regen." },
+    int: { n: "INT", d: "Kept for magic. No effect yet." },
+    con: { n: "CON", d: "More max HP and max stamina." },
+    wis: { n: "WIS", d: "Kept for magic. No effect yet." },
+    ldr: { n: "LDR", d: "More hireling slots and stronger hirelings." },
+    chr: { n: "CHR", d: "Cheaper hirelings." },
+    san: { n: "SAN", d: "Placeholder. No effect on you yet." }
+  };
+  var RUNCFG = {
+    base: 5,
+    pointsPerLevel: 3,
+    startGold: 30,
+    str: { dmg: 0.06 },
+    agi: { speed: 0.02, regen: 0.04 },
+    con: { hp: 4, stamina: 5 },
+    ldr: { perSlot: 3, strength: 0.03 },
+    chr: { discount: 0.02, maxDiscount: 0.5 },
+    maxHirelings: 3,
+    xp: { base: 20, growth: 1.35, kill: { fodder: 2, soldier: 4, tank: 9, elite: 25 }, wave: 5 },
+    gold: { kill: { fodder: 1, soldier: 2, tank: 5, elite: 14 }, wave: 5 },
+    exitEvery: 5,
+    deepBonus: 0.25,
+    // leaving at wave 5, 10, 15 ... pays 1 + 0.25 per stage after the first
+    waveHp: 0.06,
+    between: 2.5,
+    spawnGap: 0.45,
+    maxAlive: 8,
+    maxAlivePerWave: 1,
+    healBetween: 0.25,
+    use: { threshold: 60, cap: 5 },
+    // each 60 uses of an attribute's kind of action grows it by 1, up to +5 (the hybrid growth)
+    rank: { names: ["D", "C", "B", "A", "S"], at: [0, 20, 40, 65, 90], gain: 4, repeat: -6, decay: 6, idle: 3, goldMult: 0.1, dmgBonus: 0.05 },
+    hire: { fee: { leather: 40, mail: 100, plate: 240 }, hp: { leather: 18, mail: 24, plate: 32 }, xpPerLevel: 5, levelBonus: 0.1 }
+  };
+  function newProfile(name) {
+    return {
+      v: 1,
+      name: name || "Baron",
+      gold: RUNCFG.startGold,
+      xp: 0,
+      level: 1,
+      points: 0,
+      attrs: Object.fromEntries(ATTRS.map((a) => [a, RUNCFG.base])),
+      grown: { str: 0, dex: 0, agi: 0, con: 0 },
+      use: { str: 0, dex: 0, agi: 0, con: 0 },
+      weapon: "longsword",
+      armor: "leather",
+      owned: { weapons: ["longsword"], armor: ["leather"], skills: [] },
+      skills: [],
+      upgrades: { hp: 0, stamina: 0, damage: 0, slots: 0 },
+      hirelings: [],
+      nextHid: 1,
+      runs: 0,
+      best: 0
+    };
+  }
+  var toJSON = (p) => JSON.stringify(p);
+  function fromJSON(txt) {
+    try {
+      const o = JSON.parse(txt);
+      return o && o.v === 1 ? Object.assign(newProfile(), o) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  var xpNeed = (level) => Math.round(RUNCFG.xp.base * Math.pow(RUNCFG.xp.growth, level - 1));
+  function addXp(p, n) {
+    p.xp += n;
+    let up2 = 0;
+    while (p.xp >= xpNeed(p.level)) {
+      p.xp -= xpNeed(p.level);
+      p.level++;
+      p.points += RUNCFG.pointsPerLevel;
+      up2++;
+    }
+    return up2;
+  }
+  var attr = (p, a) => p.attrs[a] + (p.grown[a] || 0);
+  function spendPoint(p, a) {
+    if (p.points <= 0 || !(a in p.attrs)) return false;
+    p.attrs[a]++;
+    p.points--;
+    return true;
+  }
+  function derive(p) {
+    const R = RUNCFG, b = R.base, A = (a) => attr(p, a);
+    const ldr = A("ldr"), chr = A("chr");
+    return {
+      dmgMult: (1 + R.str.dmg * (A("str") - b)) * (1 + 0.05 * p.upgrades.damage),
+      dex: A("dex"),
+      spdMult: 1 + R.agi.speed * (A("agi") - b),
+      regenMult: 1 + R.agi.regen * (A("agi") - b),
+      maxHp: CFG.player.hp + R.con.hp * (A("con") - b) + 4 * p.upgrades.hp,
+      staminaMax: CFG.stamina.max + R.con.stamina * (A("con") - b) + 10 * p.upgrades.stamina,
+      hireCap: Math.min(R.maxHirelings, 1 + Math.max(0, Math.floor((ldr - b) / R.ldr.perSlot))),
+      hireStrength: 1 + R.ldr.strength * (ldr - b),
+      hireDiscount: Math.min(R.chr.maxDiscount, Math.max(0, R.chr.discount * (chr - b))),
+      skillSlots: 1 + p.upgrades.slots
+    };
+  }
+  function trainFromUse(p, kind) {
+    const a = { heavy: "str", throw: "str", slam: "str", strike: "str", light: "dex", counter: "dex", dash: "agi", jump: "agi", hurt: "con" }[kind];
+    if (!a) return false;
+    p.use[a]++;
+    if (p.use[a] >= RUNCFG.use.threshold) {
+      p.use[a] = 0;
+      if ((p.grown[a] || 0) < RUNCFG.use.cap) {
+        p.grown[a] = (p.grown[a] || 0) + 1;
+        return a;
+      }
+    }
+    return false;
+  }
+  var WEAPON_PRICE = { longsword: 0, greatsword: 120, axe: 60, mace: 60, spear: 90 };
+  var ARMOR_PRICE = { leather: 0, mail: 150, plate: 400 };
+  var SKILLS = {
+    riposte: { n: "Riposte", d: "A clash makes no bounce; you counter-swing at once.", price: 100 },
+    shove: { n: "Shove", d: "A clash shoves the enemy far and stuns it, so you can grab it.", price: 100 },
+    multi: { n: "Multi-clash", d: "One swing can clash with up to four enemy swings at once.", price: 250 }
+  };
+  var UPGRADES = {
+    hp: { n: "Toughness", d: "+4 max HP per rank.", base: 40, max: 10 },
+    stamina: { n: "Endurance", d: "+10 max stamina per rank.", base: 40, max: 10 },
+    damage: { n: "Whetstone", d: "+5% damage per rank.", base: 60, max: 10 },
+    slots: { n: "Skill slot", d: "Equip one more skill.", base: 150, max: 2 }
+  };
+  var upgradePrice = (p, k) => Math.round(UPGRADES[k].base * Math.pow(1.6, p.upgrades[k]));
+  function pay(p, n) {
+    if (p.gold < n) return { ok: false, why: "Not enough gold." };
+    p.gold -= n;
+    return { ok: true };
+  }
+  function buy(p, kind, key) {
+    if (kind === "weapon") {
+      if (p.owned.weapons.includes(key)) return { ok: false, why: "Already owned." };
+      const r = pay(p, WEAPON_PRICE[key]);
+      if (r.ok) p.owned.weapons.push(key);
+      return r;
+    }
+    if (kind === "armor") {
+      if (p.owned.armor.includes(key)) return { ok: false, why: "Already owned." };
+      const r = pay(p, ARMOR_PRICE[key]);
+      if (r.ok) p.owned.armor.push(key);
+      return r;
+    }
+    if (kind === "skill") {
+      if (p.owned.skills.includes(key)) return { ok: false, why: "Already learned." };
+      const r = pay(p, SKILLS[key].price);
+      if (r.ok) p.owned.skills.push(key);
+      return r;
+    }
+    if (kind === "upgrade") {
+      if (p.upgrades[key] >= UPGRADES[key].max) return { ok: false, why: "Maxed." };
+      const r = pay(p, upgradePrice(p, key));
+      if (r.ok) p.upgrades[key]++;
+      return r;
+    }
+    return { ok: false, why: "Unknown item." };
+  }
+  var equipWeapon = (p, k) => p.owned.weapons.includes(k) ? (p.weapon = k, true) : false;
+  var equipArmor = (p, k) => p.owned.armor.includes(k) ? (p.armor = k, true) : false;
+  function toggleSkill(p, k) {
+    if (!p.owned.skills.includes(k)) return { ok: false, why: "Not learned." };
+    if (p.skills.includes(k)) {
+      p.skills = p.skills.filter((x) => x !== k);
+      return { ok: true };
+    }
+    if (p.skills.length >= derive(p).skillSlots) return { ok: false, why: "No free skill slot." };
+    p.skills.push(k);
+    return { ok: true };
+  }
+  var NAMES = ["Aldric", "Bram", "Cedric", "Dunstan", "Edda", "Fenn", "Garrick", "Hild", "Ivo", "Jorun", "Kell", "Lothar", "Maren", "Osk", "Perrin", "Rolf", "Sigrid", "Tam", "Ulf", "Wulf"];
+  var HIRE_WEAPONS = ["longsword", "axe", "mace", "spear", "greatsword"];
+  function recruits(p, seed) {
+    const r = makeRng(hash32(seed || 1, p.runs + 17)), d = derive(p), out = [];
+    for (let i15 = 0; i15 < 4; i15++) {
+      const tier = i15 === 3 ? "plate" : i15 === 2 ? "mail" : "leather", w = HIRE_WEAPONS[Math.floor(r() * HIRE_WEAPONS.length)];
+      out.push({ rid: i15, name: NAMES[Math.floor(r() * NAMES.length)], tier, weapon: w, hp: RUNCFG.hire.hp[tier], fee: Math.round(RUNCFG.hire.fee[tier] * (1 - d.hireDiscount)) });
+    }
+    return out;
+  }
+  function hire(p, rec) {
+    const d = derive(p);
+    if (p.hirelings.length >= d.hireCap) return { ok: false, why: "No free slot (LDR raises it)." };
+    const r = pay(p, rec.fee);
+    if (!r.ok) return r;
+    p.hirelings.push({ hid: p.nextHid++, name: rec.name, tier: rec.tier, weapon: rec.weapon, hp: rec.hp, level: 1, xp: 0 });
+    return { ok: true };
+  }
+  var dismiss = (p, hid) => {
+    p.hirelings = p.hirelings.filter((h) => h.hid !== hid);
+  };
+  function hirelingXp(h, n) {
+    h.xp += n;
+    let up2 = 0;
+    while (h.xp >= RUNCFG.hire.xpPerLevel * h.level) {
+      h.xp -= RUNCFG.hire.xpPerLevel * h.level;
+      h.level++;
+      up2++;
+    }
+    return up2;
+  }
+  var allySpec = (h, p) => {
+    const d = derive(p), s = d.hireStrength * (1 + RUNCFG.hire.levelBonus * (h.level - 1));
+    return { hid: h.hid, name: h.name, tier: h.tier, weapon: h.weapon, hp: Math.round(h.hp * s), dmgMult: s };
+  };
+  function wavePlan(n) {
+    const total = 6 + 3 * n, elites = n >= 5 ? Math.floor(n / 5) : 0, tanks = n >= 3 ? Math.floor(n / 3) : 0, soldiers = n >= 2 ? Math.floor(total * 0.25) : 0;
+    const list = [];
+    for (let i15 = 0; i15 < total; i15++) list.push("fodder");
+    for (let i15 = 0; i15 < soldiers; i15++) list[Math.floor((i15 + 0.5) * total / (soldiers + 1))] = "soldier";
+    for (let i15 = 0; i15 < tanks; i15++) list[Math.floor((i15 + 1) * total / (tanks + 1)) | 1] = "tank";
+    for (let i15 = 0; i15 < elites; i15++) list.push("elite");
+    return list;
+  }
+  var MAPS = { fields: { n: "Training Fields", d: "Open ground outside the camp. A basic map." } };
+  var stageOf = (wave) => Math.floor(wave / RUNCFG.exitEvery);
+  var Run = class {
+    constructor(sim, profile, seed) {
+      this.sim = sim;
+      this.p = profile;
+      this.rng = makeRng(hash32(seed || 1, profile.runs + 3));
+      this.seed = seed || 1;
+      this.phase = "camp";
+      this.wave = 0;
+      this.gold = 0;
+      this.kills = 0;
+      this.xpGain = 0;
+      this.timer = 0;
+      this.queue = [];
+      this.spawnT = 0;
+      this.waveKills = 0;
+      this.rank = { score: 0, last: "", idle: 0, tier: 0 };
+      this.msgs = [];
+      this.dummyT = 0;
+      this.result = null;
+      this.levelUps = 0;
+      this.banner = null;
+      this.enterCamp();
+    }
+    say(t) {
+      this.msgs.push({ t: this.sim.t, text: t });
+      if (this.msgs.length > 12) this.msgs.shift();
+    }
+    get tier() {
+      const a = RUNCFG.rank.at;
+      let t = 0;
+      for (let i15 = 0; i15 < a.length; i15++) if (this.rank.score >= a[i15]) t = i15;
+      return t;
+    }
+    get rankName() {
+      return RUNCFG.rank.names[this.tier];
+    }
+    goldMult() {
+      return 1 + RUNCFG.rank.goldMult * this.tier;
+    }
+    /* put your build on the fighter: weapon, armor, attributes, skills */
+    applyBuild(inRun) {
+      const p = this.p, d = derive(p), sim = this.sim, tier = CFG.tiers[p.armor], bonus = inRun ? 1 + RUNCFG.rank.dmgBonus * this.tier : 1;
+      applyCmd(sim, {
+        t: "set",
+        weapon: p.weapon,
+        dex: d.dex,
+        maxHp: d.maxHp,
+        hp: d.maxHp,
+        staminaMax: d.staminaMax,
+        stamina: d.staminaMax,
+        dmgMult: d.dmgMult * bonus,
+        spdMult: d.spdMult,
+        regenMult: d.regenMult,
+        armorPct: tier.pct,
+        dur: tier.dur,
+        durMax: tier.dur,
+        broken: false,
+        inv: false,
+        skills: { riposte: p.skills.includes("riposte"), shove: p.skills.includes("shove"), multi: p.skills.includes("multi") }
+      });
+    }
+    enterCamp() {
+      const sim = this.sim;
+      this.phase = "camp";
+      sim.mode = "arena";
+      sim.manual = true;
+      sim.clearEnemies();
+      sim.clearAllies();
+      sim.proj = [];
+      sim.player.x = 330;
+      sim.player.y = 282;
+      sim.player.swing = null;
+      sim.player.air = false;
+      sim.player.z = 0;
+      this.applyBuild(false);
+      applyCmd(sim, { t: "set", inv: true });
+      this.spawnDummy();
+    }
+    spawnDummy() {
+      const e = this.sim.spawn({ kind: "soldier", tier: "leather", dur: 99, ai: "stand" });
+      e.hp = e.maxHp = 60;
+      e.x = 120;
+      e.y = 282;
+      e.face = 1;
+      e.dummy = true;
+      this.dummy = e;
+      return e;
+    }
+    depart(map) {
+      if (this.phase !== "camp") return false;
+      const sim = this.sim, p = this.p;
+      p.runs++;
+      this.map = map || "fields";
+      this.wave = 0;
+      this.gold = 0;
+      this.kills = 0;
+      this.xpGain = 0;
+      this.levelUps = 0;
+      this.result = null;
+      this.rank.score = 0;
+      this.rank.last = "";
+      sim.clearEnemies();
+      sim.mode = "run";
+      sim.manual = true;
+      sim.proj = [];
+      sim.player.x = 170;
+      sim.player.y = 282;
+      sim.player.swing = null;
+      this.applyBuild(true);
+      this.spawnAllies();
+      this.say("The run begins.");
+      this.startWave(1);
+      return true;
+    }
+    spawnAllies() {
+      const sim = this.sim;
+      sim.clearAllies();
+      this.p.hirelings.forEach((h, i15) => sim.spawnAlly(Object.assign(allySpec(h, this.p), { index: i15 })));
+    }
+    startWave(n) {
+      this.banner = { text: "WAVE " + n, at: this.sim.t };
+      this.wave = n;
+      this.phase = "wave";
+      this.queue = wavePlan(n);
+      this.spawnT = 0.5;
+      this.waveKills = 0;
+      this.waveHits = 0;
+      this.say("Wave " + n + ": " + this.queue.length + " enemies.");
+    }
+    alive() {
+      return this.sim.enemies.filter((e) => e.state === "alive").length;
+    }
+    /* call once per sim step, after sim.step() */
+    update(dt) {
+      const sim = this.sim, R = RUNCFG;
+      const feed = sim.feed;
+      sim.feed = [];
+      if (this.phase === "camp") {
+        if (this.dummy && this.dummy.state !== "alive") {
+          this.dummyT += dt;
+          if (this.dummyT > 1.5) {
+            this.dummyT = 0;
+            this.dummy = null;
+            this.spawnDummy();
+          }
+        } else if (this.dummy && this.dummy.hp < this.dummy.maxHp) this.dummy.hp = Math.min(this.dummy.maxHp, this.dummy.hp + 8 * dt);
+        return;
+      }
+      for (const f of feed) {
+        if (f.t === "kill") this.onKill(f);
+        else if (f.t === "hit") this.onHit(f.move);
+        else if (f.t === "hurt") {
+          this.rank.score = 0;
+          this.rank.last = "";
+          trainFromUse(this.p, "hurt");
+          this.syncRank();
+        }
+      }
+      if (this.phase === "wave" || this.phase === "between") {
+        this.rank.idle += dt;
+        if (this.rank.idle > R.rank.idle) {
+          this.rank.score = Math.max(0, this.rank.score - R.rank.decay * dt);
+          this.syncRank();
+        }
+      }
+      if (sim.player.hp <= 0 && this.phase !== "dead" && this.phase !== "left") {
+        this.die();
+        return;
+      }
+      if (this.phase === "wave") {
+        this.spawnT -= dt;
+        const cap = R.maxAlive + this.wave * R.maxAlivePerWave;
+        if (this.queue.length && this.spawnT <= 0 && this.alive() < cap) {
+          this.spawnOne();
+          this.spawnT = R.spawnGap;
+        }
+        if (!this.queue.length && this.alive() === 0) this.clearWave();
+      } else if (this.phase === "between") {
+        this.timer -= dt;
+        if (this.timer <= 0) this.startWave(this.wave + 1);
+      }
+    }
+    spawnOne() {
+      const sim = this.sim, kind = this.queue.shift(), side = this.rng() < 0.5 ? -1 : 1;
+      const e = sim.spawn({ kind, ai: "advance" });
+      e.x = side > 0 ? CFG.arena.right - 8 : CFG.arena.left + 8;
+      e.y = sim.clampY(CFG.band.top + this.rng() * (CFG.band.bottom - CFG.band.top));
+      e.face = -side;
+      const k = 1 + R_HP() * (this.wave - 1);
+      e.hp = e.maxHp = Math.max(1, Math.round(e.maxHp * k));
+      return e;
+    }
+    onKill(f) {
+      const R = RUNCFG, k = f.kind;
+      this.kills++;
+      this.waveKills++;
+      const g = Math.round((R.gold.kill[k] || 1) * this.goldMult());
+      this.gold += g;
+      this.giveXp(R.xp.kill[k] || 1);
+    }
+    giveXp(n) {
+      this.xpGain += n;
+      const up2 = addXp(this.p, n);
+      if (up2) {
+        this.levelUps += up2;
+        this.say("Level " + this.p.level + "! +" + up2 * RUNCFG.pointsPerLevel + " attribute points.");
+        this.sim.text(this.sim.player.x, this.sim.player.y - 120, "LEVEL UP", "#ffe27a", 12);
+      }
+    }
+    onHit(move) {
+      const R = RUNCFG.rank, g = trainFromUse(this.p, move);
+      if (g) this.say(g.toUpperCase() + " grew from use.");
+      this.rank.idle = 0;
+      if (this.rank.last && this.rank.last === move) this.rank.score = Math.max(0, this.rank.score + R.repeat);
+      else this.rank.score = Math.min(100, this.rank.score + R.gain);
+      this.rank.last = move;
+      this.syncRank();
+    }
+    syncRank() {
+      const t = this.tier;
+      if (t === this.rank.tier) return;
+      this.rank.tier = t;
+      const d = derive(this.p);
+      applyCmd(this.sim, { t: "set", dmgMult: d.dmgMult * (1 + RUNCFG.rank.dmgBonus * t) });
+    }
+    clearWave() {
+      const R = RUNCFG, sim = this.sim;
+      this.say("Wave " + this.wave + " cleared.");
+      this.banner = { text: "WAVE CLEARED", at: sim.t };
+      this.gold += Math.round(R.gold.wave * this.wave * this.goldMult());
+      this.giveXp(R.xp.wave * this.wave);
+      for (const h of this.p.hirelings) if (hirelingXp(h, 1)) this.say(h.name + " reached level " + h.level + ".");
+      const pl2 = sim.player;
+      pl2.hp = Math.min(pl2.maxHp, pl2.hp + Math.round(pl2.maxHp * R.healBetween));
+      pl2.stamina = pl2.staminaMax;
+      this.spawnAllies();
+      if (this.wave % R.exitEvery === 0) {
+        this.phase = "vote";
+        this.say("Leave with " + this.leavePay() + " gold, or press on?");
+      } else {
+        this.phase = "between";
+        this.timer = R.between;
+      }
+    }
+    leavePay() {
+      return Math.round(this.gold * (1 + RUNCFG.deepBonus * (stageOf(this.wave) - 1)));
+    }
+    vote(leave) {
+      if (this.phase !== "vote") return false;
+      if (leave) {
+        const g = this.leavePay();
+        this.p.gold += g;
+        this.p.best = Math.max(this.p.best, this.wave);
+        this.result = { kind: "left", wave: this.wave, gold: g, kills: this.kills, xp: this.xpGain, levels: this.levelUps };
+        this.phase = "left";
+      } else {
+        this.phase = "between";
+        this.timer = RUNCFG.between;
+      }
+      return true;
+    }
+    die() {
+      this.phase = "dead";
+      this.p.best = Math.max(this.p.best, this.wave - 1);
+      this.result = { kind: "dead", wave: this.wave, lost: this.gold, kills: this.kills, xp: this.xpGain, levels: this.levelUps };
+      this.gold = 0;
+    }
+    returnToCamp() {
+      if (this.phase === "dead" || this.phase === "left") this.enterCamp();
+    }
+  };
+  var R_HP = () => RUNCFG.waveHp;
+
+  // game/runui.js
+  var KEY = "pw.run.profile";
+  var STATIONS = [
+    // where things are in camp (sim x); the dummy stands at 120
+    { id: "stats", x: 215, name: "Trainer", hint: "spend attribute points" },
+    { id: "shop", x: 300, name: "Smith", hint: "weapons, armor, upgrades, skills" },
+    { id: "style", x: 385, name: "Style", hint: "equip learned skills" },
+    { id: "hire", x: 470, name: "Hire board", hint: "hire fighters" },
+    { id: "cart", x: 572, name: "Cart", hint: "pick a map and depart" }
+  ];
+  var NEAR = 40;
+  var esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  function initRunUI(env2) {
+    const { $, live, FONT } = env2;
+    let profile = null;
+    try {
+      profile = fromJSON(localStorage.getItem(KEY) || "");
+    } catch (e) {
+    }
+    if (!profile) profile = newProfile("Baron");
+    const run = new Run(live, profile, Date.now() >>> 0 || 1);
+    const save = () => {
+      try {
+        localStorage.setItem(KEY, toJSON(profile));
+      } catch (e) {
+      }
+    };
+    const ui = { active: false, modal: null, run, profile };
+    const host = $("stage").parentElement, ov = document.createElement("div");
+    ov.id = "runui";
+    ov.hidden = true;
+    host.appendChild(ov);
+    let note = "";
+    const close = () => {
+      ui.modal = null;
+      ov.innerHTML = "";
+      env2.focusStage();
+    };
+    const open = (id) => {
+      ui.modal = id;
+      env2.clearKeys();
+      render();
+    };
+    const bar = (v2, max, cls) => '<i class="bar ' + (cls || "") + '"><b style="width:' + Math.max(0, Math.min(100, 100 * v2 / (max || 1))) + '%"></b></i>';
+    const goldLine = () => '<div class="gold">' + profile.gold + " G</div>";
+    const head = (title, extra) => '<div class="rhead"><span>' + title + "</span>" + (extra || "") + '<button class="rb x" data-a="close" title="Close (Esc)">x</button></div>';
+    const msg = () => note ? '<div class="note">' + esc(note) + "</div>" : "";
+    function statsPanel() {
+      const d = derive(profile), need = xpNeed(profile.level);
+      let rows = "";
+      for (const a of ATTRS) {
+        const info = ATTR_INFO[a], v2 = attr(profile, a), g = profile.grown[a] || 0, dim = a === "int" || a === "wis" || a === "san";
+        rows += '<div class="arow' + (dim ? " dim" : "") + '"><b>' + info.n + '</b><span class="v">' + v2 + (g ? " <small>(+" + g + " from use)</small>" : "") + '</span><span class="d">' + esc(info.d) + '</span><button class="rb" data-a="spend:' + a + '"' + (profile.points > 0 ? "" : " disabled") + ">+</button></div>";
+      }
+      return head("Trainer", goldLine()) + '<div class="lvl">Level <b>' + profile.level + "</b> &nbsp; XP " + profile.xp + " / " + need + bar(profile.xp, need, "xp") + '</div><div class="pts">Points to spend: <b>' + profile.points + "</b></div>" + rows + '<div class="sum">HP ' + d.maxHp + " \xB7 Stamina " + d.staminaMax + " \xB7 Damage x" + d.dmgMult.toFixed(2) + " \xB7 Speed x" + d.spdMult.toFixed(2) + " \xB7 Hire slots " + d.hireCap + "</div>" + msg() + '<div class="foot"><button class="rb warn" data-a="reset">Delete save</button></div>';
+    }
+    function shopPanel() {
+      const p = profile;
+      let h = head("Smith", goldLine());
+      h += '<div class="sec">Weapons</div>';
+      for (const k of Object.keys(WEAPON_PRICE)) {
+        const own = p.owned.weapons.includes(k), lab = CFG.weapons[k].label;
+        h += '<div class="srow"><span>' + esc(lab) + '</span><span class="d">dmg ' + CFG.weaponClasses[CFG.weapons[k].cls].dmg + ", reach " + CFG.weaponClasses[CFG.weapons[k].cls].reach + "</span>" + (own ? '<button class="rb" data-a="equip:weapon:' + k + '"' + (p.weapon === k ? " disabled>Equipped" : ">Equip") + "</button>" : '<button class="rb" data-a="buy:weapon:' + k + '">Buy ' + WEAPON_PRICE[k] + " G</button>") + "</div>";
+      }
+      h += '<div class="sec">Armor</div>';
+      for (const k of Object.keys(ARMOR_PRICE)) {
+        const own = p.owned.armor.includes(k), t = CFG.tiers[k];
+        h += '<div class="srow"><span>' + esc(t.label) + '</span><span class="d">' + Math.round(t.pct * 100) + "% off, durability " + t.dur + "</span>" + (own ? '<button class="rb" data-a="equip:armor:' + k + '"' + (p.armor === k ? " disabled>Worn" : ">Wear") + "</button>" : '<button class="rb" data-a="buy:armor:' + k + '">Buy ' + ARMOR_PRICE[k] + " G</button>") + "</div>";
+      }
+      h += '<div class="sec">Upgrades (permanent)</div>';
+      for (const k of Object.keys(UPGRADES)) {
+        const u = UPGRADES[k], n = p.upgrades[k];
+        h += '<div class="srow"><span>' + u.n + " <small>rank " + n + "/" + u.max + '</small></span><span class="d">' + u.d + '</span><button class="rb" data-a="buy:upgrade:' + k + '"' + (n >= u.max ? " disabled>Max" : ">" + upgradePrice(p, k) + " G") + "</button></div>";
+      }
+      h += '<div class="sec">Skills</div>';
+      for (const k of Object.keys(SKILLS)) {
+        const s = SKILLS[k], own = p.owned.skills.includes(k);
+        h += '<div class="srow"><span>' + s.n + '</span><span class="d">' + esc(s.d) + "</span>" + (own ? '<button class="rb" disabled>Learned</button>' : '<button class="rb" data-a="buy:skill:' + k + '">Learn ' + s.price + " G</button>") + "</div>";
+      }
+      return h + msg();
+    }
+    function stylePanel() {
+      const p = profile, d = derive(p);
+      let h = head("Style");
+      h += '<div class="pts">Skill slots: <b>' + p.skills.length + " / " + d.skillSlots + "</b> <small>(more from the Smith)</small></div>";
+      for (const k of Object.keys(SKILLS)) {
+        const s = SKILLS[k], own = p.owned.skills.includes(k), on2 = p.skills.includes(k);
+        h += '<div class="srow' + (own ? "" : " dim") + '"><span>' + s.n + '</span><span class="d">' + esc(s.d) + "</span>" + (own ? '<button class="rb" data-a="skill:' + k + '">' + (on2 ? "Equipped" : "Equip") + "</button>" : '<span class="d">not learned</span>') + "</div>";
+      }
+      h += '<p class="d">Attack animations come from the Animator library. Traits are not built yet.</p>';
+      return h + msg();
+    }
+    function hirePanel() {
+      const p = profile, d = derive(p);
+      let h = head("Hire board", goldLine());
+      h += '<div class="pts">Your fighters: <b>' + p.hirelings.length + " / " + d.hireCap + "</b> <small>(LDR opens slots, up to " + RUNCFG.maxHirelings + ")</small></div>";
+      for (const x of p.hirelings) h += '<div class="srow"><span>' + esc(x.name) + " <small>Lv " + x.level + '</small></span><span class="d">' + esc(CFG.weapons[x.weapon].label) + ", " + esc(CFG.tiers[x.tier].label) + ", HP " + x.hp + '</span><button class="rb" data-a="dismiss:' + x.hid + '">Dismiss</button></div>';
+      h += '<div class="sec">For hire</div>';
+      for (const r of recruits(p, run.seed)) {
+        const hired = p.hirelings.some((x) => x.name === r.name && x.weapon === r.weapon && x.tier === r.tier);
+        h += '<div class="srow"><span>' + esc(r.name) + '</span><span class="d">' + esc(CFG.weapons[r.weapon].label) + ", " + esc(CFG.tiers[r.tier].label) + ", HP " + r.hp + "</span>" + (hired ? '<button class="rb" disabled>Hired</button>' : '<button class="rb" data-a="hire:' + r.rid + '">Hire ' + r.fee + " G</button>") + "</div>";
+      }
+      return h + '<p class="d">Hirelings keep fighting for you for good. Fallen ones are back next wave, no penalty.</p>' + msg();
+    }
+    function cartPanel() {
+      const p = profile;
+      let h = head("The cart");
+      h += '<div class="sec">Choose a map</div>';
+      for (const k of Object.keys(MAPS)) h += '<div class="map"><b>' + esc(MAPS[k].n) + '</b><span class="d">' + esc(MAPS[k].d) + '</span><span class="d">Best: wave ' + p.best + '</span><button class="rb go" data-a="depart:' + k + '">Depart</button></div>';
+      h += '<p class="d">Waves grow. Every 5 waves you may leave and keep the gold, with a bonus the deeper you go. If you fall, the gold from this run is lost. Gear, levels and skills stay.</p>';
+      h += '<div class="sum">Party: you' + p.hirelings.map((x) => ", " + esc(x.name)).join("") + "</div>";
+      return h;
+    }
+    function votePanel() {
+      return '<div class="rhead"><span>Wave ' + run.wave + ' cleared</span></div><div class="big">Leave with <b>' + run.leavePay() + ' G</b>?</div><p class="d">That is ' + run.gold + " gold earned" + (stageOf(run.wave) > 1 ? ", plus a deep-run bonus" : "") + '. Press on and the next stage pays more, but falling loses it all.</p><div class="btnrow"><button class="rb go" data-a="vote:leave">Leave</button><button class="rb" data-a="vote:stay">Press on</button></div>';
+    }
+    function resultPanel() {
+      const r = run.result;
+      if (!r) return "";
+      return '<div class="rhead"><span>' + (r.kind === "dead" ? "You fell" : "Back from the field") + '</span></div><div class="big">Wave ' + r.wave + '</div><div class="sum">Kills ' + r.kills + " \xB7 XP " + r.xp + (r.levels ? " \xB7 Levels +" + r.levels : "") + "</div>" + (r.kind === "dead" ? '<div class="big bad">Lost ' + r.lost + ' G</div><p class="d">Gold from this run is gone. Gear, levels, skills and hirelings are safe.</p>' : '<div class="big">+' + r.gold + " G</div>") + '<div class="btnrow"><button class="rb go" data-a="camp">Return to camp</button></div>';
+    }
+    const PANELS = { stats: statsPanel, shop: shopPanel, style: stylePanel, hire: hirePanel, cart: cartPanel, vote: votePanel, result: resultPanel };
+    function render() {
+      if (!ui.modal) {
+        ov.innerHTML = "";
+        return;
+      }
+      ov.innerHTML = '<div class="rback"><div class="ff rpanel p-' + ui.modal + '">' + PANELS[ui.modal]() + "</div></div>";
+    }
+    const rebuild = () => {
+      env2.clearKeys();
+      run.applyBuild(false);
+      applyCmd(live, { t: "set", inv: true });
+      const t = $("ptier");
+      if (t && [...t.options].some((o) => o.value === profile.armor)) t.value = profile.armor;
+      env2.readLook();
+      save();
+    };
+    ov.addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-a]");
+      if (!b || b.disabled) return;
+      const [a, x, y] = b.dataset.a.split(":");
+      note = "";
+      if (a === "close") {
+        close();
+        return;
+      }
+      if (a === "spend") {
+        spendPoint(profile, x);
+        rebuild();
+      } else if (a === "buy") {
+        const r = buy(profile, x, y);
+        note = r.ok ? "" : r.why;
+        if (r.ok) {
+          if (x === "weapon") equipWeapon(profile, y);
+          if (x === "armor") equipArmor(profile, y);
+          rebuild();
+        }
+      } else if (a === "equip") {
+        x === "weapon" ? equipWeapon(profile, y) : equipArmor(profile, y);
+        rebuild();
+      } else if (a === "skill") {
+        const r = toggleSkill(profile, x);
+        note = r.ok ? "" : r.why;
+        rebuild();
+      } else if (a === "hire") {
+        const r = hire(profile, recruits(profile, run.seed)[+x]);
+        note = r.ok ? "" : r.why;
+        save();
+      } else if (a === "dismiss") {
+        dismiss(profile, +x);
+        save();
+      } else if (a === "reset") {
+        if (!ui.confirmReset) {
+          ui.confirmReset = true;
+          note = "Press Delete save again to wipe your progress.";
+          render();
+          return;
+        }
+        ui.confirmReset = false;
+        localStorage.removeItem(KEY);
+        Object.assign(profile, newProfile("Baron"));
+        run.enterCamp();
+        rebuild();
+        note = "Save deleted.";
+      } else if (a === "depart") {
+        close();
+        save();
+        run.depart(x);
+        env2.readLook();
+        return;
+      } else if (a === "vote") {
+        run.vote(x === "leave");
+        if (x === "leave") {
+          save();
+          open("result");
+        } else close();
+        return;
+      } else if (a === "camp") {
+        run.returnToCamp();
+        rebuild();
+        close();
+        return;
+      }
+      ui.confirmReset = a === "reset" ? ui.confirmReset : false;
+      render();
+    });
+    ui.enter = () => {
+      ui.active = true;
+      ov.hidden = false;
+      env2.stopRec();
+      env2.clearKeys();
+      run.enterCamp();
+      rebuild();
+      close();
+    };
+    ui.leave = () => {
+      ui.active = false;
+      ov.hidden = true;
+      ui.modal = null;
+      ov.innerHTML = "";
+      live.mode = "arena";
+      live.clearEnemies();
+      live.clearAllies();
+      live.proj = [];
+      live.feed = [];
+      env2.clearKeys();
+      env2.afterLeave();
+    };
+    let wasPhase = "camp";
+    ui.update = (dt) => {
+      run.update(dt);
+      if (run.phase !== wasPhase) {
+        if (run.phase === "vote") open("vote");
+        else if (run.phase === "dead") {
+          save();
+          open("result");
+        } else if (run.phase === "camp" && wasPhase !== "camp") save();
+        wasPhase = run.phase;
+      }
+    };
+    const near = () => {
+      if (run.phase !== "camp") return null;
+      const x = live.player.x;
+      return STATIONS.find((s) => Math.abs(s.x - x) <= NEAR) || null;
+    };
+    ui.key = (code, act) => {
+      if (!ui.active) return false;
+      if (ui.modal) {
+        if (code === "Escape" && ui.modal !== "vote" && ui.modal !== "result") close();
+        return true;
+      }
+      if (act === "use" && run.phase === "camp") {
+        const s = near();
+        if (s) open(s.id);
+        return true;
+      }
+      return false;
+    };
+    const rr = (c, x, y, w, h, r) => {
+      c.beginPath();
+      if (c.roundRect) c.roundRect(x, y, w, h, r);
+      else c.rect(x, y, w, h);
+    };
+    function win(c, x, y, w, h) {
+      const g = c.createLinearGradient(0, y, 0, y + h);
+      g.addColorStop(0, "#3550d0");
+      g.addColorStop(1, "#0a1260");
+      c.fillStyle = "#04062a";
+      rr(c, x - 1, y - 1, w + 2, h + 2, 5);
+      c.fill();
+      c.fillStyle = g;
+      rr(c, x, y, w, h, 4);
+      c.fill();
+      c.strokeStyle = "#f2f4ff";
+      c.lineWidth = 2;
+      rr(c, x + 1, y + 1, w - 2, h - 2, 4);
+      c.stroke();
+      c.strokeStyle = "rgba(120,140,235,.8)";
+      c.lineWidth = 1;
+      rr(c, x + 3.5, y + 3.5, w - 7, h - 7, 2);
+      c.stroke();
+    }
+    function txt(c, s, x, y, col, size, align) {
+      c.font = (size || 10) + "px " + FONT;
+      c.textAlign = align || "left";
+      c.fillStyle = "#000";
+      c.fillText(s, x + 1, y + 1);
+      c.fillStyle = col || "#fff";
+      c.fillText(s, x, y);
+    }
+    function gauge(c, x, y, w, h, v2, max, col) {
+      c.fillStyle = "#04062a";
+      c.fillRect(x, y, w, h);
+      c.fillStyle = col;
+      c.fillRect(x + 1, y + 1, Math.max(0, Math.round((w - 2) * Math.min(1, v2 / (max || 1)))), h - 2);
+    }
+    const hpCol = (f) => f > 0.5 ? "#7be07b" : f > 0.25 ? "#f0d14a" : "#f06a5a";
+    ui.drawBack = (c) => {
+      if (!ui.active || run.phase !== "camp") return;
+      c.save();
+      const base = 262;
+      c.fillStyle = "#3a2a2f";
+      [[40, 58], [160, 62], [430, 56], [520, 60]].forEach(([x, w]) => {
+        c.beginPath();
+        c.moveTo(x, base - 6);
+        c.lineTo(x + w / 2, base - 52);
+        c.lineTo(x + w, base - 6);
+        c.closePath();
+        c.fill();
+      });
+      c.fillStyle = "#5a3a3a";
+      [[40, 58], [430, 56]].forEach(([x, w]) => {
+        c.beginPath();
+        c.moveTo(x + w / 2, base - 52);
+        c.lineTo(x + w / 2 - 6, base - 6);
+        c.lineTo(x + w / 2 + 6, base - 6);
+        c.closePath();
+        c.fill();
+      });
+      const t = live.t, fl = 4 + Math.sin(t * 9) * 1.5;
+      c.fillStyle = "#4a3a30";
+      c.fillRect(322, base - 5, 22, 4);
+      c.fillStyle = "#f08a3a";
+      c.beginPath();
+      c.moveTo(326, base - 5);
+      c.lineTo(333, base - 14 - fl);
+      c.lineTo(340, base - 5);
+      c.fill();
+      c.fillStyle = "#ffd86a";
+      c.beginPath();
+      c.moveTo(329, base - 5);
+      c.lineTo(333, base - 10 - fl * 0.5);
+      c.lineTo(337, base - 5);
+      c.fill();
+      const prop = (s) => {
+        const x = s.x, nearIt = Math.abs(x - live.player.x) <= NEAR;
+        c.save();
+        c.translate(x, base);
+        if (s.id === "stats") {
+          c.fillStyle = "#6a4b3a";
+          c.fillRect(-14, -30, 28, 30);
+          c.fillStyle = "#8a6a4a";
+          c.fillRect(-16, -34, 32, 6);
+          c.fillStyle = "#e8d8b0";
+          c.fillRect(-9, -24, 18, 12);
+        } else if (s.id === "shop") {
+          c.fillStyle = "#5a4a42";
+          c.fillRect(-18, -22, 36, 22);
+          c.fillStyle = "#c24a3a";
+          c.fillRect(-20, -32, 40, 10);
+          c.fillStyle = "#9aa4b0";
+          c.fillRect(-10, -30, 3, 12);
+          c.fillRect(2, -29, 8, 3);
+        } else if (s.id === "style") {
+          c.fillStyle = "#4a5a8a";
+          c.fillRect(-12, -26, 24, 26);
+          c.fillStyle = "#e8d8b0";
+          c.fillRect(-7, -22, 14, 10);
+          c.fillStyle = "#c2413b";
+          c.fillRect(-2, -36, 4, 12);
+        } else if (s.id === "hire") {
+          c.fillStyle = "#6a4b3a";
+          c.fillRect(-16, -30, 32, 24);
+          c.fillStyle = "#e8d8b0";
+          c.fillRect(-12, -26, 10, 8);
+          c.fillRect(2, -26, 10, 8);
+          c.fillRect(-12, -16, 24, 6);
+          c.fillStyle = "#4a3a30";
+          c.fillRect(-18, -6, 4, 6);
+          c.fillRect(14, -6, 4, 6);
+        } else {
+          c.fillStyle = "#7a5a3a";
+          c.fillRect(-26, -22, 52, 14);
+          c.fillStyle = "#5a3a2a";
+          c.fillRect(-22, -34, 30, 12);
+          c.fillStyle = "#e8e4d8";
+          c.fillRect(-20, -34, 26, 3);
+          c.fillStyle = "#2a2018";
+          c.beginPath();
+          c.arc(-16, -6, 7, 0, 7);
+          c.arc(16, -6, 7, 0, 7);
+          c.fill();
+          c.fillStyle = "#8a6a45";
+          c.beginPath();
+          c.arc(-16, -6, 3, 0, 7);
+          c.arc(16, -6, 3, 0, 7);
+          c.fill();
+        }
+        c.restore();
+        if (nearIt) {
+          c.strokeStyle = "rgba(255,240,160,.9)";
+          c.lineWidth = 1.5;
+          c.setLineDash([4, 3]);
+          c.beginPath();
+          c.ellipse(x, base + 4, 30, 7, 0, 0, 7);
+          c.stroke();
+          c.setLineDash([]);
+        }
+        c.font = "9px " + FONT;
+        c.textAlign = "center";
+        c.lineWidth = 3;
+        c.strokeStyle = "#14101c";
+        c.strokeText(s.name, x, base - 40);
+        c.fillStyle = nearIt ? "#ffe27a" : "#e8e0d0";
+        c.fillText(s.name, x, base - 40);
+      };
+      STATIONS.forEach(prop);
+      c.font = "9px " + FONT;
+      c.textAlign = "center";
+      c.lineWidth = 3;
+      c.strokeStyle = "#14101c";
+      c.strokeText("Practice dummy", 120, 236);
+      c.fillStyle = "#e8e0d0";
+      c.fillText("Practice dummy", 120, 236);
+      c.restore();
+    };
+    ui.drawFront = (c) => {
+      if (!ui.active) return;
+      const p = live.player, W2 = CFG.W, H = CFG.H;
+      c.save();
+      if (run.phase === "camp") {
+        const need = xpNeed(profile.level);
+        win(c, 6, 6, 152, 50);
+        txt(c, profile.name, 14, 21, "#fff", 11);
+        txt(c, "Lv " + profile.level, 150, 21, "#ffe27a", 11, "right");
+        txt(c, "XP", 14, 34, "#bcd", 8);
+        gauge(c, 28, 28, 120, 6, profile.xp, need, "#6fb0ff");
+        txt(c, profile.gold + " G", 14, 49, "#ffe27a", 10);
+        if (profile.points) txt(c, profile.points + " pts", 150, 49, "#9fe39f", 9, "right");
+        const s = near();
+        win(c, 120, H - 40, 400, 32);
+        if (s) {
+          txt(c, "T", 134, H - 20, "#ffe27a", 12);
+          txt(c, s.name + ": " + s.hint, 152, H - 20, "#fff", 10);
+        } else txt(c, "W A S D walk \xB7 Walk up to a sign and press T \xB7 The cart starts a run", W2 / 2, H - 20, "#cfe", 9, "center");
+      } else {
+        const rows = [{ n: profile.name, hp: p.hp, max: p.maxHp, st: p.stamina, smax: p.staminaMax, lv: profile.level }].concat(live.allies.map((a) => ({ n: a.name.split(" ")[0], hp: a.hp, max: a.maxHp, ally: true })));
+        const rh2 = 24, hh2 = 10 + rows.length * rh2;
+        win(c, 6, H - hh2 - 6, 218, hh2);
+        rows.forEach((r, i15) => {
+          const y = H - hh2 - 6 + 8 + i15 * rh2;
+          txt(c, r.n, 14, y + 8, r.hp > 0 ? "#fff" : "#f08a7a", 9);
+          if (r.lv) txt(c, "Lv " + r.lv, 62, y + 8, "#ffe27a", 8);
+          txt(c, "HP", 96, y + 8, "#bcd", 8);
+          txt(c, Math.max(0, Math.ceil(r.hp)) + "/" + r.max, 216, y + 8, hpCol(r.hp / r.max), 9, "right");
+          gauge(c, 14, y + 11, 202, 5, r.hp, r.max, hpCol(r.hp / r.max));
+          if (!r.ally) gauge(c, 14, y + 17, 202, 3, r.st, r.smax, p.stunT > 0 ? "#f06a5a" : "#e8c24a");
+        });
+        win(c, 6, 6, 128, 40);
+        txt(c, "WAVE " + run.wave, 14, 22, "#fff", 12);
+        const left = run.queue.length + run.alive();
+        txt(c, left + " left", 14, 38, "#bcd", 9);
+        win(c, W2 - 150, 6, 144, 50);
+        txt(c, run.gold + " G", W2 - 14, 22, "#ffe27a", 12, "right");
+        const rk = RUNCFG.rank, tier = run.tier, lo2 = rk.at[tier], hi = rk.at[tier + 1] != null ? rk.at[tier + 1] : 100;
+        txt(c, "STYLE", W2 - 142, 40, "#bcd", 8);
+        gauge(c, W2 - 110, 34, 70, 6, run.rank.score - lo2, hi - lo2, "#e8c24a");
+        txt(c, run.rankName, W2 - 14, 46, tier >= 3 ? "#ffe27a" : "#fff", 16, "right");
+        if (run.banner && live.t - run.banner.at < 1.8) {
+          const u = (live.t - run.banner.at) / 1.8;
+          c.globalAlpha = u < 0.15 ? u / 0.15 : u > 0.75 ? (1 - u) / 0.25 : 1;
+          c.font = "26px " + FONT;
+          c.textAlign = "center";
+          c.lineWidth = 5;
+          c.strokeStyle = "#04062a";
+          c.strokeText(run.banner.text, W2 / 2, 110);
+          c.fillStyle = "#fff";
+          c.fillText(run.banner.text, W2 / 2, 110);
+          c.globalAlpha = 1;
+        }
+        let my = 66;
+        for (const m of run.msgs.slice(-3)) {
+          const age = live.t - m.t;
+          if (age < 5) {
+            c.globalAlpha = age > 4 ? 5 - age : 1;
+            txt(c, m.text, W2 - 14, my, "#dfe8ff", 9, "right");
+            my += 12;
+          }
+        }
+        c.globalAlpha = 1;
+      }
+      c.restore();
+    };
+    return ui;
+  }
+
   // game/app.js
   {
     let startRec = function() {
@@ -18528,7 +19570,7 @@ void main(){
     }, drawBinds = function() {
       const el2 = $("binds");
       if (!el2) return;
-      el2.innerHTML = Object.keys(NAMES).map((a) => '<div class="field"><label>' + NAMES[a] + '</label><button class="btn" type="button" data-bind="' + a + '">' + (rebinding === a ? "press a key..." : keyLabel(binds[a])) + "</button></div>").join("");
+      el2.innerHTML = Object.keys(NAMES2).map((a) => '<div class="field"><label>' + NAMES2[a] + '</label><button class="btn" type="button" data-bind="' + a + '">' + (rebinding === a ? "press a key..." : keyLabel(binds[a])) + "</button></div>").join("");
       el2.querySelectorAll("button").forEach((b) => b.onclick = () => {
         rebinding = b.dataset.bind;
         drawBinds();
@@ -18590,7 +19632,7 @@ void main(){
       if (JSON.stringify(nc2) !== JSON.stringify(CFG)) cmd({ t: "cfg", cfg: nc2 });
       timeScale = num("ts", 1);
       $("tsv").textContent = timeScale.toFixed(2) + "x";
-      const sk = { riposte: $("skripo").checked, shove: $("skshove").checked };
+      const sk = { riposte: $("skripo").checked, shove: $("skshove").checked, multi: $("skmulti").checked };
       if (JSON.stringify(sk) !== JSON.stringify(live.player.skills)) cmd({ t: "set", skills: sk });
       if ($("manual").checked !== !!live.manual) cmd({ t: "manual", on: $("manual").checked });
       $("delayv").textContent = Math.round(num("delay", 0)) + " ms";
@@ -18645,6 +19687,7 @@ void main(){
       }
       if (sim.shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * 5), Math.round((Math.random() - 0.5) * 3));
       ctx.drawImage(bg2, 0, 0);
+      if (runui && runui.active) runui.drawBack(ctx);
       const p = sim.player, w = sim.weaponInfo();
       const dbg = $("dbg").checked;
       if (dbg) {
@@ -18662,7 +19705,7 @@ void main(){
         const x02 = p.face > 0 ? p.x : p.x - (w.reach + 8);
         ctx.fillRect(x02, p.y - CFG.laneTol, w.reach + 8, CFG.laneTol * 2);
       }
-      const list = [{ kind: "p", y: p.y }].concat(sim.enemies.map((e) => ({ kind: "e", e, y: e.y - (e.state === "dying" ? 0.5 : 0) })));
+      const list = [{ kind: "p", y: p.y }].concat(sim.enemies.map((e) => ({ kind: "e", e, y: e.y - (e.state === "dying" ? 0.5 : 0) }))).concat(sim.allies.map((a) => ({ kind: "a", a, y: a.y - (a.state === "dying" ? 0.5 : 0) })));
       list.sort((a, b) => a.y - b.y);
       const target = !p.swing ? sim.findTarget(w) : sim.enemies.find((e) => e.id === p.swing.target);
       for (const it of list) {
@@ -18693,6 +19736,12 @@ void main(){
             st: playerState(p),
             style: p.swing && p.swing.kind && p.swing.kind !== "light" ? roleStyle[p.swing.kind] || { heavy: "chop", dash: w.twoHanded ? "lunge" : "cut", counter: "cut", jump: "chop" }[p.swing.kind] : look.style
           }, model3d_default.grabAtt(sim, w.twoHanded)));
+        } else if (it.kind === "a") {
+          const a = it.a, aw = CFG.weapons[a.weapon], two = CFG.weaponClasses[aw.cls].twoHanded, L = a.look || model3d_default.enemyLook(a.tier, a.lookSeed);
+          const swing = a.atk ? { t: a.atk.t, dur: 1, dur0: 1, hitAt: 0.45, extra: 0 } : null;
+          const base = { role: "p", x: a.x, y: a.y, face: a.face, tier: "leather", pHead: L.head, pBody: L.body, pLiv: L.liv || look.liv, pMetal: L.metal, two, wkind: aw.kind || "sword", shield: !two, t: sim.t };
+          if (a.state === "dying") drawFigure(Object.assign(base, { dead: true, deathT: a.deathT, alpha: a.deathT > 1.9 ? Math.max(0, 1 - (a.deathT - 1.9) / 0.7) : 1, flash: 0, swing: null }));
+          else drawFigure(Object.assign(base, { swing, moving: a.moving, walkT: a.walkT, flash: a.flash, flashMax: 0.2, hurt: a.hurt, hurtMax: 0.6, broken: a.broken }));
         } else {
           const e = it.e;
           if (e.state === "dying") {
@@ -18796,6 +19845,14 @@ void main(){
           label("HEAVY: PARRY IT", x, y - 24, "#ff7a6a", 9);
         }
       }
+      for (const a of sim.allies) if (a.state === "alive") {
+        const x = Math.round(a.x), y = Math.round(a.y) - 88;
+        ctx.fillStyle = "#14101c";
+        ctx.fillRect(x - 15, y - 1, 30, 6);
+        ctx.fillStyle = "#6fd07a";
+        ctx.fillRect(x - 14, y, Math.round(28 * a.hp / a.maxHp), 4);
+        label(a.name.split(" ")[0], x, y - 4, "#cfe8cf", 9);
+      }
       ctx.strokeStyle = "#ffe9a8";
       ctx.lineWidth = 2;
       for (const q of sim.proj || []) {
@@ -18890,6 +19947,7 @@ void main(){
         ctx.fillRect(p.x - 19 + Math.round(38 * s.hitAt / s.dur), p.y - 101, 1, 6);
       }
       ctx.restore();
+      if (runui && runui.active) runui.drawFront(ctx);
       if (pb) {
         ctx.fillStyle = "rgba(0,0,0,.55)";
         ctx.fillRect(8, 8, 74, 14);
@@ -19097,6 +20155,7 @@ void main(){
           if (!sameInput(inp, live.input)) cmd(Object.assign({ t: "input" }, inp));
           live.step(STEP);
           acc -= STEP;
+          if (runui && runui.active) runui.update(STEP);
           if (rec && live.stepN % 300 === 0) {
             snaps.push({ step: live.stepN, state: live.saveState(), cfg: clone(live.cfg), moves: Object.assign({}, live.moves), at: rec.cmds.length });
             if (snaps.length > 8) snaps.shift();
@@ -19167,7 +20226,7 @@ void main(){
         if (saved[id] != null) $(id).value = saved[id];
       });
       if (saved.inv != null) $("inv").checked = !!saved.inv;
-      ["manual", "skripo", "skshove"].forEach((id) => {
+      ["manual", "skripo", "skshove", "skmulti"].forEach((id) => {
         if (saved[id] != null) $(id).checked = !!saved[id];
       });
       if (saved.dbg != null) $("dbg").checked = !!saved.dbg;
@@ -19179,16 +20238,60 @@ void main(){
       }
       cmd({ t: "say", text: "Manual combat: mouse aims and attacks, Q blocks, Shift dashes, E fires, G grabs." });
       cmd({ t: "spawn", list: [{ tier: "leather", dur: CFG.tiers.leather.dur, ai: "stand" }] });
+      const clearKeys = () => {
+        for (const k in keys) keys[k] = k === "fin" ? "" : false;
+      };
+      runui = initRunUI({
+        $,
+        live,
+        FONT,
+        readLook,
+        stopRec: () => {
+          rec = null;
+          snaps = [];
+        },
+        clearKeys,
+        focusStage: () => cv.focus(),
+        afterLeave: () => {
+          startRec();
+          cmd({ t: "manual", on: true });
+          cmd({ t: "spawn", list: [{ tier: "leather", dur: CFG.tiers.leather.dur, ai: "stand" }] });
+          applySettings();
+        }
+      });
+      const setMode = (m) => {
+        document.body.classList.toggle("runmode", m === "run");
+        $("mRun").setAttribute("aria-pressed", m === "run");
+        $("mTest").setAttribute("aria-pressed", m !== "run");
+        if (m === "run") runui.enter();
+        else if (runui.active) runui.leave();
+        try {
+          localStorage.setItem("pw.mode", m);
+        } catch (e) {
+        }
+      };
+      $("mRun").onclick = () => setMode("run");
+      $("mTest").onclick = () => setMode("test");
+      let mode = "run";
+      try {
+        mode = localStorage.getItem("pw.mode") || "run";
+      } catch (e) {
+      }
+      setMode(mode);
       requestAnimationFrame(frame);
     };
     const $ = (id) => document.getElementById(id);
     const cv = $("stage");
     let ctx = cv.getContext("2d");
     const live = new Sim(CFG);
+    let runui = null;
     let sim = live;
     window.PW = {
       get sim() {
         return sim;
+      },
+      get runui() {
+        return runui;
       },
       live,
       M3: model3d_default,
@@ -19305,8 +20408,8 @@ void main(){
       return f;
     };
     const keys = {}, aim = { x: null, y: null };
-    const DEF = { up: "KeyW", down: "KeyS", left: "KeyA", right: "KeyD", dash: "ShiftLeft", block: "KeyQ", grab: "KeyG", throw: "KeyF", slam: "KeyV", strike: "KeyR", fire: "KeyE", jump: "Space" };
-    const NAMES = { up: "Move up", down: "Move down", left: "Move left", right: "Move right", dash: "Dash (stamina)", block: "Block (hold) / parry (tap)", grab: "Grab (hold)", throw: "Throw", slam: "Slam", strike: "Strike", fire: "Fire shot", jump: "Jump (click in the air = jump attack)" };
+    const DEF = { up: "KeyW", down: "KeyS", left: "KeyA", right: "KeyD", dash: "ShiftLeft", block: "KeyQ", grab: "KeyG", throw: "KeyF", slam: "KeyV", strike: "KeyR", fire: "KeyE", jump: "Space", use: "KeyT" };
+    const NAMES2 = { up: "Move up", down: "Move down", left: "Move left", right: "Move right", dash: "Dash (stamina)", block: "Block (hold) / parry (tap)", grab: "Grab (hold)", throw: "Throw", slam: "Slam", strike: "Strike", fire: "Fire shot", jump: "Jump (click in the air = jump attack)", use: "Use (walk up to a camp sign)" };
     let binds = Object.assign({}, DEF);
     try {
       Object.assign(binds, JSON.parse(localStorage.getItem("pw.binds") || "{}"));
@@ -19332,7 +20435,8 @@ void main(){
       else if (a === "grab") keys.g = v2;
       else if (a === "fire") keys.fire = v2;
       else if (a === "jump") keys.jump = v2;
-      else if (v2) keys.fin = a;
+      else if (a === "use") {
+      } else if (v2) keys.fin = a;
       else if (keys.fin === a) keys.fin = "";
     };
     window.addEventListener("keydown", (e) => {
@@ -19350,6 +20454,10 @@ void main(){
         return;
       }
       if (typing(e)) return;
+      if (runui && runui.active && runui.key(e.code, actOf(e.code))) {
+        e.preventDefault();
+        return;
+      }
       if (e.code === "KeyP") {
         togglePause();
         return;
@@ -19407,7 +20515,7 @@ void main(){
     const look = { tier: "leather", head: "", body: "", liv: "", metal: "", style: "cut" };
     let roleStyle = {};
     ["ptier", "lkhead", "lkbody", "lkliv", "lkmetal", "atkstyle"].forEach((id) => $(id).addEventListener("change", readLook));
-    ["weapon", "dex", "dmgov", "inv", "thr", "chance", "wdur", "critorder", "flee", "esan", "ts", "manual", "skripo", "skshove", "delay"].forEach((id) => {
+    ["weapon", "dex", "dmgov", "inv", "thr", "chance", "wdur", "critorder", "flee", "esan", "ts", "manual", "skripo", "skshove", "skmulti", "delay"].forEach((id) => {
       $(id).addEventListener("input", applySettings);
       $(id).addEventListener("change", applySettings);
     });
