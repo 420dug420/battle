@@ -56,8 +56,11 @@ export const CFG = {
   dash: { dur: 0.22, speed: 330, iframes: 0.12, atkWin: 0.30, lunge: 150 },
   attack: { heavy: { durMult: 1.5, hitFrac: 0.6, mult: 2.2, pierce: 0.5, after: 0.4 },
             dash:  { durMult: 0.9, hitFrac: 0.4, mult: 1.4 },
-            counter: { durMult: 0.8, hitFrac: 0.3, mult: 1.5 } },
+            counter: { durMult: 0.8, hitFrac: 0.3, mult: 1.5 },
+            jump:  { durMult: 0.85, hitFrac: 0.45, mult: 1.5 } },
   // Aim (design): the mouse sets the side you face; the cursor aims throws and projectiles.
+  // Jump (design): height px, upward speed px/s, gravity px/s^2. Airtime = 2 x vz / grav. While higher than dodgeZ, ground melee swings pass under you. Air attack is a normal swing with its own multiplier. PLACEHOLDERS.
+  jump: { vz: 300, grav: 1000, dodgeZ: 10 },
   aim: { throwRange: 170, throwAir: 0.387 },
   // Crowd separation (design): standing enemies keep a little room instead of stacking on one spot. Soft push, capped per second. PLACEHOLDERS.
   sep: { rx: 16, ry: 8, k: 0.5, max: 120 },
@@ -110,7 +113,7 @@ const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut'];
 // every outside change (input, spawns, settings) goes through here, live and in replays, so a replay repeats the fight exactly
 export function applyCmd(sim, c) {
   switch (c.t) {
-    case 'input': sim.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || '', heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay }; break;
+    case 'input': sim.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || '', heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, jump: !!c.jump, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay }; break;
     case 'manual': sim.manual = !!c.on; break;
     case 'spawn': for (const o of c.list) sim.spawn(Object.assign({}, o, { index: sim.enemies.filter(e => e.state === 'alive').length % 5 })); if (c.say) sim.say('info', c.say); break;
     case 'clear': sim.clearEnemies(); sim.say('info', 'Arena cleared.'); break;
@@ -191,7 +194,7 @@ export class Sim {
       weapon: 'longsword', dex: 5, dmgOverride: null, inv: true,
       swing: null, chain: 0, cooldown: 0, moved: false, flash: 0, hurt: 0, walkT: 0, moving: false,
       armorPct: 0, dur: 0, durMax: 0, broken: false, chainStyles: null, san: 5, chr: 5,
-      stamina: c.stamina.max, staminaMax: c.stamina.max, stamRegenT: 0, blocking: false, blockT: 0, stunT: 0, freeze: 0, dash: null, dashT: 99, kvx: 0, projCd: 0, counter: null, clashT: 0, clashMax: 0,
+      stamina: c.stamina.max, staminaMax: c.stamina.max, stamRegenT: 0, blocking: false, blockT: 0, stunT: 0, freeze: 0, dash: null, dashT: 99, kvx: 0, projCd: 0, counter: null, clashT: 0, clashMax: 0, z: 0, vz: 0, air: false, jumpT: 0,
       skills: { riposte: false, shove: false }, kindMoves: {},   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
     };
     this.mode = this.mode || 'arena'; this.outcome = null; this.spawned = 0; this.allies = []; this.fallen = [];   // mode 'battle': a downed player loses the fight instead of being restored
@@ -199,7 +202,7 @@ export class Sim {
     this.log = []; this.logVer = 0; this.lastHit = null;
     this.moves = this.moves || {};                                // baked weapon paths by move id; a move without one uses the reach rule
     this.input = { x: 0, y: 0, act: false, g: false, fin: '', heavy: false, block: false, dash: false, fire: false, ax: null, ay: null };
-    this.actPrev = false; this.gPrev = false; this.finPrev = ''; this.heavyPrev = false; this.blockPrev = false; this.dashPrev = false; this.firePrev = false; this.lastClash = null;
+    this.actPrev = false; this.gPrev = false; this.finPrev = ''; this.heavyPrev = false; this.blockPrev = false; this.dashPrev = false; this.firePrev = false; this.jumpPrev = false; this.lastClash = null;
   }
   clearEnemies() { this.enemies = []; this.fx = []; this.texts = []; }
   clearAllies() { this.allies = []; }
@@ -277,9 +280,9 @@ export class Sim {
   step(dt) {
     this.stepN++;
     const I = this.input, edge = (now, key) => { const v = !!now, pr = v && !this[key]; this[key] = v; return pr; };   // a press is the moment the key goes down
-    const pressed = edge(I.act, 'actPrev'), gPress = edge(I.g, 'gPrev'), heavyP = edge(I.heavy, 'heavyPrev'), blockP = edge(I.block, 'blockPrev'), dashP = edge(I.dash, 'dashPrev'), fireP = edge(I.fire, 'firePrev');
+    const pressed = edge(I.act, 'actPrev'), gPress = edge(I.g, 'gPrev'), heavyP = edge(I.heavy, 'heavyPrev'), blockP = edge(I.block, 'blockPrev'), dashP = edge(I.dash, 'dashPrev'), fireP = edge(I.fire, 'firePrev'), jumpP = edge(I.jump, 'jumpPrev');
     const fin = I.fin || '', finPress = fin && fin !== this.finPrev ? fin : ''; this.finPrev = fin;
-    this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP };
+    this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP };
     if (this.shake > 0) this.shake -= dt;
     this.t += dt;                                                      // one clock for everyone: nothing in the game slows or stops time
     this.checkClash();
@@ -380,6 +383,11 @@ export class Sim {
     const p = this.player, c = this.cfg, I = this.input, pr = this._press || {}, S = c.stamina, D = c.dash;
     p.dashT = Math.min(99, p.dashT + dt);
     if (!I.block) p.blockLock = false;
+    if (p.air) {                                                      // airborne: gravity, full steering, no dash, block or grab
+      const J = c.jump; p.jumpT += dt; p.vz -= J.grav * dt; p.z += p.vz * dt;
+      if (p.z <= 0) { p.z = 0; p.vz = 0; p.air = false; this.burst(p.x, p.y, 4, '#8a7a6a', 50); }
+    }
+    if (pr.jump && !p.air && !p.dash && !p.swing && !p.blocking && !p.grab) { p.air = true; p.vz = c.jump.vz; p.z = 0.01; p.jumpT = 0; }
     if (p.dash) {                                                     // mid-dash: carried along; a click turns it into the dash attack
       const d = p.dash; d.t += dt;
       p.x = this.clampX(p.x + d.dx * D.speed * dt); p.y = this.clampY(p.y + d.dy * D.speed * dt * 0.7); p.moving = true; p.walkT += dt;
@@ -387,12 +395,12 @@ export class Sim {
       if (d.t >= D.dur) p.dash = null;
       return;
     }
-    if (pr.dash && !p.swing && p.stamina >= S.dashCost) {
+    if (pr.dash && !p.swing && !p.air && p.stamina >= S.dashCost) {
       p.stamina -= S.dashCost; p.stamRegenT = S.regenDelay; p.blocking = false;
       const dx = mag > 0.1 ? ix / mag : p.face, dy = mag > 0.1 ? iy / mag : 0;
       p.dash = { t: 0, dx, dy }; p.dashT = 0; p.moving = true; return;
     }
-    const wantBlock = !!I.block && !p.swing && !p.blockLock && p.stamina > 0;
+    const wantBlock = !!I.block && !p.swing && !p.blockLock && !p.air && p.stamina > 0;
     if (wantBlock && !p.blocking) { p.blocking = true; p.blockT = 0; p.stamina = Math.max(0, p.stamina - S.blockPress); }
     else if (!wantBlock) p.blocking = false;
     if (p.blocking) { p.blockT += dt; p.stamRegenT = S.regenDelay; }
@@ -405,7 +413,7 @@ export class Sim {
       else if (ix !== 0) p.face = Math.sign(ix);
     }
     if (p.cooldown > 0) p.cooldown -= dt;
-    if (I.g && this.tryGrab(!!pr.g)) return;
+    if (I.g && !p.air && this.tryGrab(!!pr.g)) return;
     if (p.swing) {
       const s = p.swing, t0 = s.t; s.t += dt;
       const m = s.move && this.moves[s.move];
@@ -415,7 +423,8 @@ export class Sim {
     }
     if (!p.swing && p.counter) { const tg = p.counter.eId; p.counter = null; this.startSwing('counter', w, tg); return; }
     if (!p.swing && !p.blocking && p.cooldown <= 0 && !I.g) {
-      if (pr.heavy) this.startSwing('heavy', w);
+      if (p.air) { if (pr.act || pr.heavy) this.startSwing('jump', w); }
+      else if (pr.heavy) this.startSwing('heavy', w);
       else if (pr.act && p.dashT <= D.atkWin) this.startSwing('dash', w);
       else if (I.act) this.startSwing('light', w);
     }
@@ -575,6 +584,7 @@ export class Sim {
   // a hit on you while blocking: a dodge in the first dash frames, a parry if the block was just pressed, a block for light hits
   defend(e, heavy) {
     const p = this.player, c = this.cfg, S = c.stamina;
+    if (p.air && p.z > c.jump.dodgeZ) { this.text(p.x, p.y - 96 - p.z, 'AIR', '#9fd0ff', 10); return true; }
     if (p.dash && p.dash.t < c.dash.iframes) { this.text(p.x, p.y - 96, 'DODGE', '#9fd0ff', 10); return true; }
     if (!p.blocking || Math.sign(e.x - p.x) !== p.face) return false;
     if (p.blockT <= S.parryWin) {                                     // perfect block
@@ -802,7 +812,7 @@ export class Sim {
   }
   enemyHitsPlayer(e) {
     const p = this.player, c = this.cfg, heavy = !!(e.atk && e.atk.heavy);
-    if ((p.blocking || p.dash) && this.defend(e, heavy)) return;
+    if ((p.blocking || p.dash || p.air) && this.defend(e, heavy)) return;
     p.flash = 0.2; p.hurt = 0.6; p.blocking = false; p.blockLock = !!this.input.block;
     if (!p.inv) {
       const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));

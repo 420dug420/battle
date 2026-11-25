@@ -363,4 +363,29 @@ console.log('PASS shrug off after surviving crit');
   console.log('PASS crowd separation: spread, bounded, replay');
 }
 
+
+// jump and jump attack
+{
+  const mk = () => { const s = new Sim(CFG, 5); applyCmd(s, { t: 'manual', on: true }); s.player.cooldown = 0; return s; };
+  const inp = (s, o, secs) => { applyCmd(s, { t: 'input', x: 0, y: 0, ...o }); run(s, secs); };
+  let s = mk(); inp(s, { jump: true }, 0.05); inp(s, {}, 0.2);
+  assert(s.player.air && s.player.z > 10, 'jump leaves the ground'); inp(s, {}, 0.6);
+  assert(!s.player.air && s.player.z === 0, 'and lands again (airtime about 0.6 s)');
+  // no dash, block or double jump in the air
+  s = mk(); inp(s, { jump: true }, 0.05); inp(s, {}, 0.05); const st0 = s.player.stamina; inp(s, { dash: true }, 0.05); inp(s, { block: true }, 0.05);
+  assert(!s.player.dash && !s.player.blocking && s.player.stamina >= st0, 'no dash or block while airborne'); inp(s, {}, 0.05); inp(s, { jump: true }, 0.05); assert(s.player.vz < CFG.jump.vz, 'no double jump');
+  // air attack: its own swing kind with the 1.5 multiplier
+  s = mk(); applyCmd(s, { t: 'set', inv: true }); const e = s.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); e.hp = e.maxHp = 40; e.x = s.player.x + 30; e.y = s.player.y;
+  inp(s, { jump: true }, 0.05); inp(s, {}, 0.1); inp(s, { act: true }, 0.05); assert(s.player.swing && s.player.swing.kind === 'jump', 'a click in the air starts a jump attack'); inp(s, {}, 0.6);
+  assert(e.hp < 40, 'the jump attack hits a ground enemy in front');
+  // high in the air an enemy swing passes under you; on the ground it lands
+  s = mk(); applyCmd(s, { t: 'set', inv: false, hp: 30, maxHp: 30 }); const f = s.spawn({ tier: 'leather', dur: 99, ai: 'stand' }); f.x = s.player.x + 20; f.y = s.player.y;
+  inp(s, { jump: true }, 0.05); inp(s, {}, 0.1); s.enemyHitsPlayer(f); assert.strictEqual(s.player.hp, 30, 'a swing passes under a jumping player');
+  inp(s, {}, 0.8); s.enemyHitsPlayer(f); assert(s.player.hp < 30, 'but hits once you have landed');
+  // replay
+  const a = mk(), b = mk(); for (const q of [a, b]) { inp(q, { jump: true }, 0.05); inp(q, { x: 1 }, 0.2); inp(q, { act: true, x: 1 }, 0.05); inp(q, {}, 0.8); }
+  assert.deepStrictEqual(a.saveState(), b.saveState(), 'jumping replays identically');
+  console.log('PASS jump: arc, air limits, jump attack, air dodge, replay');
+}
+
 console.log('\nALL SIM TESTS PASSED');

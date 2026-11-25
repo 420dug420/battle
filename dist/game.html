@@ -15795,9 +15795,12 @@ void main(){
     attack: {
       heavy: { durMult: 1.5, hitFrac: 0.6, mult: 2.2, pierce: 0.5, after: 0.4 },
       dash: { durMult: 0.9, hitFrac: 0.4, mult: 1.4 },
-      counter: { durMult: 0.8, hitFrac: 0.3, mult: 1.5 }
+      counter: { durMult: 0.8, hitFrac: 0.3, mult: 1.5 },
+      jump: { durMult: 0.85, hitFrac: 0.45, mult: 1.5 }
     },
     // Aim (design): the mouse sets the side you face; the cursor aims throws and projectiles.
+    // Jump (design): height px, upward speed px/s, gravity px/s^2. Airtime = 2 x vz / grav. While higher than dodgeZ, ground melee swings pass under you. Air attack is a normal swing with its own multiplier. PLACEHOLDERS.
+    jump: { vz: 300, grav: 1e3, dodgeZ: 10 },
     aim: { throwRange: 170, throwAir: 0.387 },
     // Crowd separation (design): standing enemies keep a little room instead of stacking on one spot. Soft push, capped per second. PLACEHOLDERS.
     sep: { rx: 16, ry: 8, k: 0.5, max: 120 },
@@ -15865,7 +15868,7 @@ void main(){
   function applyCmd(sim, c) {
     switch (c.t) {
       case "input":
-        sim.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || "", heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay };
+        sim.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || "", heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, jump: !!c.jump, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay };
         break;
       case "manual":
         sim.manual = !!c.on;
@@ -16036,6 +16039,10 @@ void main(){
         counter: null,
         clashT: 0,
         clashMax: 0,
+        z: 0,
+        vz: 0,
+        air: false,
+        jumpT: 0,
         skills: { riposte: false, shove: false },
         kindMoves: {}
         // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
@@ -16061,6 +16068,7 @@ void main(){
       this.blockPrev = false;
       this.dashPrev = false;
       this.firePrev = false;
+      this.jumpPrev = false;
       this.lastClash = null;
     }
     clearEnemies() {
@@ -16223,10 +16231,10 @@ void main(){
         this[key] = v2;
         return pr2;
       };
-      const pressed = edge(I.act, "actPrev"), gPress = edge(I.g, "gPrev"), heavyP = edge(I.heavy, "heavyPrev"), blockP = edge(I.block, "blockPrev"), dashP = edge(I.dash, "dashPrev"), fireP = edge(I.fire, "firePrev");
+      const pressed = edge(I.act, "actPrev"), gPress = edge(I.g, "gPrev"), heavyP = edge(I.heavy, "heavyPrev"), blockP = edge(I.block, "blockPrev"), dashP = edge(I.dash, "dashPrev"), fireP = edge(I.fire, "firePrev"), jumpP = edge(I.jump, "jumpPrev");
       const fin = I.fin || "", finPress = fin && fin !== this.finPrev ? fin : "";
       this.finPrev = fin;
-      this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP };
+      this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP };
       if (this.shake > 0) this.shake -= dt;
       this.t += dt;
       this.checkClash();
@@ -16377,6 +16385,24 @@ void main(){
       const p = this.player, c = this.cfg, I = this.input, pr2 = this._press || {}, S = c.stamina, D = c.dash;
       p.dashT = Math.min(99, p.dashT + dt);
       if (!I.block) p.blockLock = false;
+      if (p.air) {
+        const J = c.jump;
+        p.jumpT += dt;
+        p.vz -= J.grav * dt;
+        p.z += p.vz * dt;
+        if (p.z <= 0) {
+          p.z = 0;
+          p.vz = 0;
+          p.air = false;
+          this.burst(p.x, p.y, 4, "#8a7a6a", 50);
+        }
+      }
+      if (pr2.jump && !p.air && !p.dash && !p.swing && !p.blocking && !p.grab) {
+        p.air = true;
+        p.vz = c.jump.vz;
+        p.z = 0.01;
+        p.jumpT = 0;
+      }
       if (p.dash) {
         const d = p.dash;
         d.t += dt;
@@ -16392,7 +16418,7 @@ void main(){
         if (d.t >= D.dur) p.dash = null;
         return;
       }
-      if (pr2.dash && !p.swing && p.stamina >= S.dashCost) {
+      if (pr2.dash && !p.swing && !p.air && p.stamina >= S.dashCost) {
         p.stamina -= S.dashCost;
         p.stamRegenT = S.regenDelay;
         p.blocking = false;
@@ -16402,7 +16428,7 @@ void main(){
         p.moving = true;
         return;
       }
-      const wantBlock = !!I.block && !p.swing && !p.blockLock && p.stamina > 0;
+      const wantBlock = !!I.block && !p.swing && !p.blockLock && !p.air && p.stamina > 0;
       if (wantBlock && !p.blocking) {
         p.blocking = true;
         p.blockT = 0;
@@ -16429,7 +16455,7 @@ void main(){
         } else if (ix2 !== 0) p.face = Math.sign(ix2);
       }
       if (p.cooldown > 0) p.cooldown -= dt;
-      if (I.g && this.tryGrab(!!pr2.g)) return;
+      if (I.g && !p.air && this.tryGrab(!!pr2.g)) return;
       if (p.swing) {
         const s = p.swing, t02 = s.t;
         s.t += dt;
@@ -16453,7 +16479,9 @@ void main(){
         return;
       }
       if (!p.swing && !p.blocking && p.cooldown <= 0 && !I.g) {
-        if (pr2.heavy) this.startSwing("heavy", w);
+        if (p.air) {
+          if (pr2.act || pr2.heavy) this.startSwing("jump", w);
+        } else if (pr2.heavy) this.startSwing("heavy", w);
         else if (pr2.act && p.dashT <= D.atkWin) this.startSwing("dash", w);
         else if (I.act) this.startSwing("light", w);
       }
@@ -16734,6 +16762,10 @@ void main(){
     // a hit on you while blocking: a dodge in the first dash frames, a parry if the block was just pressed, a block for light hits
     defend(e, heavy) {
       const p = this.player, c = this.cfg, S = c.stamina;
+      if (p.air && p.z > c.jump.dodgeZ) {
+        this.text(p.x, p.y - 96 - p.z, "AIR", "#9fd0ff", 10);
+        return true;
+      }
       if (p.dash && p.dash.t < c.dash.iframes) {
         this.text(p.x, p.y - 96, "DODGE", "#9fd0ff", 10);
         return true;
@@ -17106,7 +17138,7 @@ void main(){
     }
     enemyHitsPlayer(e) {
       const p = this.player, c = this.cfg, heavy = !!(e.atk && e.atk.heavy);
-      if ((p.blocking || p.dash) && this.defend(e, heavy)) return;
+      if ((p.blocking || p.dash || p.air) && this.defend(e, heavy)) return;
       p.flash = 0.2;
       p.hurt = 0.6;
       p.blocking = false;

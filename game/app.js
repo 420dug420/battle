@@ -95,8 +95,8 @@ import { applySnapshot } from '../server/protocol.js';
   /* ---------- keyboard and mouse ---------- */
   // Mouse side = facing, left click = light attack, right click = heavy attack, cursor = aim for throws and shots. Keys are rebindable.
   const keys = {}, aim = { x: null, y: null };
-  const DEF = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', dash: 'ShiftLeft', block: 'KeyQ', grab: 'KeyG', throw: 'KeyF', slam: 'KeyV', strike: 'KeyR', fire: 'KeyE' };
-  const NAMES = { up: 'Move up', down: 'Move down', left: 'Move left', right: 'Move right', dash: 'Dash (stamina)', block: 'Block (hold) / parry (tap)', grab: 'Grab (hold)', throw: 'Throw', slam: 'Slam', strike: 'Strike', fire: 'Fire shot' };
+  const DEF = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', dash: 'ShiftLeft', block: 'KeyQ', grab: 'KeyG', throw: 'KeyF', slam: 'KeyV', strike: 'KeyR', fire: 'KeyE', jump: 'Space' };
+  const NAMES = { up: 'Move up', down: 'Move down', left: 'Move left', right: 'Move right', dash: 'Dash (stamina)', block: 'Block (hold) / parry (tap)', grab: 'Grab (hold)', throw: 'Throw', slam: 'Slam', strike: 'Strike', fire: 'Fire shot', jump: 'Jump (click in the air = jump attack)' };
   let binds = Object.assign({}, DEF); try { Object.assign(binds, JSON.parse(localStorage.getItem('pw.binds') || '{}')); } catch (e) { }
   const ARROW = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   const norm = c => c.startsWith('Shift') ? 'ShiftLeft' : c;
@@ -111,7 +111,7 @@ import { applySnapshot } from '../server/protocol.js';
   }
   const setKey = (a, v) => {
     if (a === 'up') keys.u = v; else if (a === 'down') keys.d = v; else if (a === 'left') keys.l = v; else if (a === 'right') keys.r = v;
-    else if (a === 'dash') keys.dash = v; else if (a === 'block') keys.block = v; else if (a === 'grab') keys.g = v; else if (a === 'fire') keys.fire = v;
+    else if (a === 'dash') keys.dash = v; else if (a === 'block') keys.block = v; else if (a === 'grab') keys.g = v; else if (a === 'fire') keys.fire = v; else if (a === 'jump') keys.jump = v;
     else if (v) keys.fin = a;                                          // throw / slam / strike: the last one pressed
     else if (keys.fin === a) keys.fin = '';
   };
@@ -119,12 +119,11 @@ import { applySnapshot } from '../server/protocol.js';
     if (rebinding) { e.preventDefault(); if (e.code !== 'Escape') { binds[rebinding] = norm(e.code); try { localStorage.setItem('pw.binds', JSON.stringify(binds)); } catch (x) { } } rebinding = null; drawBinds(); return; }
     if (typing(e)) return;
     if (e.code === 'KeyP') { togglePause(); return; }
-    if (e.code === 'Space') { keys.act = true; e.preventDefault(); return; }    // Space: light attack too (and strike while holding)
     const a = actOf(e.code); if (!a) return;
     if (e.target && e.target.type === 'range' && e.code.startsWith('Arrow')) return;
     setKey(a, true); e.preventDefault();
   });
-  window.addEventListener('keyup', e => { if (e.code === 'Space') keys.act = false; const a = actOf(e.code); if (a) setKey(a, false); });
+  window.addEventListener('keyup', e => { const a = actOf(e.code); if (a) setKey(a, false); });
   const toSim = ev => { const r = cv.getBoundingClientRect(); aim.x = Math.round((ev.clientX - r.left) / r.width * CFG.W); aim.y = Math.round((ev.clientY - r.top) / r.height * CFG.H); };
   cv.addEventListener('pointermove', toSim);
   cv.addEventListener('pointerdown', ev => { toSim(ev); cv.focus(); if (ev.button === 2) keys.heavy = true; else if (ev.button === 0) keys.act = true; ev.preventDefault(); });
@@ -138,8 +137,8 @@ import { applySnapshot } from '../server/protocol.js';
   }
   drawBinds();
   const resetBinds = $('bindreset'); if (resetBinds) resetBinds.onclick = () => { binds = Object.assign({}, DEF); try { localStorage.removeItem('pw.binds'); } catch (e) { } rebinding = null; drawBinds(); };
-  const curInput = () => ({ x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!keys.g, fin: keys.fin || '', heavy: !!keys.heavy, block: !!keys.block, dash: !!keys.dash, fire: !!keys.fire, ax: aim.x, ay: aim.y });
-  const sameInput = (a, b) => ['x', 'y', 'act', 'g', 'fin', 'heavy', 'block', 'dash', 'fire', 'ax', 'ay'].every(k => (a[k] == null ? null : a[k]) === (b[k] == null ? null : b[k]));
+  const curInput = () => ({ x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!keys.g, fin: keys.fin || '', heavy: !!keys.heavy, block: !!keys.block, dash: !!keys.dash, fire: !!keys.fire, jump: !!keys.jump, ax: aim.x, ay: aim.y });
+  const sameInput = (a, b) => ['x', 'y', 'act', 'g', 'fin', 'heavy', 'block', 'dash', 'fire', 'jump', 'ax', 'ay'].every(k => (a[k] == null ? null : a[k]) === (b[k] == null ? null : b[k]));
   let delayQ = [];                                                    // input delay (ms) to feel the parry and clash timing at online lag
 
   /* ---------- menu wiring ---------- */
@@ -173,7 +172,7 @@ import { applySnapshot } from '../server/protocol.js';
     if (!live.moves[id]) { const m = M3.bakeMove(key, { two: w.twoHanded, wkind: w.kind || 'sword' }); if (m) cmd({ t: 'move', id, data: m }); }
     const mv = live.moves[id] ? id : null; if (live.player.move !== mv) cmd({ t: 'set', move: mv });
     const bakeStyle = st => { const k = M3.moveKey(st, w.twoHanded), id2 = k + '|' + (w.kind || 'sword'); if (!live.moves[id2]) { const m = M3.bakeMove(k, { two: w.twoHanded, wkind: w.kind || 'sword' }); if (m) cmd({ t: 'move', id: id2, data: m }); } return live.moves[id2] ? id2 : null; };
-    const km = { heavy: bakeStyle(roleStyle.heavy || 'chop'), dash: bakeStyle(roleStyle.dash || (w.twoHanded ? 'lunge' : 'cut')), counter: bakeStyle(roleStyle.counter || 'cut') };   // heavy, dash and counter swings use their own blade paths
+    const km = { heavy: bakeStyle(roleStyle.heavy || 'chop'), dash: bakeStyle(roleStyle.dash || (w.twoHanded ? 'lunge' : 'cut')), counter: bakeStyle(roleStyle.counter || 'cut'), jump: bakeStyle(roleStyle.jump || 'chop') };   // heavy, dash and counter swings use their own blade paths
     if (JSON.stringify(km) !== JSON.stringify(live.player.kindMoves)) cmd({ t: 'set', kindMoves: km });
     netSync();
   }
@@ -242,6 +241,7 @@ import { applySnapshot } from '../server/protocol.js';
   /* ---------- render ---------- */
   function playerState(p) {                                          // which combat pose to draw when nothing else (swing, grab) is playing
     if (p.grab || p.swing) return null;
+    if (p.air) return { kind: 'jump', u: Math.min(1, p.jumpT / (2 * CFG.jump.vz / CFG.jump.grav)) };
     if (p.stunT > 0) return { kind: 'stun' };
     if (p.clashT > 0) return { kind: 'clash', u: 1 - p.clashT / (p.clashMax || 0.34) };
     if (p.parryT > 0) return { kind: 'parry', u: 1 - p.parryT / 0.3 };
@@ -274,9 +274,9 @@ import { applySnapshot } from '../server/protocol.js';
 
     for (const it of list) {
       if (it.kind === 'p') {
-        drawFigure(Object.assign({ role: 'p', x: p.x, y: p.y, face: p.face, tier: look.tier, pHead: look.head, pBody: look.body, pLiv: look.liv, pMetal: look.metal, broken: false, two: w.twoHanded, wkind: w.kind || 'sword', shield: false,
+        drawFigure(Object.assign({ role: 'p', x: p.x, y: p.y, z: p.z || 0, face: p.face, tier: look.tier, pHead: look.head, pBody: look.body, pLiv: look.liv, pMetal: look.metal, broken: false, two: w.twoHanded, wkind: w.kind || 'sword', shield: false,
           swing: p.swing, moving: p.moving, walkT: p.walkT, t: sim.t, flash: p.flash, flashMax: 0.2, hurt: p.hurt, hurtMax: 0.6, st: playerState(p),
-          style: p.swing && p.swing.kind && p.swing.kind !== 'light' ? (roleStyle[p.swing.kind] || ({ heavy: 'chop', dash: w.twoHanded ? 'lunge' : 'cut', counter: 'cut' })[p.swing.kind]) : look.style }, M3.grabAtt(sim, w.twoHanded)));
+          style: p.swing && p.swing.kind && p.swing.kind !== 'light' ? (roleStyle[p.swing.kind] || ({ heavy: 'chop', dash: w.twoHanded ? 'lunge' : 'cut', counter: 'cut', jump: 'chop' })[p.swing.kind]) : look.style }, M3.grabAtt(sim, w.twoHanded)));
       } else {
         const e = it.e;
         if (e.state === 'dying') {
@@ -503,7 +503,7 @@ import { applySnapshot } from '../server/protocol.js';
     const real = Math.min(0.05, (now - last) / 1000); last = now;
     fpsN++; if (now - fpsT >= 1000) { fpsTxt = Math.round(fpsN * 1000 / (now - fpsT)) + ' fps · ' + (1 + sim.enemies.length) + ' fighters drawn'; fpsN = 0; fpsT = now; }   // measure the live 3D cost on your own machine
     if (net) {                                                   // online: send input when it changes; the room steps the fight
-      const inp = curInput(), k = inp.x + ',' + inp.y + ',' + inp.act + ',' + inp.g + ',' + inp.fin;
+      const inp = curInput(), k = inp.x + ',' + inp.y + ',' + inp.act + ',' + inp.g + ',' + inp.fin + ',' + inp.heavy + ',' + inp.block + ',' + inp.dash + ',' + inp.fire + ',' + inp.jump;
       if (k !== net.lastIn) { net.lastIn = k; send(Object.assign({ t: 'input' }, inp)); }
       for (const t of sim.texts) t.life -= real; sim.texts = sim.texts.filter(t => t.life > 0);
     } else if (pb) {                                             // a replay or kill cam is playing
