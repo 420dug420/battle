@@ -59,6 +59,8 @@ export const CFG = {
             counter: { durMult: 0.8, hitFrac: 0.3, mult: 1.5 } },
   // Aim (design): the mouse sets the side you face; the cursor aims throws and projectiles.
   aim: { throwRange: 170, throwAir: 0.387 },
+  // Crowd separation (design): standing enemies keep a little room instead of stacking on one spot. Soft push, capped per second. PLACEHOLDERS.
+  sep: { rx: 16, ry: 8, k: 0.5, max: 120 },
   proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
   // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
   kinds: { fodder: { hp: 5, tier: 'leather', clash: false }, soldier: { clash: true }, tank: { hp: 14, tier: 'plate', clash: true },
@@ -103,7 +105,7 @@ export function makeRng(seed) {
 }
 
 /* ---------- replays: rules version, saved state, and the one way anything outside changes a fight ---------- */
-export const SIM_VERSION = 5;                                       // bump when a rule changes, so old replays are flagged
+export const SIM_VERSION = 6;                                       // bump when a rule changes, so old replays are flagged
 const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut'];
 // every outside change (input, spawns, settings) goes through here, live and in replays, so a replay repeats the fight exactly
 export function applyCmd(sim, c) {
@@ -285,6 +287,7 @@ export class Sim {
     if (p.freeze > 0) { p.freeze -= dt; p.moving = false; if (p.clashT > 0) p.clashT -= dt; }   // only a clashing fighter holds, for a few frames
     else this.updatePlayer(dt);
     for (const e of this.enemies) { if (e.freeze > 0) { e.freeze -= dt; e.moving = false; if (e.clashT > 0) e.clashT -= dt; continue; } this.updateEnemy(e, dt); }
+    this.separate(dt);
     for (const a of this.allies) this.updateAlly(a, dt);
     this.updateProj(dt);
     this.enemies = this.enemies.filter(e => !(e.state === 'dying' && e.deathT > 2.6) && e.state !== 'routed');
@@ -751,6 +754,39 @@ export class Sim {
     if (e.moving) e.walkT += dt;
   }
 
+  /* Crowd separation: a soft push between standing enemies that overlap (an ellipse, wide and shallow like the belt).
+     Swinging, staggered, frozen or knocked-back enemies hold their ground and the others make room. Grid-bucketed, so a big crowd stays cheap. */
+  separate(dt) {
+    const S = this.cfg.sep; if (!S) return;
+    const list = []; for (const e of this.enemies) if (e.state === 'alive' && !e.held && !e.fly && !e.flee) list.push(e);
+    const n = list.length; if (n < 2) return;
+    const grid = new Map(), cell = (x, y) => Math.floor(x / S.rx) * 4096 + Math.floor(y / S.ry);
+    const fixed = new Uint8Array(n), ox = new Float64Array(n), oy = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const e = list[i]; fixed[i] = (e.atk || e.stun > 0 || e.wounded > 0 || e.freeze > 0 || e.kvx) ? 1 : 0;
+      const k = cell(e.x, e.y); let g = grid.get(k); if (!g) { g = []; grid.set(k, g); } g.push(i);
+    }
+    for (let i = 0; i < n; i++) {
+      const a = list[i], cx = Math.floor(a.x / S.rx), cy = Math.floor(a.y / S.ry);
+      for (let gx = -1; gx <= 1; gx++) for (let gy = -1; gy <= 1; gy++) {
+        const g = grid.get((cx + gx) * 4096 + cy + gy); if (!g) continue;
+        for (const j of g) {
+          if (j <= i || (fixed[i] && fixed[j])) continue;
+          const b = list[j]; let dx = b.x - a.x, dy = b.y - a.y; const nx = dx / S.rx, ny = dy / S.ry, d = Math.sqrt(nx * nx + ny * ny);
+          if (d >= 1) continue;
+          let ux, uy;
+          if (d < 1e-6) { ux = (a.id & 1) ? 1 : -1; uy = (a.id & 2) ? 0.5 : -0.5; } else { ux = nx / d; uy = ny / d; }
+          const m = (1 - d) * S.k, wa = fixed[i] ? 0 : fixed[j] ? 1 : 0.5, wb = 1 - wa;
+          ox[i] -= ux * m * S.rx * wa; oy[i] -= uy * m * S.ry * wa; ox[j] += ux * m * S.rx * wb; oy[j] += uy * m * S.ry * wb;
+        }
+      }
+    }
+    const cap = S.max * dt;
+    for (let i = 0; i < n; i++) {
+      if (!ox[i] && !oy[i]) continue; const e = list[i];
+      e.x = this.clampX(e.x + Math.max(-cap, Math.min(cap, ox[i]))); e.y = this.clampY(e.y + Math.max(-cap, Math.min(cap, oy[i])));
+    }
+  }
   pickTarget(e) {
     let best = this.player.hp > 0 ? this.player : null, bd = best ? (best.x - e.x) ** 2 + 4 * (best.y - e.y) ** 2 : 1e12;
     for (const a of this.allies) { if (a.state !== 'alive') continue; const d = (a.x - e.x) ** 2 + 4 * (a.y - e.y) ** 2; if (d < bd) { best = a; bd = d; } }

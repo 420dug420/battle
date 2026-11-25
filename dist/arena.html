@@ -15886,6 +15886,8 @@ void main(){
     },
     // Aim (design): the mouse sets the side you face; the cursor aims throws and projectiles.
     aim: { throwRange: 170, throwAir: 0.387 },
+    // Crowd separation (design): standing enemies keep a little room instead of stacking on one spot. Soft push, capped per second. PLACEHOLDERS.
+    sep: { rx: 16, ry: 8, k: 0.5, max: 120 },
     proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
     // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
     kinds: {
@@ -15954,7 +15956,7 @@ void main(){
     };
     return f;
   }
-  var SIM_VERSION = 5;
+  var SIM_VERSION = 6;
   var NOT_STATE = ["cfg", "rng", "fxRng", "moves", "fx", "texts", "textOut"];
   function applyCmd(sim, c) {
     switch (c.t) {
@@ -16339,6 +16341,7 @@ void main(){
         }
         this.updateEnemy(e, dt);
       }
+      this.separate(dt);
       for (const a of this.allies) this.updateAlly(a, dt);
       this.updateProj(dt);
       this.enemies = this.enemies.filter((e) => !(e.state === "dying" && e.deathT > 2.6) && e.state !== "routed");
@@ -17109,6 +17112,63 @@ void main(){
         e.atk = heavy ? { t: 0, hit: false, heavy: true, dur: c.enemy.atkDur * H.durMult, hitAt: c.enemy.atkHitAt * H.hitMult } : { t: 0, hit: false, dur: c.enemy.atkDur, hitAt: c.enemy.atkHitAt };
       }
       if (e.moving) e.walkT += dt;
+    }
+    /* Crowd separation: a soft push between standing enemies that overlap (an ellipse, wide and shallow like the belt).
+       Swinging, staggered, frozen or knocked-back enemies hold their ground and the others make room. Grid-bucketed, so a big crowd stays cheap. */
+    separate(dt) {
+      const S = this.cfg.sep;
+      if (!S) return;
+      const list = [];
+      for (const e of this.enemies) if (e.state === "alive" && !e.held && !e.fly && !e.flee) list.push(e);
+      const n = list.length;
+      if (n < 2) return;
+      const grid = /* @__PURE__ */ new Map(), cell = (x, y) => Math.floor(x / S.rx) * 4096 + Math.floor(y / S.ry);
+      const fixed = new Uint8Array(n), ox2 = new Float64Array(n), oy = new Float64Array(n);
+      for (let i15 = 0; i15 < n; i15++) {
+        const e = list[i15];
+        fixed[i15] = e.atk || e.stun > 0 || e.wounded > 0 || e.freeze > 0 || e.kvx ? 1 : 0;
+        const k = cell(e.x, e.y);
+        let g = grid.get(k);
+        if (!g) {
+          g = [];
+          grid.set(k, g);
+        }
+        g.push(i15);
+      }
+      for (let i15 = 0; i15 < n; i15++) {
+        const a = list[i15], cx2 = Math.floor(a.x / S.rx), cy = Math.floor(a.y / S.ry);
+        for (let gx = -1; gx <= 1; gx++) for (let gy = -1; gy <= 1; gy++) {
+          const g = grid.get((cx2 + gx) * 4096 + cy + gy);
+          if (!g) continue;
+          for (const j of g) {
+            if (j <= i15 || fixed[i15] && fixed[j]) continue;
+            const b = list[j];
+            let dx2 = b.x - a.x, dy = b.y - a.y;
+            const nx2 = dx2 / S.rx, ny = dy / S.ry, d = Math.sqrt(nx2 * nx2 + ny * ny);
+            if (d >= 1) continue;
+            let ux2, uy;
+            if (d < 1e-6) {
+              ux2 = a.id & 1 ? 1 : -1;
+              uy = a.id & 2 ? 0.5 : -0.5;
+            } else {
+              ux2 = nx2 / d;
+              uy = ny / d;
+            }
+            const m = (1 - d) * S.k, wa2 = fixed[i15] ? 0 : fixed[j] ? 1 : 0.5, wb = 1 - wa2;
+            ox2[i15] -= ux2 * m * S.rx * wa2;
+            oy[i15] -= uy * m * S.ry * wa2;
+            ox2[j] += ux2 * m * S.rx * wb;
+            oy[j] += uy * m * S.ry * wb;
+          }
+        }
+      }
+      const cap = S.max * dt;
+      for (let i15 = 0; i15 < n; i15++) {
+        if (!ox2[i15] && !oy[i15]) continue;
+        const e = list[i15];
+        e.x = this.clampX(e.x + Math.max(-cap, Math.min(cap, ox2[i15])));
+        e.y = this.clampY(e.y + Math.max(-cap, Math.min(cap, oy[i15])));
+      }
     }
     pickTarget(e) {
       let best = this.player.hp > 0 ? this.player : null, bd2 = best ? (best.x - e.x) ** 2 + 4 * (best.y - e.y) ** 2 : 1e12;

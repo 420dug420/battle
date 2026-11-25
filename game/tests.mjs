@@ -351,4 +351,16 @@ console.log('PASS shrug off after surviving crit');
   console.log('PASS grab: gate, hold, slam, throw, strike, break, kill, replay');
 }
 
+
+// crowd separation: enemies stacked on one spot spread out, stay in the band, settle, and replay identically
+{
+  const mk = () => { const s = new Sim(CFG, 3); applyCmd(s, { t: 'set', inv: true }); const L = []; for (let i = 0; i < 12; i++) { const e = s.spawn({ tier: 'leather', dur: 99, ai: 'advance' }); e.x = s.player.x + 120; e.y = s.player.y; L.push(e); } return [s, L]; };
+  const [s, L] = mk(); for (let i = 0; i < 240; i++) s.step(1 / 60);
+  let minD = 1e9; for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) minD = Math.min(minD, Math.hypot((L[i].x - L[j].x) / CFG.sep.rx, (L[i].y - L[j].y) / CFG.sep.ry));
+  assert(minD > 0.4, 'a stacked crowd spreads out (closest pair ' + minD.toFixed(2) + ')');
+  assert(L.every(e => e.y >= CFG.band.top && e.y <= CFG.band.bottom && e.x >= CFG.arena.left && e.x <= CFG.arena.right), 'everyone stays inside the field');
+  const [s2, L2] = mk(); for (let i = 0; i < 240; i++) s2.step(1 / 60); assert.deepStrictEqual(s.saveState(), s2.saveState(), 'separation replays identically');
+  console.log('PASS crowd separation: spread, bounded, replay');
+}
+
 console.log('\nALL SIM TESTS PASSED');
