@@ -85,6 +85,7 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
 .stagecol { position: relative; }
 /* camp and run windows: the old Final Fantasy look, blue gradient and a white frame */
 #runui { position: absolute; left: 0; top: 0; right: 0; aspect-ratio: 16 / 9; pointer-events: none; }
+#runui .rback.r-create { justify-content: flex-end; background: transparent; padding-right: 12px; } .rpanel.p-create { width: min(46%, 300px); }
 #runui .rback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(2, 4, 30, .45); pointer-events: auto; }
 .ff { background: linear-gradient(#3550d0, #0a1260); border: 2px solid #f2f4ff; box-shadow: 0 0 0 2px #04062a, inset 0 0 0 2px rgba(120, 140, 235, .8); border-radius: 6px; color: #fff; font-family: var(--display); }
 .rpanel { width: min(86%, 620px); max-height: 92%; overflow-y: auto; padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; text-shadow: 1px 1px 0 #000; }
@@ -14407,8 +14408,8 @@ void main(){
   function ringsOf(list) {
     return list.map(([y, rx2, rz, cz]) => ({ y, rx: rx2, rz, cz: cz || 0 }));
   }
-  function tube(parent, y02, y1, r02, r1, m, segs) {
-    const r = [{ y: y02, rx: r02, rz: r02 }, { y: (y02 + y1) / 2, rx: (r02 + r1) / 2, rz: (r02 + r1) / 2 }, { y: y1, rx: r1, rz: r1 }];
+  function tube(parent, y02, y1, r02, r12, m, segs) {
+    const r = [{ y: y02, rx: r02, rz: r02 }, { y: (y02 + y1) / 2, rx: (r02 + r12) / 2, rz: (r02 + r12) / 2 }, { y: y1, rx: r12, rz: r12 }];
     return loft(r, segs || 10, m, parent, 0, 0, 0, Math.min(y02, y1), Math.max(y02, y1));
   }
   function dome(parent, x, y, z2, rx2, rz, h, m, tx2, tz) {
@@ -14737,8 +14738,8 @@ void main(){
       k.logo ? logoFlanks(T, k.logo) : flankU((cx2) => {
         T.ell(cx2, 0.3, 0.06, 0.06, B);
         for (let i15 = 0; i15 < 16; i15++) {
-          const a = i15 * Math.PI / 8, r1 = 0.07, r2 = i15 % 2 ? 0.11 : 0.16, px = Math.cos(a + 0.13), py = Math.sin(a + 0.13), qx = Math.cos(a - 0.13), qy = Math.sin(a - 0.13);
-          T.poly([[cx2 + qx * r1, 0.3 + qy * r1], [cx2 + Math.cos(a) * r2, 0.3 + Math.sin(a) * r2], [cx2 + px * r1, 0.3 + py * r1]], B);
+          const a = i15 * Math.PI / 8, r12 = 0.07, r22 = i15 % 2 ? 0.11 : 0.16, px = Math.cos(a + 0.13), py = Math.sin(a + 0.13), qx = Math.cos(a - 0.13), qy = Math.sin(a - 0.13);
+          T.poly([[cx2 + qx * r12, 0.3 + qy * r12], [cx2 + Math.cos(a) * r22, 0.3 + Math.sin(a) * r22], [cx2 + px * r12, 0.3 + py * r12]], B);
         }
       });
     }), -0.46);
@@ -15993,13 +15994,15 @@ void main(){
     };
     return f;
   }
-  var SIM_VERSION = 6;
-  var NOT_STATE = ["cfg", "rng", "fxRng", "moves", "fx", "texts", "textOut", "feed"];
+  var SIM_VERSION = 7;
+  var NOT_STATE = ["cfg", "rng", "fxRng", "moves", "fx", "texts", "textOut", "feed", "player", "input", "credit"];
   function applyCmd(sim, c) {
     switch (c.t) {
-      case "input":
-        sim.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || "", heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, jump: !!c.jump, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay };
+      case "input": {
+        const tp2 = sim.players[c.p | 0] || sim.player;
+        tp2.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || "", heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, jump: !!c.jump, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay };
         break;
+      }
       case "manual":
         sim.manual = !!c.on;
         break;
@@ -16021,9 +16024,11 @@ void main(){
         sim.resetPlayer();
         sim.say("info", "Player reset.");
         break;
-      case "set":
-        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move", "kindMoves", "skills", "chainStyles", "armorPct", "dur", "durMax", "broken", "hp", "maxHp", "san", "chr", "dmgMult", "spdMult", "regenMult", "staminaMax", "stamina"]) if (k in c) sim.player[k] = c[k];
+      case "set": {
+        const tp2 = sim.players[c.p | 0] || sim.player;
+        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move", "kindMoves", "skills", "chainStyles", "armorPct", "dur", "durMax", "broken", "hp", "maxHp", "san", "chr", "dmgMult", "spdMult", "regenMult", "staminaMax", "stamina"]) if (k in c) tp2[k] = c[k];
         break;
+      }
       case "ally":
         sim.spawnAlly(c.o);
         break;
@@ -16116,6 +16121,13 @@ void main(){
       delete d.rngState;
       delete d.fxRngState;
       Object.assign(s, d);
+      if (!s.players) s.players = [d.player];
+      for (const q of s.players) {
+        if (!q.input) q.input = { x: 0, y: 0, act: false, g: false, fin: "", heavy: false, block: false, dash: false, fire: false, jump: false, ax: null, ay: null };
+        if (!q.ed) q.ed = { act: false, g: false, fin: "", heavy: false, block: false, dash: false, fire: false, jump: false };
+      }
+      s.player = s.players[0];
+      s.credit = null;
       if (r != null) s.rng.set(r);
       if (fr2 != null) s.fxRng.set(fr2);
       s.moves = moves || {};
@@ -16131,56 +16143,9 @@ void main(){
       this.shake = 0;
       this.manual = this.manual || false;
       this.proj = [];
-      this.player = {
-        x: 170,
-        y: 282,
-        face: 1,
-        hp: c.player.hp,
-        maxHp: c.player.hp,
-        weapon: "longsword",
-        dex: 5,
-        dmgOverride: null,
-        inv: true,
-        swing: null,
-        chain: 0,
-        cooldown: 0,
-        moved: false,
-        flash: 0,
-        hurt: 0,
-        walkT: 0,
-        moving: false,
-        armorPct: 0,
-        dur: 0,
-        durMax: 0,
-        broken: false,
-        chainStyles: null,
-        san: 5,
-        chr: 5,
-        stamina: c.stamina.max,
-        staminaMax: c.stamina.max,
-        stamRegenT: 0,
-        blocking: false,
-        blockT: 0,
-        stunT: 0,
-        freeze: 0,
-        dash: null,
-        dashT: 99,
-        kvx: 0,
-        projCd: 0,
-        counter: null,
-        clashT: 0,
-        clashMax: 0,
-        z: 0,
-        vz: 0,
-        air: false,
-        jumpT: 0,
-        dmgMult: 1,
-        spdMult: 1,
-        regenMult: 1,
-        skills: { riposte: false, shove: false, multi: false },
-        kindMoves: {}
-        // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
-      };
+      this.players = [this.mkPlayer(0, null)];
+      this.player = this.players[0];
+      this.credit = null;
       this.mode = this.mode || "arena";
       this.outcome = null;
       this.spawned = 0;
@@ -16194,16 +16159,100 @@ void main(){
       this.logVer = 0;
       this.lastHit = null;
       this.moves = this.moves || {};
-      this.input = { x: 0, y: 0, act: false, g: false, fin: "", heavy: false, block: false, dash: false, fire: false, ax: null, ay: null };
-      this.actPrev = false;
-      this.gPrev = false;
-      this.finPrev = "";
-      this.heavyPrev = false;
-      this.blockPrev = false;
-      this.dashPrev = false;
-      this.firePrev = false;
-      this.jumpPrev = false;
       this.lastClash = null;
+    }
+    mkPlayer(i15, pid) {
+      const c = this.cfg, p = (() => {
+        return {
+          x: 170,
+          y: 282,
+          face: 1,
+          hp: c.player.hp,
+          maxHp: c.player.hp,
+          weapon: "longsword",
+          dex: 5,
+          dmgOverride: null,
+          inv: true,
+          swing: null,
+          chain: 0,
+          cooldown: 0,
+          moved: false,
+          flash: 0,
+          hurt: 0,
+          walkT: 0,
+          moving: false,
+          armorPct: 0,
+          dur: 0,
+          durMax: 0,
+          broken: false,
+          chainStyles: null,
+          san: 5,
+          chr: 5,
+          stamina: c.stamina.max,
+          staminaMax: c.stamina.max,
+          stamRegenT: 0,
+          blocking: false,
+          blockT: 0,
+          stunT: 0,
+          freeze: 0,
+          dash: null,
+          dashT: 99,
+          kvx: 0,
+          projCd: 0,
+          counter: null,
+          clashT: 0,
+          clashMax: 0,
+          z: 0,
+          vz: 0,
+          air: false,
+          jumpT: 0,
+          dmgMult: 1,
+          spdMult: 1,
+          regenMult: 1,
+          skills: { riposte: false, shove: false, multi: false },
+          kindMoves: {}
+          // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
+        };
+      })();
+      p.i = i15;
+      p.pid = pid;
+      p.name = "";
+      p.look = null;
+      p.input = { x: 0, y: 0, act: false, g: false, fin: "", heavy: false, block: false, dash: false, fire: false, jump: false, ax: null, ay: null };
+      p.ed = { act: false, g: false, fin: "", heavy: false, block: false, dash: false, fire: false, jump: false };
+      return p;
+    }
+    addPlayer(pid, name) {
+      if (this.players.some((q) => q.pid === pid)) return this.players.find((q) => q.pid === pid);
+      const p = this.mkPlayer(this.players.length, pid);
+      p.name = name || "";
+      const b = this.players[0];
+      p.x = Math.max(this.cfg.arena.left + 10, b.x - 30 * this.players.length);
+      p.y = this.clampY(b.y + (this.players.length % 2 ? 20 : -20));
+      p.face = b.face;
+      p.inv = b.inv;
+      this.players.push(p);
+      return p;
+    }
+    removePlayer(pid) {
+      const i15 = this.players.findIndex((q) => q.pid === pid);
+      if (i15 > 0) {
+        this.players.splice(i15, 1);
+        this.players.forEach((q, k) => q.i = k);
+      }
+    }
+    get input() {
+      return this.player.input;
+    }
+    set input(v2) {
+      this.player.input = v2;
+    }
+    useP(pl2) {
+      this.player = pl2;
+      this.credit = pl2.pid;
+    }
+    pidOf(i15) {
+      return this.players[i15] ? this.players[i15].pid : null;
     }
     clearEnemies() {
       this.enemies = [];
@@ -16325,7 +16374,8 @@ void main(){
         hurt: 0,
         kvx: 0,
         look: o.look || null,
-        lookSeed: hash32(this.seed, this.nextId * 7)
+        lookSeed: hash32(this.seed, this.nextId * 7),
+        owner: o.owner == null ? null : o.owner
       };
       this.allies.push(a);
       return a;
@@ -16361,24 +16411,36 @@ void main(){
     /* ---------- main step ---------- */
     step(dt) {
       this.stepN++;
-      const I = this.input, edge = (now, key) => {
-        const v2 = !!now, pr2 = v2 && !this[key];
-        this[key] = v2;
-        return pr2;
-      };
-      const pressed = edge(I.act, "actPrev"), gPress = edge(I.g, "gPrev"), heavyP = edge(I.heavy, "heavyPrev"), blockP = edge(I.block, "blockPrev"), dashP = edge(I.dash, "dashPrev"), fireP = edge(I.fire, "firePrev"), jumpP = edge(I.jump, "jumpPrev");
-      const fin = I.fin || "", finPress = fin && fin !== this.finPrev ? fin : "";
-      this.finPrev = fin;
-      this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP };
       if (this.shake > 0) this.shake -= dt;
       this.t += dt;
-      this.checkClash();
-      const p = this.player;
-      if (p.freeze > 0) {
-        p.freeze -= dt;
-        p.moving = false;
-        if (p.clashT > 0) p.clashT -= dt;
-      } else this.updatePlayer(dt);
+      for (const pl2 of this.players) {
+        this.useP(pl2);
+        const I = pl2.input, E = pl2.ed, edge = (now, key) => {
+          const v2 = !!now, pr2 = v2 && !E[key];
+          E[key] = v2;
+          return pr2;
+        };
+        const pressed = edge(I.act, "act"), gPress = edge(I.g, "g"), heavyP = edge(I.heavy, "heavy"), blockP = edge(I.block, "block"), dashP = edge(I.dash, "dash"), fireP = edge(I.fire, "fire"), jumpP = edge(I.jump, "jump");
+        const fin = I.fin || "", finPress = fin && fin !== E.fin ? fin : "";
+        E.fin = fin;
+        this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP };
+        if (pl2.hp <= 0 && (this.mode === "battle" || this.mode === "run")) {
+          pl2.moving = false;
+          pl2.swing = null;
+          pl2.blocking = false;
+          pl2.dash = null;
+          if (pl2.grab) this.endGrab(0);
+          continue;
+        }
+        this.checkClash();
+        if (pl2.freeze > 0) {
+          pl2.freeze -= dt;
+          pl2.moving = false;
+          if (pl2.clashT > 0) pl2.clashT -= dt;
+        } else this.updatePlayer(dt);
+      }
+      this.useP(this.players[0]);
+      this.credit = null;
       for (const e of this.enemies) {
         if (e.freeze > 0) {
           e.freeze -= dt;
@@ -16393,7 +16455,7 @@ void main(){
       this.updateProj(dt);
       this.enemies = this.enemies.filter((e) => !(e.state === "dying" && e.deathT > 2.6) && e.state !== "routed");
       if (this.mode === "battle" && !this.outcome) {
-        if (this.player.hp <= 0) this.outcome = "lost";
+        if (this.players.every((q) => q.hp <= 0)) this.outcome = "lost";
         else if (this.spawned > 0 && !this.enemies.some((e) => e.state === "alive")) this.outcome = "won";
       }
       this.updateFx(dt);
@@ -16633,7 +16695,7 @@ void main(){
       const L2 = Math.sqrt(dx2 * dx2 + dy * dy);
       dx2 /= L2;
       dy /= L2;
-      this.proj.push({ id: this.nextId++, x: p.x + p.face * 14, y: p.y, vx: dx2 * P3.speed, vy: dy * P3.speed, life: P3.range / P3.speed, dmg: P3.dmg });
+      this.proj.push({ owner: p.pid, id: this.nextId++, x: p.x + p.face * 14, y: p.y, vx: dx2 * P3.speed, vy: dy * P3.speed, life: P3.range / P3.speed, dmg: P3.dmg });
       p.projCd = P3.cd;
       p.shotT = 0.25;
     }
@@ -16648,7 +16710,9 @@ void main(){
         for (const e of this.enemies) {
           if (e.state !== "alive" || e.held || e.fly) continue;
           if (Math.abs(e.x - q.x) <= c.proj.hitR && Math.abs(e.y - q.y) <= c.laneTol) {
+            this.credit = q.owner == null ? null : q.owner;
             this.applyHit(e, q.dmg, null);
+            this.credit = null;
             this.burst(q.x, q.y - 40, 5, "#f4ecd8", 90);
             q.life = 0;
             break;
@@ -16977,7 +17041,7 @@ void main(){
     applyHit(e, raw, swing, fin) {
       const c = this.cfg, p = this.player;
       if (swing || fin) {
-        this.feed.push({ t: "hit", move: fin || swing.kind || "light" });
+        this.feed.push({ t: "hit", move: fin || swing.kind || "light", pid: this.credit });
         if (this.feed.length > 300) this.feed.shift();
       }
       const wasW = e.wounded > 0, wasB = e.broken;
@@ -17059,7 +17123,7 @@ void main(){
     }
     kill(e, dramatic, swing) {
       const p = this.player;
-      this.feed.push({ t: "kill", kind: e.kind || "soldier", tier: e.tier, x: e.x, y: e.y });
+      this.feed.push({ t: "kill", kind: e.kind || "soldier", tier: e.tier, x: e.x, y: e.y, pid: this.credit });
       if (this.feed.length > 300) this.feed.shift();
       e.state = "dying";
       e.deathT = 0;
@@ -17263,7 +17327,15 @@ void main(){
       }
     }
     pickTarget(e) {
-      let best = this.player.hp > 0 ? this.player : null, bd2 = best ? (best.x - e.x) ** 2 + 4 * (best.y - e.y) ** 2 : 1e12;
+      let best = null, bd2 = 1e12;
+      for (const q of this.players) {
+        if (q.hp <= 0) continue;
+        const d = (q.x - e.x) ** 2 + 4 * (q.y - e.y) ** 2;
+        if (d < bd2) {
+          best = q;
+          bd2 = d;
+        }
+      }
       for (const a of this.allies) {
         if (a.state !== "alive") continue;
         const d = (a.x - e.x) ** 2 + 4 * (a.y - e.y) ** 2;
@@ -17275,8 +17347,13 @@ void main(){
       return best;
     }
     enemyHits(e, t) {
-      if (t === this.player) this.enemyHitsPlayer(e);
-      else this.enemyHitsAlly(e, t);
+      if (this.players.includes(t)) {
+        const keep = this.player;
+        this.useP(t);
+        this.enemyHitsPlayer(e);
+        this.useP(keep);
+        this.credit = null;
+      } else this.enemyHitsAlly(e, t);
     }
     // damage to a worn-armor fighter: percent off (at least 1), durability drops by the raw hit, a broken set protects nothing
     takeHit(t, raw) {
@@ -17302,7 +17379,7 @@ void main(){
       if (!p.inv) {
         const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));
         this.text(p.x, p.y - 96, "-" + r.dmg, "#ff7a6a", 10);
-        this.feed.push({ t: "hurt", dmg: r.dmg });
+        this.feed.push({ t: "hurt", dmg: r.dmg, pid: p.pid });
         if (r.broke) {
           this.say("break", "Your armor broke.");
           this.text(p.x, p.y - 110, "ARMOR BROKEN", "#ff9a6a", 9);
@@ -17346,7 +17423,16 @@ void main(){
       }
     }
     updateAlly(a, dt) {
-      const c = this.cfg, p = this.player;
+      const c = this.cfg;
+      let p = this.players[0], pd2 = 1e12;
+      for (const q of this.players) {
+        const d = Math.abs(q.x - a.x);
+        if (q.hp > 0 && d < pd2) {
+          p = q;
+          pd2 = d;
+        }
+      }
+      this.credit = a.owner == null ? null : a.owner;
       a.flash = Math.max(0, a.flash - dt);
       a.hurt = Math.max(0, (a.hurt || 0) - dt);
       this.kv(a, dt);
@@ -18512,24 +18598,6 @@ void main(){
     }
   ];
 
-  // server/protocol.js
-  function applySnapshot(sim, m) {
-    sim.t = m.time;
-    sim.shake = m.shake;
-    sim.routed = m.routed;
-    const p = sim.player;
-    Object.assign(p, m.p);
-    const old = new Map(sim.enemies.map((e) => [e.id, e]));
-    sim.enemies = m.e.map((n) => Object.assign(old.get(n.id) || {}, n));
-    for (const l of m.log) {
-      sim.log.push(l);
-      if (sim.log.length > 80) sim.log.shift();
-      sim.logVer++;
-    }
-    for (const t of m.texts) sim.texts.push(t);
-    if (m.lastHit) sim.lastHit = m.lastHit;
-  }
-
   // game/run.js
   var run_exports = {};
   __export(run_exports, {
@@ -18547,7 +18615,9 @@ void main(){
     WEAPON_PRICE: () => WEAPON_PRICE,
     addXp: () => addXp,
     allySpec: () => allySpec,
+    applyRemoteResult: () => applyRemoteResult,
     attr: () => attr,
+    buildOf: () => buildOf,
     buy: () => buy,
     chainFor: () => chainFor,
     derive: () => derive,
@@ -18560,6 +18630,7 @@ void main(){
     learnStyle: () => learnStyle,
     newProfile: () => newProfile,
     recruits: () => recruits,
+    resolveStyles: () => resolveStyles,
     setChain: () => setChain,
     setRole: () => setRole,
     spendPoint: () => spendPoint,
@@ -18615,6 +18686,8 @@ void main(){
   function newProfile(name) {
     return {
       v: 1,
+      created: false,
+      look: null,
       name: name || "Baron",
       gold: RUNCFG.startGold,
       xp: 0,
@@ -18641,6 +18714,7 @@ void main(){
       const o = JSON.parse(txt);
       if (!o || o.v !== 1) return null;
       const d = newProfile(), p = Object.assign(d, o);
+      if (o.created == null) p.created = true;
       p.upgrades = Object.assign({}, newProfile().upgrades, o.upgrades || {});
       p.styles = Object.assign({}, newProfile().styles, o.styles || {});
       p.styles.roles = Object.assign({}, newProfile().styles.roles, p.styles.roles || {});
@@ -18773,6 +18847,18 @@ void main(){
     p.styles.roles[role] = id || null;
     return { ok: true };
   }
+  function resolveStyles(styles, all, hands) {
+    const ok = (id) => {
+      const st = id && all.find((x) => x.id === id);
+      return st && styleFits(st, hands) ? id : null;
+    };
+    const chain = (styles.chain || []).map(ok).filter(Boolean), roles = {};
+    for (const r in ROLES) {
+      const id = ok(styles.roles && styles.roles[r]);
+      if (id) roles[r] = id;
+    }
+    return { chain: chain.length ? chain : ["cut"], roles };
+  }
   function chainFor(p, all, hands) {
     const out = [], n = derive(p).chainSlots;
     for (const id of p.styles.chain.slice(0, n)) {
@@ -18837,51 +18923,189 @@ void main(){
   }
   var MAPS = { fields: { n: "Training Fields", d: "Open ground outside the camp. A basic map." } };
   var stageOf = (wave) => Math.floor(wave / RUNCFG.exitEvery);
+  function buildOf(p) {
+    const d = derive(p);
+    return {
+      name: p.name,
+      look: p.look || null,
+      level: p.level,
+      weapon: p.weapon,
+      armor: p.armor,
+      skills: p.skills.slice(),
+      d: { dex: d.dex, maxHp: d.maxHp, staminaMax: d.staminaMax, dmgMult: d.dmgMult, spdMult: d.spdMult, regenMult: d.regenMult },
+      styles: { chain: p.styles.chain.slice(0, d.chainSlots), roles: Object.assign({}, p.styles.roles) },
+      hirelings: p.hirelings.map((h) => allySpec(h, p))
+    };
+  }
+  RUNCFG.cart = { x: 570, r: 46 };
+  RUNCFG.voteSecs = 25;
+  RUNCFG.ackSecs = 15;
+  RUNCFG.reviveHp = 0.4;
   var Run = class {
-    constructor(sim, profile, seed) {
+    constructor(sim, profile, seed, pid) {
       this.sim = sim;
-      this.p = profile;
-      this.rng = makeRng(hash32(seed || 1, profile.runs + 3));
       this.seed = seed || 1;
+      this.rng = makeRng(hash32(this.seed, profile.runs + 3));
+      this.hooks = {};
       this.phase = "camp";
       this.wave = 0;
-      this.gold = 0;
-      this.kills = 0;
-      this.xpGain = 0;
       this.timer = 0;
       this.queue = [];
       this.spawnT = 0;
       this.waveKills = 0;
-      this.rank = { score: 0, last: "", idle: 0, tier: 0 };
       this.msgs = [];
       this.dummyT = 0;
-      this.result = null;
-      this.levelUps = 0;
       this.banner = null;
+      this.members = [];
+      this.voteAt = 0;
+      this.ackAt = 0;
+      this.map = "fields";
+      sim.players[0].pid = pid || "host";
+      this.me = this.addMember(pid || "host", buildOf(profile), profile);
       this.enterCamp();
+    }
+    setPid(pid) {
+      const old = this.me.pid;
+      if (old === pid) return;
+      this.me.pid = pid;
+      const q = this.sim.players[0];
+      q.pid = pid;
+      for (const a of this.sim.allies) if (a.owner === old) a.owner = pid;
+    }
+    /* the local member's numbers, under the old names */
+    get p() {
+      return this.me.p;
+    }
+    get gold() {
+      return this.me.gold;
+    }
+    set gold(v2) {
+      this.me.gold = v2;
+    }
+    get kills() {
+      return this.me.kills;
+    }
+    set kills(v2) {
+      this.me.kills = v2;
+    }
+    get xpGain() {
+      return this.me.xpGain;
+    }
+    set xpGain(v2) {
+      this.me.xpGain = v2;
+    }
+    get levelUps() {
+      return this.me.levelUps;
+    }
+    set levelUps(v2) {
+      this.me.levelUps = v2;
+    }
+    get rank() {
+      return this.me.rank;
+    }
+    get result() {
+      return this.me.result;
+    }
+    set result(v2) {
+      this.me.result = v2;
     }
     say(t) {
       this.msgs.push({ t: this.sim.t, text: t });
       if (this.msgs.length > 12) this.msgs.shift();
     }
-    get tier() {
+    tierOf(m) {
       const a = RUNCFG.rank.at;
       let t = 0;
-      for (let i15 = 0; i15 < a.length; i15++) if (this.rank.score >= a[i15]) t = i15;
+      for (let i15 = 0; i15 < a.length; i15++) if (m.rank.score >= a[i15]) t = i15;
       return t;
+    }
+    get tier() {
+      return this.tierOf(this.me);
     }
     get rankName() {
       return RUNCFG.rank.names[this.tier];
     }
-    goldMult() {
-      return 1 + RUNCFG.rank.goldMult * this.tier;
+    goldMult(m) {
+      return 1 + RUNCFG.rank.goldMult * this.tierOf(m || this.me);
     }
-    /* put your build on the fighter: weapon, armor, attributes, skills */
-    applyBuild(inRun) {
-      const p = this.p, d = derive(p), sim = this.sim, tier = CFG.tiers[p.armor], bonus = inRun ? 1 + RUNCFG.rank.dmgBonus * this.tier : 1;
+    byPid(pid) {
+      return this.members.find((m) => m.pid === pid) || null;
+    }
+    idx(m) {
+      return this.sim.players.findIndex((q) => q.pid === m.pid);
+    }
+    pl(m) {
+      return this.sim.players.find((q) => q.pid === m.pid) || null;
+    }
+    atCart(m) {
+      const q = this.pl(m || this.me);
+      return !!q && Math.abs(q.x - RUNCFG.cart.x) <= RUNCFG.cart.r;
+    }
+    /* ---------- members ---------- */
+    addMember(pid, build, profile) {
+      let m = this.byPid(pid);
+      if (m) {
+        m.build = build;
+        return m;
+      }
+      m = { pid, name: build.name, build, p: profile || null, gold: 0, kills: 0, xpGain: 0, levelUps: 0, uses: {}, hireXp: 0, rank: { score: 0, last: "", idle: 0, tier: 0 }, ready: false, vote: null, acked: false, result: null, down: false };
+      this.members.push(m);
+      if (!this.sim.players.some((q2) => q2.pid === pid)) this.sim.addPlayer(pid, build.name);
+      const q = this.pl(m);
+      q.name = build.name;
+      q.look = build.look || null;
+      if (this.members.length > 1) this.say(build.name + " joined.");
+      if (this.phase === "camp") {
+        this.applyBuild(false, m);
+      } else if (this.phase === "dead" || this.phase === "left") {
+        m.result = { kind: "wait" };
+        m.acked = true;
+        this.applyBuild(false, m);
+      } else {
+        const lead = this.sim.players.find((o) => o !== q && o.hp > 0) || this.sim.players[0];
+        q.x = this.sim.clampX(lead.x - 36);
+        q.y = this.sim.clampY(lead.y + 18);
+        q.swing = null;
+        this.applyBuild(true, m);
+        this.spawnAlliesFor(m);
+      }
+      return m;
+    }
+    removeMember(pid) {
+      const m = this.byPid(pid);
+      if (!m || m === this.me) return false;
+      this.members = this.members.filter((o) => o !== m);
+      this.sim.removePlayer(pid);
+      this.sim.allies = this.sim.allies.filter((a) => a.owner !== pid);
+      this.say(m.name + " left.");
+      if (this.phase === "camp") this.checkDepart();
+      else if (this.phase === "vote") this.checkVote();
+      return true;
+    }
+    setBuild(pid, build) {
+      const m = this.byPid(pid);
+      if (!m) return;
+      m.build = build;
+      m.name = build.name;
+      if (this.phase === "camp") this.applyBuild(false, m);
+      else {
+        const q = this.pl(m);
+        if (q) {
+          q.name = build.name;
+          q.look = build.look || null;
+        }
+      }
+    }
+    /* put a member's build on their fighter */
+    applyBuild(inRun, m) {
+      m = m || this.me;
+      if (m.p) m.build = buildOf(m.p);
+      const b = m.build, d = b.d, sim = this.sim, tier = CFG.tiers[b.armor], bonus = inRun ? 1 + RUNCFG.rank.dmgBonus * this.tierOf(m) : 1, i15 = this.idx(m);
+      if (i15 < 0) return;
       applyCmd(sim, {
         t: "set",
-        weapon: p.weapon,
+        p: i15,
+        weapon: b.weapon,
         dex: d.dex,
         maxHp: d.maxHp,
         hp: d.maxHp,
@@ -18894,9 +19118,16 @@ void main(){
         dur: tier.dur,
         durMax: tier.dur,
         broken: false,
-        inv: false,
-        skills: { riposte: p.skills.includes("riposte"), shove: p.skills.includes("shove"), multi: p.skills.includes("multi") }
+        inv: !inRun,
+        skills: { riposte: b.skills.includes("riposte"), shove: b.skills.includes("shove"), multi: b.skills.includes("multi") }
       });
+      const q = sim.players[i15];
+      q.name = b.name;
+      q.look = b.look || null;
+      q.armorKey = b.armor;
+      q.roleStyles = Object.assign({}, b.styles.roles);
+      m.down = false;
+      if (this.hooks.build) this.hooks.build(m, i15);
     }
     enterCamp() {
       const sim = this.sim;
@@ -18906,13 +19137,20 @@ void main(){
       sim.clearEnemies();
       sim.clearAllies();
       sim.proj = [];
-      sim.player.x = 330;
-      sim.player.y = 282;
-      sim.player.swing = null;
-      sim.player.air = false;
-      sim.player.z = 0;
-      this.applyBuild(false);
-      applyCmd(sim, { t: "set", inv: true });
+      this.members.forEach((m, k) => {
+        const q = this.pl(m);
+        q.x = 330 + k * 26;
+        q.y = 282;
+        q.swing = null;
+        q.air = false;
+        q.z = 0;
+        q.grab = null;
+        m.ready = false;
+        m.vote = null;
+        m.acked = false;
+        m.result = null;
+        this.applyBuild(false, m);
+      });
       this.spawnDummy();
     }
     spawnDummy() {
@@ -18925,36 +19163,76 @@ void main(){
       this.dummy = e;
       return e;
     }
+    /* ---------- leaving camp: everyone stands at the cart and is ready ---------- */
+    readyUp(pid, map) {
+      const m = this.byPid(pid);
+      if (!m || this.phase !== "camp" || !this.atCart(m)) return false;
+      m.ready = true;
+      m.map = map || m.map || "fields";
+      this.checkDepart();
+      return true;
+    }
+    unready(pid) {
+      const m = this.byPid(pid);
+      if (m) m.ready = false;
+    }
+    checkDepart() {
+      if (this.phase !== "camp" || !this.members.length) return false;
+      if (!this.members.every((m) => m.ready && this.atCart(m))) return false;
+      this.launch(this.members[0].map || "fields");
+      return true;
+    }
     depart(map) {
-      if (this.phase !== "camp") return false;
-      const sim = this.sim, p = this.p;
-      p.runs++;
+      this.readyUp(this.me.pid, map);
+      return this.phase === "wave";
+    }
+    // alone, being ready is leaving
+    launch(map) {
+      const sim = this.sim;
       this.map = map || "fields";
       this.wave = 0;
-      this.gold = 0;
-      this.kills = 0;
-      this.xpGain = 0;
-      this.levelUps = 0;
-      this.result = null;
-      this.rank.score = 0;
-      this.rank.last = "";
       sim.clearEnemies();
       sim.mode = "run";
       sim.manual = true;
       sim.proj = [];
-      sim.player.x = 170;
-      sim.player.y = 282;
-      sim.player.swing = null;
-      this.applyBuild(true);
+      this.result = null;
+      this.members.forEach((m, k) => {
+        if (m.p) m.p.runs++;
+        m.gold = 0;
+        m.kills = 0;
+        m.xpGain = 0;
+        m.levelUps = 0;
+        m.uses = {};
+        m.hireXp = 0;
+        m.rank = { score: 0, last: "", idle: 0, tier: 0 };
+        m.result = null;
+        m.vote = null;
+        m.ready = false;
+        m.down = false;
+        const q = this.pl(m);
+        q.x = 170 - k * 26;
+        q.y = 282;
+        q.swing = null;
+        q.grab = null;
+        this.applyBuild(true, m);
+      });
       this.spawnAllies();
       this.say("The run begins.");
       this.startWave(1);
-      return true;
     }
     spawnAllies() {
-      const sim = this.sim;
-      sim.clearAllies();
-      this.p.hirelings.forEach((h, i15) => sim.spawnAlly(Object.assign(allySpec(h, this.p), { index: i15 })));
+      this.sim.clearAllies();
+      this.members.forEach((m) => this.spawnAlliesFor(m));
+    }
+    spawnAlliesFor(m) {
+      const sim = this.sim, q = this.pl(m);
+      sim.allies = sim.allies.filter((a) => a.owner !== m.pid);
+      m.build.hirelings.forEach((h, i15) => {
+        const a = sim.spawnAlly(Object.assign({}, h, { index: i15, owner: m.pid }));
+        if (q) {
+          a.x = sim.clampX(q.x - 34 - i15 * 30);
+        }
+      });
     }
     startWave(n) {
       this.banner = { text: "WAVE " + n, at: this.sim.t };
@@ -18963,7 +19241,6 @@ void main(){
       this.queue = wavePlan(n);
       this.spawnT = 0.5;
       this.waveKills = 0;
-      this.waveHits = 0;
       this.say("Wave " + n + ": " + this.queue.length + " enemies.");
     }
     alive() {
@@ -18983,32 +19260,47 @@ void main(){
             this.spawnDummy();
           }
         } else if (this.dummy && this.dummy.hp < this.dummy.maxHp) this.dummy.hp = Math.min(this.dummy.maxHp, this.dummy.hp + 8 * dt);
+        for (const m of this.members) if (m.ready && !this.atCart(m)) m.ready = false;
         return;
       }
       for (const f of feed) {
-        if (f.t === "kill") this.onKill(f);
-        else if (f.t === "hit") this.onHit(f.move);
-        else if (f.t === "hurt") {
-          this.rank.score = 0;
-          this.rank.last = "";
-          trainFromUse(this.p, "hurt");
-          this.syncRank();
+        const who = f.pid != null ? [this.byPid(f.pid)].filter(Boolean) : f.t === "kill" ? this.members : [this.me];
+        if (f.t === "kill") {
+          for (const m of who) this.onKill(m, f, who.length);
+        } else if (f.t === "hit") {
+          for (const m of who) this.onHit(m, f.move);
+        } else if (f.t === "hurt") {
+          for (const m of who) {
+            m.rank.score = 0;
+            m.rank.last = "";
+            this.train(m, "hurt");
+            this.syncRank(m);
+          }
         }
       }
-      if (this.phase === "wave" || this.phase === "between") {
-        this.rank.idle += dt;
-        if (this.rank.idle > R2.rank.idle) {
-          this.rank.score = Math.max(0, this.rank.score - R2.rank.decay * dt);
-          this.syncRank();
+      if (this.phase === "wave" || this.phase === "between") for (const m of this.members) {
+        m.rank.idle += dt;
+        if (m.rank.idle > R2.rank.idle) {
+          m.rank.score = Math.max(0, m.rank.score - R2.rank.decay * dt);
+          this.syncRank(m);
         }
       }
-      if (sim.player.hp <= 0 && this.phase !== "dead" && this.phase !== "left") {
-        this.die();
-        return;
+      if (this.phase === "wave" || this.phase === "between" || this.phase === "vote") {
+        for (const m of this.members) {
+          const q = this.pl(m);
+          if (q && q.hp <= 0 && !m.down) {
+            m.down = true;
+            this.say(m.name + " is down.");
+          }
+        }
+        if (this.members.length && this.members.every((m) => m.down)) {
+          this.die();
+          return;
+        }
       }
       if (this.phase === "wave") {
         this.spawnT -= dt;
-        const cap = R2.maxAlive + this.wave * R2.maxAlivePerWave;
+        const cap = R2.maxAlive + this.wave * R2.maxAlivePerWave + 4 * (this.members.length - 1);
         if (this.queue.length && this.spawnT <= 0 && this.alive() < cap) {
           this.spawnOne();
           this.spawnT = R2.spawnGap;
@@ -19017,6 +19309,10 @@ void main(){
       } else if (this.phase === "between") {
         this.timer -= dt;
         if (this.timer <= 0) this.startWave(this.wave + 1);
+      } else if (this.phase === "vote") {
+        if (sim.t >= this.voteAt) this.resolveVote();
+      } else if (this.phase === "dead" || this.phase === "left") {
+        if (sim.t >= this.ackAt) this.enterCamp();
       }
     }
     spawnOne() {
@@ -19025,90 +19321,148 @@ void main(){
       e.x = side > 0 ? CFG.arena.right - 8 : CFG.arena.left + 8;
       e.y = sim.clampY(CFG.band.top + this.rng() * (CFG.band.bottom - CFG.band.top));
       e.face = -side;
-      const k = 1 + R_HP() * (this.wave - 1);
+      const k = 1 + R_HP() * (this.wave - 1) + 0.25 * (this.members.length - 1);
       e.hp = e.maxHp = Math.max(1, Math.round(e.maxHp * k));
       return e;
     }
-    onKill(f) {
-      const R2 = RUNCFG, k = f.kind;
-      this.kills++;
-      this.waveKills++;
-      const g = Math.round((R2.gold.kill[k] || 1) * this.goldMult());
-      this.gold += g;
-      this.giveXp(R2.xp.kill[k] || 1);
+    train(m, kind) {
+      if (m.p) return trainFromUse(m.p, kind);
+      m.uses[kind] = (m.uses[kind] || 0) + 1;
+      return false;
     }
-    giveXp(n) {
-      this.xpGain += n;
-      const up2 = addXp(this.p, n);
+    onKill(m, f, share) {
+      const R2 = RUNCFG, k = f.kind;
+      m.kills++;
+      m.gold += Math.max(1, Math.round((R2.gold.kill[k] || 1) * this.goldMult(m) / share));
+      this.giveXp(m, Math.max(1, Math.round((R2.xp.kill[k] || 1) / share)));
+    }
+    giveXp(m, n) {
+      m.xpGain += n;
+      if (!m.p) return;
+      const up2 = addXp(m.p, n);
       if (up2) {
-        this.levelUps += up2;
-        this.say("Level " + this.p.level + "! +" + up2 * RUNCFG.pointsPerLevel + " attribute points.");
-        this.sim.text(this.sim.player.x, this.sim.player.y - 120, "LEVEL UP", "#ffe27a", 12);
+        m.levelUps += up2;
+        this.say(m.name + " reached level " + m.p.level + ".");
+        const q = this.pl(m);
+        if (q) this.sim.text(q.x, q.y - 120, "LEVEL UP", "#ffe27a", 12);
       }
     }
-    onHit(move) {
-      const R2 = RUNCFG.rank, g = trainFromUse(this.p, move);
-      if (g) this.say(g.toUpperCase() + " grew from use.");
-      this.rank.idle = 0;
-      if (this.rank.last && this.rank.last === move) this.rank.score = Math.max(0, this.rank.score + R2.repeat);
-      else this.rank.score = Math.min(100, this.rank.score + R2.gain);
-      this.rank.last = move;
-      this.syncRank();
+    onHit(m, move) {
+      const R2 = RUNCFG.rank, g = this.train(m, move);
+      if (g && m === this.me) this.say(g.toUpperCase() + " grew from use.");
+      m.rank.idle = 0;
+      if (m.rank.last && m.rank.last === move) m.rank.score = Math.max(0, m.rank.score + R2.repeat);
+      else m.rank.score = Math.min(100, m.rank.score + R2.gain);
+      m.rank.last = move;
+      this.syncRank(m);
     }
-    syncRank() {
-      const t = this.tier;
-      if (t === this.rank.tier) return;
-      this.rank.tier = t;
-      const d = derive(this.p);
-      applyCmd(this.sim, { t: "set", dmgMult: d.dmgMult * (1 + RUNCFG.rank.dmgBonus * t) });
+    syncRank(m) {
+      const t = this.tierOf(m);
+      if (t === m.rank.tier) return;
+      m.rank.tier = t;
+      const i15 = this.idx(m);
+      if (i15 >= 0) applyCmd(this.sim, { t: "set", p: i15, dmgMult: m.build.d.dmgMult * (1 + RUNCFG.rank.dmgBonus * t) });
     }
     clearWave() {
       const R2 = RUNCFG, sim = this.sim;
       this.say("Wave " + this.wave + " cleared.");
       this.banner = { text: "WAVE CLEARED", at: sim.t };
-      this.gold += Math.round(R2.gold.wave * this.wave * this.goldMult());
-      this.giveXp(R2.xp.wave * this.wave);
-      for (const h of this.p.hirelings) if (hirelingXp(h, 1)) this.say(h.name + " reached level " + h.level + ".");
-      const pl2 = sim.player;
-      pl2.hp = Math.min(pl2.maxHp, pl2.hp + Math.round(pl2.maxHp * R2.healBetween));
-      pl2.stamina = pl2.staminaMax;
+      for (const m of this.members) {
+        m.gold += Math.round(R2.gold.wave * this.wave * this.goldMult(m));
+        this.giveXp(m, R2.xp.wave * this.wave);
+        if (m.p) {
+          for (const h of m.p.hirelings) if (hirelingXp(h, 1)) this.say(h.name + " reached level " + h.level + ".");
+        } else m.hireXp++;
+        const q = this.pl(m), i15 = this.idx(m);
+        if (q.hp <= 0) applyCmd(sim, { t: "set", p: i15, hp: Math.max(1, Math.round(q.maxHp * R2.reviveHp)) });
+        else applyCmd(sim, { t: "set", p: i15, hp: Math.min(q.maxHp, q.hp + Math.round(q.maxHp * R2.healBetween)) });
+        applyCmd(sim, { t: "set", p: i15, stamina: q.staminaMax });
+        m.down = false;
+      }
       this.spawnAllies();
       if (this.wave % R2.exitEvery === 0) {
         this.phase = "vote";
-        this.say("Leave with " + this.leavePay() + " gold, or press on?");
+        this.voteAt = sim.t + R2.voteSecs;
+        for (const m of this.members) m.vote = null;
+        this.say("Leave, or press on?");
       } else {
         this.phase = "between";
         this.timer = R2.between;
       }
     }
+    leavePayOf(m) {
+      return Math.round(m.gold * (1 + RUNCFG.deepBonus * (stageOf(this.wave) - 1)));
+    }
     leavePay() {
-      return Math.round(this.gold * (1 + RUNCFG.deepBonus * (stageOf(this.wave) - 1)));
+      return this.leavePayOf(this.me);
+    }
+    /* the exit vote: leave if more vote to leave than to stay; silence counts as staying */
+    castVote(pid, leave) {
+      const m = this.byPid(pid);
+      if (!m || this.phase !== "vote") return false;
+      m.vote = leave ? "leave" : "stay";
+      this.checkVote();
+      return true;
     }
     vote(leave) {
-      if (this.phase !== "vote") return false;
-      if (leave) {
-        const g = this.leavePay();
-        this.p.gold += g;
-        this.p.best = Math.max(this.p.best, this.wave);
-        this.result = { kind: "left", wave: this.wave, gold: g, kills: this.kills, xp: this.xpGain, levels: this.levelUps };
+      return this.castVote(this.me.pid, leave);
+    }
+    checkVote() {
+      if (this.phase === "vote" && this.members.every((m) => m.vote)) this.resolveVote();
+    }
+    resolveVote() {
+      if (this.phase !== "vote") return;
+      const leave = this.members.filter((m) => m.vote === "leave").length, stay = this.members.length - leave;
+      if (leave > stay) {
+        for (const m of this.members) {
+          const g = this.leavePayOf(m);
+          if (m.p) {
+            m.p.gold += g;
+            m.p.best = Math.max(m.p.best, this.wave);
+          }
+          m.result = { kind: "left", wave: this.wave, gold: g, kills: m.kills, xp: m.xpGain, levels: m.levelUps, uses: m.uses, hireXp: m.hireXp };
+          m.acked = false;
+        }
         this.phase = "left";
+        this.ackAt = this.sim.t + RUNCFG.ackSecs;
       } else {
+        this.say(this.members.length > 1 ? "The party presses on." : "");
         this.phase = "between";
         this.timer = RUNCFG.between;
       }
-      return true;
     }
     die() {
       this.phase = "dead";
-      this.p.best = Math.max(this.p.best, this.wave - 1);
-      this.result = { kind: "dead", wave: this.wave, lost: this.gold, kills: this.kills, xp: this.xpGain, levels: this.levelUps };
-      this.gold = 0;
+      this.ackAt = this.sim.t + RUNCFG.ackSecs;
+      for (const m of this.members) {
+        if (m.p) m.p.best = Math.max(m.p.best, this.wave - 1);
+        m.result = { kind: "dead", wave: this.wave, lost: m.gold, kills: m.kills, xp: m.xpGain, levels: m.levelUps, uses: m.uses, hireXp: m.hireXp };
+        m.gold = 0;
+        m.acked = false;
+      }
+    }
+    ack(pid) {
+      const m = this.byPid(pid);
+      if (!m) return;
+      m.acked = true;
+      if (this.members.every((o) => o.acked)) this.enterCamp();
     }
     returnToCamp() {
-      if (this.phase === "dead" || this.phase === "left") this.enterCamp();
+      if (this.phase === "dead" || this.phase === "left") this.ack(this.me.pid);
     }
   };
   var R_HP = () => RUNCFG.waveHp;
+  function applyRemoteResult(p, r) {
+    if (!r || r.kind === "wait") return { levels: 0 };
+    let up2 = addXp(p, r.xp || 0);
+    for (const k in r.uses || {}) for (let i15 = 0; i15 < r.uses[k]; i15++) trainFromUse(p, k);
+    for (const h of p.hirelings) for (let i15 = 0; i15 < (r.hireXp || 0); i15++) hirelingXp(h, 1);
+    if (r.kind === "left") {
+      p.gold += r.gold;
+      p.best = Math.max(p.best, r.wave);
+    } else p.best = Math.max(p.best, r.wave - 1);
+    return { levels: up2 };
+  }
 
   // game/camp.js
   var OUT = "#1a1420";
@@ -19617,14 +19971,19 @@ void main(){
     } catch (e) {
     }
     if (!profile) profile = newProfile("Baron");
-    const run = new Run(live, profile, Date.now() >>> 0 || 1);
+    let run = new Run(live, profile, Date.now() >>> 0 || 1);
     const save = () => {
       try {
         localStorage.setItem(KEY, toJSON(profile));
       } catch (e) {
       }
     };
-    const ui = { active: false, modal: null, run, profile, R: run_exports, styles: () => env2.styles() };
+    let wasPhase = "camp";
+    const ui = { active: false, modal: null, run, profile, setRun: (r) => {
+      run = r;
+      ui.run = r;
+      wasPhase = r.phase;
+    }, R: run_exports, styles: () => env2.styles() };
     const host = $("stage").parentElement, ov = document.createElement("div");
     ov.id = "runui";
     ov.hidden = true;
@@ -19711,32 +20070,75 @@ void main(){
       }
       return h + '<p class="d">Hirelings keep fighting for you for good. Fallen ones are back next wave, no penalty.</p>' + msg();
     }
+    const partyOf = () => run.members || [];
     function cartPanel() {
-      const p = profile;
+      const p = profile, ms2 = partyOf(), multi = ms2.length > 1 || run.isGuest, me = run.me;
       let h = head("The cart");
+      if (multi) {
+        h += '<div class="sec">Party</div>' + ms2.map((m) => '<div class="srow"><span>' + esc(m.name) + (m.pid === me.pid ? " (you)" : "") + '</span><span class="d">' + (m.ready ? "ready" : run.atCart(m) ? "at the cart" : "walk to the cart") + "</span><span></span></div>").join("");
+        h += '<p class="d">Everyone has to stand at the cart and be ready. The run starts when all of you are.</p>';
+      }
       h += '<div class="sec">Choose a map</div>';
-      for (const k of Object.keys(MAPS)) h += '<div class="map"><b>' + esc(MAPS[k].n) + '</b><span class="d">' + esc(MAPS[k].d) + '</span><span class="d">Best: wave ' + p.best + '</span><button class="rb go" data-a="depart:' + k + '">Depart</button></div>';
-      h += '<p class="d">Waves grow. Every 5 waves you may leave and keep the gold, with a bonus the deeper you go. If you fall, the gold from this run is lost. Gear, levels and skills stay.</p>';
-      h += '<div class="sum">Party: you' + p.hirelings.map((x) => ", " + esc(x.name)).join("") + "</div>";
+      for (const k of Object.keys(MAPS)) h += '<div class="map"><b>' + esc(MAPS[k].n) + '</b><span class="d">' + esc(MAPS[k].d) + '</span><span class="d">Best: wave ' + p.best + "</span>" + (me.ready ? '<button class="rb" data-a="unready">Not ready</button>' : '<button class="rb go" data-a="depart:' + k + '">' + (multi ? "Ready" : "Depart") + "</button>") + "</div>";
+      h += '<p class="d">Waves grow. Every 5 waves the party votes to leave or press on; leaving keeps the gold, with a bonus the deeper you go. If everyone falls, the gold from this run is lost. Gear, levels and skills stay. Someone who joins mid-run drops straight into the fight.</p>';
+      h += '<div class="sum">Hirelings: ' + (p.hirelings.length ? p.hirelings.map((x) => esc(x.name)).join(", ") : "none") + "</div>" + msg();
       return h;
     }
+    function equipPanel() {
+      const p = profile;
+      let h = head("Equipment", goldLine());
+      const d = derive(p), wc = CFG.weaponClasses[CFG.weapons[p.weapon].cls], ar2 = CFG.tiers[p.armor];
+      h += '<div class="sum">Wielding ' + esc(CFG.weapons[p.weapon].label) + " (" + (wc.twoHanded ? "two-handed" : "one-handed") + ") \xB7 wearing " + esc(ar2.label) + " \xB7 HP " + d.maxHp + " \xB7 Damage x" + d.dmgMult.toFixed(2) + "</div>";
+      h += '<div class="sec">Weapons</div>';
+      for (const k of p.owned.weapons) {
+        const w = CFG.weapons[k], c = CFG.weaponClasses[w.cls];
+        h += '<div class="srow"><span>' + esc(w.label) + '</span><span class="d">dmg ' + c.dmg + ", reach " + c.reach + ", " + (c.twoHanded ? "two-handed" : "one-handed") + '</span><button class="rb" data-a="equip:weapon:' + k + '"' + (p.weapon === k ? " disabled>Equipped" : ">Equip") + "</button></div>";
+      }
+      h += '<div class="sec">Armor</div>';
+      for (const k of p.owned.armor) {
+        const t = CFG.tiers[k];
+        h += '<div class="srow"><span>' + esc(t.label) + '</span><span class="d">' + Math.round(t.pct * 100) + "% off, durability " + t.dur + '</span><button class="rb" data-a="equip:armor:' + k + '"' + (p.armor === k ? " disabled>Worn" : ">Wear") + "</button></div>";
+      }
+      const lk2 = p.look || {};
+      h += '<div class="sec">Look</div>' + lookSelect("head", "Head", lk2.head) + lookSelect("body", "Body", lk2.body) + lookSelect("liv", "Livery", lk2.liv) + lookSelect("metal", "Metal", lk2.metal);
+      return h + '<p class="d">Buy more at the Smith. A change takes effect in camp and goes with you on the next run.</p>' + msg();
+    }
+    const lookSelect = (k, lab, cur) => {
+      const o = env2.lookOptions ? env2.lookOptions() : {};
+      return '<div class="srow"><span>' + lab + '</span><select class="rsel" data-c="' + k + '">' + (o[k] || [{ v: "", l: "From armor" }]).map((x) => '<option value="' + esc(x.v) + '"' + ((cur || "") === x.v ? " selected" : "") + ">" + esc(x.l) + "</option>").join("") + "</select><span></span></div>";
+    };
+    let draft = null;
+    function createPanel() {
+      draft = draft || { name: profile.name === "Baron" ? "" : profile.name, head: "", body: "", liv: "", metal: "" };
+      const sel = (k, lab) => lookSelect(k, lab, draft[k]);
+      return '<div class="rhead"><span>Create your fighter</span></div><div class="srow"><span>Name</span><input class="rsel" data-c="name" maxlength="16" value="' + esc(draft.name) + '" placeholder="Your name"><span></span></div>' + sel("head", "Head") + sel("body", "Body") + sel("liv", "Livery") + sel("metal", "Metal") + '<p class="d">Your fighter is shown in camp as you change it. You can change the look later on the Equipment screen (I).</p>' + msg() + '<div class="btnrow"><button class="rb go" data-a="create">Begin</button></div>';
+    }
     function votePanel() {
-      return '<div class="rhead"><span>Wave ' + run.wave + ' cleared</span></div><div class="big">Leave with <b>' + run.leavePay() + ' G</b>?</div><p class="d">That is ' + run.gold + " gold earned" + (stageOf(run.wave) > 1 ? ", plus a deep-run bonus" : "") + '. Press on and the next stage pays more, but falling loses it all.</p><div class="btnrow"><button class="rb go" data-a="vote:leave">Leave</button><button class="rb" data-a="vote:stay">Press on</button></div>';
+      const ms2 = partyOf(), me = run.me, mine = me.vote, left = Math.ceil(run.voteIn != null && run.isGuest ? run.voteIn : Math.max(0, run.voteAt - live.t));
+      return '<div class="rhead"><span>Wave ' + run.wave + ' cleared</span><span class="d">' + left + 's</span></div><div class="big">Leave with <b>' + run.leavePay() + ` G</b>?</div><p class="d">Press on and the next stage pays more, but if everyone falls the run's gold is lost. Most votes decide; a tie, or no answer, presses on.</p>` + (ms2.length > 1 ? ms2.map((m) => '<div class="srow"><span>' + esc(m.name) + '</span><span class="d">' + (m.vote === "leave" ? "leave" : m.vote === "stay" ? "press on" : "deciding...") + "</span><span></span></div>").join("") : "") + (mine ? '<p class="d">You voted to ' + (mine === "leave" ? "leave" : "press on") + ". Waiting for the others.</p>" : "") + '<div class="btnrow"><button class="rb go" data-a="vote:leave">Leave</button><button class="rb" data-a="vote:stay">Press on</button></div>';
     }
     function resultPanel() {
       const r = run.result;
       if (!r) return "";
-      return '<div class="rhead"><span>' + (r.kind === "dead" ? "You fell" : "Back from the field") + '</span></div><div class="big">Wave ' + r.wave + '</div><div class="sum">Kills ' + r.kills + " \xB7 XP " + r.xp + (r.levels ? " \xB7 Levels +" + r.levels : "") + "</div>" + (r.kind === "dead" ? '<div class="big bad">Lost ' + r.lost + ' G</div><p class="d">Gold from this run is gone. Gear, levels, skills and hirelings are safe.</p>' : '<div class="big">+' + r.gold + " G</div>") + '<div class="btnrow"><button class="rb go" data-a="camp">Return to camp</button></div>';
+      return '<div class="rhead"><span>' + (r.kind === "dead" ? "You fell" : "Back from the field") + '</span></div><div class="big">Wave ' + r.wave + '</div><div class="sum">Kills ' + r.kills + " \xB7 XP " + r.xp + (r.levels ? " \xB7 Levels +" + r.levels : "") + "</div>" + (r.kind === "dead" ? '<div class="big bad">Lost ' + r.lost + ' G</div><p class="d">Gold from this run is gone. Gear, levels, skills and hirelings are safe.</p>' : '<div class="big">+' + r.gold + " G</div>") + '<div class="btnrow"><button class="rb go" data-a="camp">' + (run.me.acked ? "Waiting for the others..." : "Return to camp") + "</button></div>";
     }
-    const PANELS = { stats: statsPanel, shop: shopPanel, style: stylePanel, hire: hirePanel, cart: cartPanel, vote: votePanel, result: resultPanel };
+    const PANELS = { stats: statsPanel, shop: shopPanel, style: stylePanel, hire: hirePanel, cart: cartPanel, vote: votePanel, result: resultPanel, equip: equipPanel, create: createPanel };
     function render() {
       if (!ui.modal) {
         ov.innerHTML = "";
         return;
       }
-      ov.innerHTML = '<div class="rback"><div class="ff rpanel p-' + ui.modal + '">' + PANELS[ui.modal]() + "</div></div>";
+      ov.innerHTML = '<div class="rback' + (ui.modal === "create" ? " r-create" : "") + '"><div class="ff rpanel p-' + ui.modal + '">' + PANELS[ui.modal]() + "</div></div>";
     }
+    const applyLook = (lk2) => {
+      const L = lk2 || profile.look || {};
+      for (const [id, k] of [["lkhead", "head"], ["lkbody", "body"], ["lkliv", "liv"], ["lkmetal", "metal"]]) {
+        const el2 = $(id);
+        if (el2 && [...el2.options].some((o) => o.value === (L[k] || ""))) el2.value = L[k] || "";
+      }
+    };
     const rebuild = () => {
+      applyLook();
       env2.clearKeys();
       run.applyBuild(false);
       applyCmd(live, { t: "set", inv: true });
@@ -19745,7 +20147,28 @@ void main(){
       env2.readLook();
       save();
     };
+    const onC = (ev, live2) => {
+      const k = ev.target.dataset && ev.target.dataset.c;
+      if (!k) return false;
+      if (ui.modal === "create") {
+        draft[k] = ev.target.value;
+        if (k !== "name") {
+          applyLook(draft);
+          env2.readLook();
+          const q = live.player;
+          q.look = { head: draft.head, body: draft.body, liv: draft.liv, metal: draft.metal };
+        }
+      } else if (k !== "name") {
+        profile.look = Object.assign({ head: "", body: "", liv: "", metal: "" }, profile.look, { [k]: ev.target.value });
+        rebuild();
+      }
+      return true;
+    };
+    ov.addEventListener("input", (ev) => {
+      if (ev.target.dataset && ev.target.dataset.c === "name") draft.name = ev.target.value;
+    });
     ov.addEventListener("change", (ev) => {
+      if (onC(ev)) return;
       const f = ev.target.dataset && ev.target.dataset.f;
       if (!f) return;
       const [k, x] = f.split(":");
@@ -19806,23 +20229,41 @@ void main(){
         run.enterCamp();
         rebuild();
         note = "Save deleted.";
-      } else if (a === "depart") {
+      } else if (a === "create") {
+        if (!draft) return;
+        profile.name = (draft.name || "").trim().slice(0, 16) || "Baron";
+        profile.look = { head: draft.head, body: draft.body, liv: draft.liv, metal: draft.metal };
+        profile.created = true;
+        draft = null;
+        run.me.name = profile.name;
+        live.player.x = 330;
+        rebuild();
         close();
+        return;
+      } else if (a === "unready") {
+        run.unready(run.me.pid);
+      } else if (a === "depart") {
         save();
+        const multi = partyOf().length > 1 || run.isGuest;
         run.depart(x);
+        if (multi && run.phase === "camp") {
+          note = run.atCart() ? "Ready. Waiting for the others." : "Stand at the cart first.";
+          render();
+          return;
+        }
+        close();
         env2.readLook();
         return;
       } else if (a === "vote") {
         run.vote(x === "leave");
-        if (x === "leave") {
-          save();
-          open("result");
-        } else close();
+        render();
         return;
       } else if (a === "camp") {
         run.returnToCamp();
-        rebuild();
-        close();
+        if (run.phase === "camp" || !partyOf().length) {
+          rebuild();
+          close();
+        } else render();
         return;
       }
       ui.confirmReset = a === "reset" ? ui.confirmReset : false;
@@ -19836,6 +20277,10 @@ void main(){
       run.enterCamp();
       rebuild();
       close();
+      if (!profile.created) {
+        live.player.x = 150;
+        open("create");
+      }
     };
     ui.leave = () => {
       ui.active = false;
@@ -19850,16 +20295,28 @@ void main(){
       env2.clearKeys();
       env2.afterLeave();
     };
-    let wasPhase = "camp";
+    let refT = 0;
+    ui.afterResult = () => {
+      save();
+    };
     ui.update = (dt) => {
       run.update(dt);
       if (run.phase !== wasPhase) {
+        const was = wasPhase;
+        wasPhase = run.phase;
         if (run.phase === "vote") open("vote");
-        else if (run.phase === "dead") {
+        else if (run.phase === "dead" || run.phase === "left") {
           save();
           open("result");
-        } else if (run.phase === "camp" && wasPhase !== "camp") save();
-        wasPhase = run.phase;
+        } else if (run.phase === "camp" && was !== "camp") {
+          save();
+          rebuild();
+          close();
+        } else if (run.phase === "wave" && (ui.modal === "cart" || ui.modal === "vote")) close();
+      }
+      if (ui.modal && ["cart", "vote", "result"].includes(ui.modal) && (refT += dt) > 0.25) {
+        refT = 0;
+        render();
       }
     };
     const near = () => {
@@ -19870,7 +20327,11 @@ void main(){
     ui.key = (code, act) => {
       if (!ui.active) return false;
       if (ui.modal) {
-        if (code === "Escape" && ui.modal !== "vote" && ui.modal !== "result") close();
+        if (code === "Escape" && ui.modal !== "vote" && ui.modal !== "result" && ui.modal !== "create") close();
+        return true;
+      }
+      if (code === "KeyI" && run.phase === "camp") {
+        open("equip");
         return true;
       }
       if (act === "use" && run.phase === "camp") {
@@ -19965,9 +20426,13 @@ void main(){
         if (s) {
           txt(c, "T", 134, H - 20, "#ffe27a", 12);
           txt(c, s.name + ": " + s.hint, 152, H - 20, "#fff", 10);
-        } else txt(c, "W A S D walk \xB7 Walk up to a sign and press T \xB7 The cart starts a run", W2 / 2, H - 20, "#cfe", 9, "center");
+        } else txt(c, "W A S D walk \xB7 Sign + T \xB7 I equipment \xB7 The cart starts a run", W2 / 2, H - 20, "#cfe", 9, "center");
       } else {
-        const rows = [{ n: profile.name, hp: p.hp, max: p.maxHp, st: p.stamina, smax: p.staminaMax, lv: profile.level }].concat(live.allies.map((a) => ({ n: a.name.split(" ")[0], hp: a.hp, max: a.maxHp, ally: true })));
+        const others = live.players.filter((q) => q !== p).map((q) => {
+          const m = partyOf().find((x) => x.pid === q.pid);
+          return { n: (q.name || "Ally").slice(0, 9), hp: Math.max(0, q.hp), max: q.maxHp, lv: m && m.level, ally: true };
+        });
+        const rows = [{ n: profile.name, hp: p.hp, max: p.maxHp, st: p.stamina, smax: p.staminaMax, lv: profile.level }].concat(others).concat(live.allies.map((a) => ({ n: a.name.split(" ")[0], hp: a.hp, max: a.maxHp, ally: true })));
         const rh2 = 24, hh2 = 10 + rows.length * rh2;
         win(c, 6, H - hh2 - 6, 218, hh2);
         rows.forEach((r, i15) => {
@@ -29678,8 +30143,271 @@ void main(){
     return d;
   }
 
+  // game/party.js
+  var r1 = (v2) => Math.round(v2 * 10) / 10;
+  var r2 = (v2) => Math.round(v2 * 100) / 100;
+  var pickR = (o, keys, r) => {
+    const out = {};
+    for (const k of keys) {
+      const v2 = o[k];
+      out[k] = typeof v2 === "number" ? r ? r(v2) : v2 : v2;
+    }
+    return out;
+  };
+  var P_KEYS = ["pid", "name", "look", "armorKey", "roleStyles", "weapon", "x", "y", "z", "face", "hp", "maxHp", "stamina", "staminaMax", "moving", "walkT", "flash", "hurt", "blocking", "blockT", "stunT", "clashT", "clashMax", "parryT", "shotT", "air", "jumpT", "chain", "move", "inv", "dex"];
+  var SW_KEYS = ["t", "dur", "dur0", "hitAt", "extra", "move", "target", "hit", "kind", "style", "whiff", "mult"];
+  var GR_KEYS = ["eId", "phase", "t", "dur", "hit", "strikes", "holdT"];
+  var E_KEYS = ["id", "x", "y", "z", "face", "state", "hp", "maxHp", "dur", "durMax", "broken", "wounded", "flee", "tier", "kind", "lookSeed", "moving", "walkT", "flash", "hurt", "deathT", "dramatic", "stun", "down", "held", "clashT", "clashMax", "dummy", "chr", "san"];
+  var A_KEYS = ["id", "name", "x", "y", "z", "face", "hp", "maxHp", "tier", "weapon", "state", "deathT", "moving", "walkT", "flash", "hurt", "broken", "lookSeed", "owner"];
+  function packSnap(sim, run, tick, texts) {
+    return {
+      t: "snap",
+      n: tick,
+      time: r2(sim.t),
+      shake: r2(sim.shake || 0),
+      mode: sim.mode,
+      players: sim.players.map((q) => Object.assign(pickR(q, P_KEYS, r1), {
+        swing: q.swing ? pickR(q.swing, SW_KEYS, r2) : null,
+        grab: q.grab ? pickR(q.grab, GR_KEYS, r2) : null,
+        dash: q.dash ? { t: r2(q.dash.t), dx: q.dash.dx, dy: q.dash.dy } : null,
+        kindMoves: q.kindMoves && Object.keys(q.kindMoves).length ? q.kindMoves : void 0
+      })),
+      enemies: sim.enemies.map((e) => Object.assign(pickR(e, E_KEYS, r1), { atk: e.atk ? pickR(e.atk, ["t", "dur", "hitAt", "heavy", "hit"], r2) : null, fly: e.fly ? { vx: r1(e.fly.vx || 0), vz: r1(e.fly.vz || 0), fr: !!e.fly.fr } : null })),
+      allies: sim.allies.map((a) => Object.assign(pickR(a, A_KEYS, r1), { atk: a.atk ? { t: r2(a.atk.t) } : null })),
+      proj: sim.proj.map((q) => ({ x: r1(q.x), y: r1(q.y), vx: r1(q.vx), vy: r1(q.vy) })),
+      texts: texts || [],
+      run: {
+        phase: run.phase,
+        wave: run.wave,
+        left: run.queue.length + run.alive(),
+        banner: run.banner,
+        msgs: run.msgs.slice(-3),
+        voteIn: run.phase === "vote" ? Math.max(0, r1(run.voteAt - sim.t)) : 0,
+        runN: run.runN || 0,
+        members: run.members.map((m) => ({ pid: m.pid, name: m.name, level: m.build.level, gold: m.gold, rank: r1(m.rank.score), tier: run.tierOf(m), ready: m.ready, vote: m.vote, down: m.down, acked: m.acked, atCart: run.atCart(m), pay: run.leavePayOf(m) }))
+      }
+    };
+  }
+  function applySnap(sim, m, myPid) {
+    sim.t = m.time;
+    sim.shake = m.shake;
+    sim.mode = m.mode;
+    const old = new Map(sim.players.map((q) => [q.pid, q]));
+    sim.players = m.players.map((n) => {
+      const q = old.get(n.pid) || sim.mkPlayer(0, n.pid);
+      Object.assign(q, n);
+      if (!n.swing) q.swing = null;
+      if (!n.grab) q.grab = null;
+      if (!n.dash) q.dash = null;
+      if (!n.kindMoves) q.kindMoves = {};
+      return q;
+    });
+    sim.players.forEach((q, i15) => q.i = i15);
+    sim.player = sim.players.find((q) => q.pid === myPid) || sim.players[0];
+    const oe = new Map(sim.enemies.map((e) => [e.id, e]));
+    sim.enemies = m.enemies.map((n) => Object.assign(oe.get(n.id) || {}, n));
+    const oa2 = new Map(sim.allies.map((a) => [a.id, a]));
+    sim.allies = m.allies.map((n) => Object.assign(oa2.get(n.id) || {}, n));
+    sim.proj = m.proj;
+    for (const t of m.texts) sim.texts.push(Object.assign({ life: 0.9, max: 0.9, size: 10 }, t));
+  }
+  var GuestRun = class {
+    constructor(sim, profile, send, hooks) {
+      this.sim = sim;
+      this.p = profile;
+      this.send = send;
+      this.hooks = hooks || {};
+      this.seed = 1;
+      this.phase = "camp";
+      this.wave = 0;
+      this.members = [];
+      this.banner = null;
+      this.msgs = [];
+      this.view = null;
+      this.queue = { length: 0 };
+      this._alive = 0;
+      this.appliedRun = 0;
+      this.voteIn = 0;
+      this.isGuest = true;
+      this.me = { pid: null, gold: 0, rank: { score: 0 }, result: null, ready: false, vote: null, down: false, pay: 0 };
+    }
+    get gold() {
+      return this.me.gold;
+    }
+    get rank() {
+      return this.me.rank;
+    }
+    get result() {
+      return this.me.result;
+    }
+    get kills() {
+      return 0;
+    }
+    get levelUps() {
+      return 0;
+    }
+    get tier() {
+      return this.me.tier || 0;
+    }
+    get rankName() {
+      return RUNCFG.rank.names[this.tier];
+    }
+    alive() {
+      return this._alive;
+    }
+    leavePay() {
+      return this.me.pay || 0;
+    }
+    say() {
+    }
+    atCart(m) {
+      return !!(m || this.me).atCart;
+    }
+    applyBuild() {
+      this.send({ t: "build", build: buildOf(this.p) });
+    }
+    // camp edits (gear, skills, styles) go to the host
+    enterCamp() {
+    }
+    depart(map) {
+      this.send({ t: "ready", map: map || "fields" });
+      return false;
+    }
+    unready() {
+      this.send({ t: "unready" });
+    }
+    vote(leave) {
+      this.send({ t: "vote", leave: !!leave });
+      return true;
+    }
+    returnToCamp() {
+      this.send({ t: "ack" });
+    }
+    update() {
+    }
+    onSnap(m, myPid) {
+      this.me.pid = myPid;
+      const r = m.run, was = this.phase;
+      this.phase = r.phase;
+      this.wave = r.wave;
+      this.banner = r.banner;
+      this.msgs = r.msgs;
+      this.members = r.members;
+      this.queue = { length: r.left };
+      this._alive = 0;
+      this.voteIn = r.voteIn;
+      const mine = r.members.find((x) => x.pid === myPid);
+      if (mine) {
+        const res = this.me.result;
+        Object.assign(this.me, mine);
+        this.me.rank = { score: mine.rank };
+        this.me.result = res;
+      }
+      if (this.phase === "camp" || this.phase === "wave") this.me.result = null;
+      if (this.hooks.phase && was !== this.phase) this.hooks.phase(this.phase, was);
+    }
+    onResult(res) {
+      if (!res || res.runN === this.appliedRun) return;
+      this.appliedRun = res.runN;
+      this.me.result = res;
+      const out = applyRemoteResult(this.p, res);
+      res.levels = out.levels;
+      if (this.hooks.result) this.hooks.result(res);
+    }
+  };
+  var PartyHost = class {
+    constructor({ sim, run, send, selfId }) {
+      this.sim = sim;
+      this.run = run;
+      this.send = send;
+      this.peers = /* @__PURE__ */ new Map();
+      this.tick = 0;
+      this.id = selfId;
+      run.setPid(selfId);
+      run.runN = run.runN || 0;
+      sim.textOut = [];
+      this.lastPhase = run.phase;
+      this.resultsSent = 0;
+      this.sentRun = 0;
+    }
+    onJoin(id) {
+      this.peers.set(id, { id, last: 0 });
+    }
+    // the guest's build arrives next as a 'join' message
+    onLeave(id) {
+      this.peers.delete(id);
+      this.run.removeMember(id);
+    }
+    onMsg(from, m) {
+      const run = this.run, sim = this.sim;
+      switch (m.t) {
+        case "join":
+        case "build":
+          if (m.build && typeof m.build === "object") {
+            const b = clean(m.build);
+            if (run.byPid(from)) run.setBuild(from, b);
+            else run.addMember(from, b, null);
+          }
+          break;
+        case "in": {
+          const i15 = sim.players.findIndex((q) => q.pid === from);
+          if (i15 >= 0 && m.i && typeof m.i === "object") {
+            const c = m.i, n = (v2) => Math.max(-1, Math.min(1, +v2 || 0)), a = (v2) => v2 == null ? null : isFinite(+v2) ? +v2 : null;
+            applyCmd(sim, { t: "input", p: i15, x: n(c.x), y: n(c.y), act: c.act, g: c.g, fin: typeof c.fin === "string" ? c.fin.slice(0, 20) : "", heavy: c.heavy, block: c.block, dash: c.dash, fire: c.fire, jump: c.jump, ax: a(c.ax), ay: a(c.ay) });
+          }
+          break;
+        }
+        case "ready":
+          run.readyUp(from, typeof m.map === "string" ? m.map.slice(0, 20) : "fields");
+          break;
+        case "unready":
+          run.unready(from);
+          break;
+        case "vote":
+          run.castVote(from, !!m.leave);
+          break;
+        case "ack":
+          run.ack(from);
+          break;
+      }
+    }
+    /* call once per sim step after run.update(); sends snapshots at 20 Hz and each guest's result once */
+    afterStep() {
+      const run = this.run, sim = this.sim;
+      this.tick++;
+      if (run.phase === "wave" && this.lastPhase === "camp") run.runN++;
+      this.lastPhase = run.phase;
+      if ((run.phase === "dead" || run.phase === "left") && this.sentRun !== run.runN) {
+        this.sentRun = run.runN;
+        for (const m of run.members) if (m !== run.me && m.result && m.result.kind !== "wait") this.send(m.pid, { t: "result", res: Object.assign({ runN: run.runN }, m.result) });
+      }
+      if (this.tick % 3) return;
+      const texts = sim.textOut.splice(0).map((t) => ({ x: r1(t.x), y: r1(t.y), text: t.text, col: t.col, size: t.size }));
+      const snap = packSnap(sim, run, this.tick, texts);
+      for (const id of this.peers.keys()) this.send(id, snap);
+    }
+  };
+  function clean(b) {
+    const str = (v2, n) => String(v2 == null ? "" : v2).slice(0, n), num = (v2, lo2, hi, d2) => {
+      v2 = +v2;
+      return isFinite(v2) ? Math.max(lo2, Math.min(hi, v2)) : d2;
+    };
+    const d = b.d || {};
+    return {
+      name: str(b.name, 16) || "Player",
+      look: b.look && typeof b.look === "object" ? { head: str(b.look.head, 20), body: str(b.look.body, 20), liv: str(b.look.liv, 20), metal: str(b.look.metal, 20) } : null,
+      level: num(b.level, 1, 99, 1),
+      weapon: str(b.weapon, 20),
+      armor: str(b.armor, 20),
+      skills: (Array.isArray(b.skills) ? b.skills : []).slice(0, 5).map((x) => str(x, 12)),
+      d: { dex: num(d.dex, 5, 99, 5), maxHp: num(d.maxHp, 1, 400, 30), staminaMax: num(d.staminaMax, 10, 500, 100), dmgMult: num(d.dmgMult, 0.1, 5, 1), spdMult: num(d.spdMult, 0.5, 2, 1), regenMult: num(d.regenMult, 0.5, 3, 1) },
+      styles: { chain: (b.styles && Array.isArray(b.styles.chain) ? b.styles.chain : []).slice(0, 8).map((x) => str(x, 40)), roles: Object.fromEntries(["heavy", "dash", "counter", "jump"].map((k) => [k, b.styles && b.styles.roles && b.styles.roles[k] ? str(b.styles.roles[k], 40) : null])) },
+      hirelings: (Array.isArray(b.hirelings) ? b.hirelings : []).slice(0, 3).map((h) => ({ hid: num(h.hid, 0, 1e6, 0), name: str(h.name, 16), tier: str(h.tier, 12), weapon: str(h.weapon, 20), hp: num(h.hp, 1, 200, 18), dmgMult: num(h.dmgMult, 0.1, 5, 1) }))
+    };
+  }
+
   // game/app.js
-  var DISCORD_CLIENT_ID = true ? "1575635299189653668" : "";
+  var DISCORD_CLIENT_ID = true ? "" : "";
   var BASE_STYLES = [{ id: "cut", name: "Cut", hands: 0 }, { id: "chop", name: "Chop", hands: 0 }, { id: "attack2", name: "Horizontal sweep", hands: 0 }, { id: "lunge", name: "Lunge", hands: 2 }];
   {
     let startRec = function() {
@@ -29926,37 +30654,41 @@ void main(){
         const x02 = p.face > 0 ? p.x : p.x - (w.reach + 8);
         ctx.fillRect(x02, p.y - CFG.laneTol, w.reach + 8, CFG.laneTol * 2);
       }
-      const list = [{ kind: "p", y: p.y }].concat(sim.enemies.map((e) => ({ kind: "e", e, y: e.y - (e.state === "dying" ? 0.5 : 0) }))).concat(sim.allies.map((a) => ({ kind: "a", a, y: a.y - (a.state === "dying" ? 0.5 : 0) })));
+      const list = sim.players.map((q) => ({ kind: "p", q, y: q.y })).concat(sim.enemies.map((e) => ({ kind: "e", e, y: e.y - (e.state === "dying" ? 0.5 : 0) }))).concat(sim.allies.map((a) => ({ kind: "a", a, y: a.y - (a.state === "dying" ? 0.5 : 0) })));
       list.sort((a, b) => a.y - b.y);
       const target = !p.swing ? sim.findTarget(w) : sim.enemies.find((e) => e.id === p.swing.target);
       for (const it of list) {
         if (it.kind === "p") {
+          const q = it.q, mine = q === p, lk2 = mine ? look : lookOf(q), qw = mine ? w : weaponOf(q);
+          if (q.hp <= 0 && !mine && sim.mode !== "arena") {
+            continue;
+          }
           drawFigure(Object.assign({
             role: "p",
-            x: p.x,
-            y: p.y,
-            z: p.z || 0,
-            face: p.face,
-            tier: look.tier,
-            pHead: look.head,
-            pBody: look.body,
-            pLiv: look.liv,
-            pMetal: look.metal,
+            x: q.x,
+            y: q.y,
+            z: q.z || 0,
+            face: q.face,
+            tier: lk2.tier,
+            pHead: lk2.head,
+            pBody: lk2.body,
+            pLiv: lk2.liv,
+            pMetal: lk2.metal,
             broken: false,
-            two: w.twoHanded,
-            wkind: w.kind || "sword",
+            two: qw.twoHanded,
+            wkind: qw.kind || "sword",
             shield: false,
-            swing: p.swing,
-            moving: p.moving,
-            walkT: p.walkT,
+            swing: q.swing,
+            moving: q.moving,
+            walkT: q.walkT,
             t: sim.t,
-            flash: p.flash,
+            flash: q.flash,
             flashMax: 0.2,
-            hurt: p.hurt,
+            hurt: q.hurt,
             hurtMax: 0.6,
-            st: playerState(p),
-            style: p.swing && p.swing.kind && p.swing.kind !== "light" ? roleStyle[p.swing.kind] || { heavy: "chop", dash: w.twoHanded ? "lunge" : "cut", counter: "cut", jump: "chop" }[p.swing.kind] : look.style
-          }, model3d_default.grabAtt(sim, w.twoHanded)));
+            st: playerState(q),
+            style: q.swing && q.swing.kind && q.swing.kind !== "light" ? (mine ? roleStyle : q.roleStyles || {})[q.swing.kind] || { heavy: "chop", dash: qw.twoHanded ? "lunge" : "cut", counter: "cut", jump: "chop" }[q.swing.kind] : mine ? look.style : q.swing && q.swing.style || "cut"
+          }, model3d_default.grabAtt(sim, qw.twoHanded)));
         } else if (it.kind === "a") {
           const a = it.a, aw = CFG.weapons[a.weapon], two = CFG.weaponClasses[aw.cls].twoHanded, L = a.look || model3d_default.enemyLook(a.tier, a.lookSeed);
           const swing = a.atk ? { t: a.atk.t, dur: 1, dur0: 1, hitAt: 0.45, extra: 0 } : null;
@@ -30118,6 +30850,13 @@ void main(){
         label(t.text, t.x, t.y, t.col, t.size + 2);
       }
       ctx.globalAlpha = 1;
+      for (const q of sim.players) if (q !== p && (q.hp > 0 || sim.mode === "arena")) {
+        label(q.name || "Ally", q.x, q.y - 88, "#9fd3ff", 10);
+        ctx.fillStyle = "#14101c";
+        ctx.fillRect(q.x - 15, q.y - 84, 30, 5);
+        ctx.fillStyle = "#6fd07a";
+        ctx.fillRect(q.x - 14, q.y - 83, Math.round(28 * Math.max(0, q.hp) / q.maxHp), 3);
+      }
       label("YOU", p.x, p.y - 88, "#f4ecd8", 10);
       ctx.fillStyle = "#14101c";
       ctx.fillRect(p.x - 15, p.y - 84, 30, 5);
@@ -30275,39 +31014,82 @@ void main(){
         net.sentMoves.add(id);
       }
       send({ t: "set", weapon: p.weapon, dex: p.dex, move: p.move });
+    }, bakeBuild = function(m, i15) {
+      if (m.p) return;
+      const b = m.build, aw = CFG.weapons[b.weapon];
+      if (!aw) return;
+      const two = CFG.weaponClasses[aw.cls].twoHanded, wk = aw.kind || "sword", rs2 = resolveStyles(b.styles, BASE_STYLES.concat(libStyles), two ? 2 : 1);
+      const bk = (st) => {
+        const k = model3d_default.moveKey(st, two), id = k + "|" + wk;
+        if (!live.moves[id]) {
+          const mv = model3d_default.bakeMove(k, { two, wkind: wk });
+          if (mv) cmd({ t: "move", id, data: mv });
+        }
+        return live.moves[id] ? id : null;
+      };
+      cmd({ t: "set", p: i15, chainStyles: rs2.chain.map((id) => ({ style: id, move: bk(id) })), kindMoves: { heavy: bk(rs2.roles.heavy || "chop"), dash: bk(rs2.roles.dash || (two ? "lunge" : "cut")), counter: bk(rs2.roles.counter || "cut"), jump: bk(rs2.roles.jump || "chop") }, move: bk("cut") });
+    }, partyEnd = function(why) {
+      if (!party) return;
+      const was = party;
+      party = null;
+      live.textOut = null;
+      if (was.g && was.prev) {
+        runui.setRun(was.prev);
+        runui.run.enterCamp();
+      } else if (was.h) for (const m of runui.run.members.slice()) runui.run.removeMember(m.pid);
+      $("netgo").textContent = "Connect";
+      $("netmsg").textContent = why || "Offline: this page runs the fight itself.";
     }, netConnect = function() {
-      if (net) {
-        net.ws.close();
+      if (party) {
+        party.ws.close();
         return;
       }
-      const base = $("netbase").value.trim().replace(/\/+$/, ""), room = ($("netroom").value.trim() || "test").replace(/[^\w-]/g, "").slice(0, 40);
+      const base = $("netbase").value.trim().replace(/\/+$/, ""), room = roomName();
       let ws2;
       try {
-        ws2 = new WebSocket(base.replace(/^http/, "ws") + "/room/" + room);
+        ws2 = new WebSocket(base.replace(/^http/, "ws") + "/party/" + room);
       } catch (e) {
         $("netmsg").textContent = "Bad server address.";
         return;
       }
-      net = { ws: ws2, role: null, sentMoves: /* @__PURE__ */ new Set(), lastIn: "" };
+      const out = (m) => {
+        if (ws2.readyState === 1) ws2.send(JSON.stringify(m));
+      };
+      party = { ws: ws2, id: null, h: null, g: null, prev: null, lastIn: "", inAt: 0 };
       $("netgo").textContent = "Disconnect";
       $("netmsg").textContent = "Connecting...";
       ws2.onmessage = (ev) => {
-        const m = JSON.parse(ev.data);
+        let m;
+        try {
+          m = JSON.parse(ev.data);
+        } catch (e) {
+          return;
+        }
+        const P3 = party;
+        if (!P3) return;
         if (m.t === "hello") {
-          net.role = m.role;
-          sim.enemies = [];
-          sim.texts = [];
-          sim.fx = [];
-          $("netmsg").textContent = "Room " + room + ": you are the " + m.role + ".";
-          netSync();
-        } else if (m.t === "state") applySnapshot(sim, m);
-        else if (m.t === "error") $("netmsg").textContent = "Server: " + m.msg;
+          P3.id = m.id;
+          if (m.host) {
+            runui.run.hooks.build = bakeBuild;
+            P3.h = new PartyHost({ sim: live, run: runui.run, send: (to2, x) => out(Object.assign({ to: to2 }, x)), selfId: m.id });
+            $("netmsg").textContent = "Room " + room + ": you are hosting. Others join the same room.";
+          } else {
+            P3.prev = runui.run;
+            P3.g = new GuestRun(live, runui.profile, out, { result: () => runui.afterResult() });
+            P3.g.me.pid = m.id;
+            runui.setRun(P3.g);
+            out({ t: "join", build: buildOf(runui.profile) });
+            $("netmsg").textContent = "Room " + room + ": you joined the host's camp.";
+          }
+        } else if (m.t === "peer-join" && P3.h) P3.h.onJoin(m.id);
+        else if (m.t === "peer-leave" && P3.h) P3.h.onLeave(m.id);
+        else if (P3.h && m.from) P3.h.onMsg(m.from, m);
+        else if (P3.g && m.t === "snap") {
+          applySnap(live, m, P3.id);
+          P3.g.onSnap(m, P3.id);
+        } else if (P3.g && m.t === "result") P3.g.onResult(m.res);
       };
-      ws2.onclose = () => {
-        net = null;
-        $("netgo").textContent = "Connect";
-        $("netmsg").textContent = "Offline: this page runs the fight itself.";
-      };
+      ws2.onclose = () => partyEnd(party && party.g ? "The host left. Back in your own camp." : null);
       ws2.onerror = () => {
         $("netmsg").textContent = "Could not reach the server.";
       };
@@ -30351,14 +31133,18 @@ void main(){
         fpsN = 0;
         fpsT = now;
       }
-      if (net) {
-        const inp = curInput(), k = inp.x + "," + inp.y + "," + inp.act + "," + inp.g + "," + inp.fin + "," + inp.heavy + "," + inp.block + "," + inp.dash + "," + inp.fire + "," + inp.jump;
-        if (k !== net.lastIn) {
-          net.lastIn = k;
-          send(Object.assign({ t: "input" }, inp));
+      if (party && party.g) {
+        const inp = curInput(), k = JSON.stringify(inp);
+        if (party.ws.readyState === 1 && (k !== party.lastIn || now - party.inAt > 200)) {
+          party.lastIn = k;
+          party.inAt = now;
+          party.ws.send(JSON.stringify({ t: "in", i: inp }));
         }
         for (const t of sim.texts) t.life -= real;
         sim.texts = sim.texts.filter((t) => t.life > 0);
+        for (const f of sim.fx) f.life -= real;
+        sim.fx = sim.fx.filter((f) => f.life > 0);
+        if (runui && runui.active) runui.update(real);
       } else if (pb) {
         pb.acc += real * pb.speed;
         while (pb.acc >= STEP && pb.sim.stepN < pb.end) {
@@ -30380,6 +31166,7 @@ void main(){
           live.step(STEP);
           acc -= STEP;
           if (runui && runui.active) runui.update(STEP);
+          if (party && party.h) party.h.afterStep();
           if (rec && live.stepN % 300 === 0) {
             snaps.push({ step: live.stepN, state: live.saveState(), cfg: clone2(live.cfg), moves: Object.assign({}, live.moves), at: rec.cmds.length });
             if (snaps.length > 8) snaps.shift();
@@ -30472,6 +31259,7 @@ void main(){
         live,
         FONT,
         readLook,
+        lookOptions: () => Object.fromEntries([["head", "lkhead"], ["body", "lkbody"], ["liv", "lkliv"], ["metal", "lkmetal"]].map(([k, id]) => [k, [...$(id).options].map((o) => ({ v: o.value, l: o.textContent }))])),
         styles: () => BASE_STYLES.concat(libStyles),
         hands: () => live.weaponInfo().twoHanded ? 2 : 1,
         stopRec: () => {
@@ -30494,6 +31282,7 @@ void main(){
         $("netroom").value = d.roomName;
         $("netbase").value = d.wsBase;
         sim.say("info", "Discord: signed in as " + d.name + ".");
+        if (!party) netConnect();
         setInterval(() => {
           const r = runui.run;
           d.setPresence(r.phase === "camp" ? "In camp" : r.phase === "dead" ? "Fell in the field" : "Wave " + r.wave, runui.profile.name + " \xB7 Lv " + runui.profile.level, performance.now() / 1e3);
@@ -30786,6 +31575,11 @@ void main(){
     $("resetp").addEventListener("click", () => cmd({ t: "resetp" }));
     $("pause").addEventListener("click", togglePause);
     let logSeen = -1, lastKey = "";
+    const lookOf = (q) => ({ tier: q.armorKey || "leather", head: q.look && q.look.head || "", body: q.look && q.look.body || "", liv: q.look && q.look.liv || "", metal: q.look && q.look.metal || "", style: "cut" });
+    const weaponOf = (q) => {
+      const aw = CFG.weapons[q.weapon] || CFG.weapons.longsword, c = CFG.weaponClasses[aw.cls];
+      return { twoHanded: c.twoHanded, kind: aw.kind, reach: c.reach };
+    };
     const LC = $("logo"), lg2 = LC.getContext("2d"), EC = $("elogo");
     const PALETTE = ["#d9b24a", "#e8e4d8", "#a82424", "#23468c", "#2f6b34", "#1c1c20", "#6b3f8f", "#c2602a", "#7fb0d9", "#8a6a45", "#5a5f68", "#f0d6a0"];
     let ltool = "draw", lcol = PALETTE[0], ldown = false, lsave = null;
@@ -30869,6 +31663,8 @@ void main(){
     const send = (m) => {
       if (net && net.ws.readyState === 1 && net.role === "player") net.ws.send(JSON.stringify(m));
     };
+    let party = null;
+    const roomName = () => ($("netroom").value.trim() || "test").replace(/[^\w-]/g, "").slice(0, 40);
     $("netgo").addEventListener("click", netConnect);
     setInterval(refreshKills, 500);
     $("rcam").addEventListener("click", () => {

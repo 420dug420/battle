@@ -5,6 +5,7 @@ import * as R from './run.js';
 const run = (s, secs) => { const n = Math.round(secs * 60); for (let i = 0; i < n; i++) s.step(1 / 60); };
 const mkRun = (seed = 4) => { const sim = new Sim(CFG, seed), p = R.newProfile('Test'), r = new R.Run(sim, p, seed); return { sim, p, r }; };
 const tick = (r, dt = 1 / 60) => { r.sim.step(dt); r.update(dt); };
+const go = (r, map) => { r.sim.players[0].x = R.RUNCFG.cart.x; return r.depart(map); };
 const killAll = r => { for (const e of r.sim.enemies) if (e.state === 'alive') r.sim.applyHit(e, 999, { kind: 'light', mult: 1, pierce: 0 }); };
 
 // 1. leveling
@@ -58,7 +59,7 @@ const killAll = r => { for (const e of r.sim.enemies) if (e.state === 'alive') r
 {
   const { sim, p, r } = mkRun(); p.hirelings.push({ hid: 1, name: 'Bram', tier: 'leather', weapon: 'longsword', hp: 18, level: 1, xp: 0 }); p.nextHid = 2;
   assert.strictEqual(r.phase, 'camp'); assert(sim.enemies.some(e => e.dummy), 'a practice dummy stands in camp');
-  assert(r.depart(), 'depart'); assert.strictEqual(r.phase, 'wave'); assert.strictEqual(sim.allies.length, 1, 'the hireling comes along'); assert.strictEqual(p.runs, 1);
+  assert(go(r), 'depart'); assert.strictEqual(r.phase, 'wave'); assert.strictEqual(sim.allies.length, 1, 'the hireling comes along'); assert.strictEqual(p.runs, 1);
   applyCmd(sim, { t: 'set', inv: true });
   let guard = 0; while (r.phase !== 'vote' && guard++ < 60 * 400) { killAll(r); tick(r); }
   assert.strictEqual(r.phase, 'vote', 'a vote opens after wave 5'); assert.strictEqual(r.wave, 5);
@@ -66,23 +67,23 @@ const killAll = r => { for (const e of r.sim.enemies) if (e.state === 'alive') r
   const g0 = p.gold, pay = r.leavePay(); assert(pay >= r.gold); assert(r.vote(true)); assert.strictEqual(p.gold, g0 + pay, 'leaving banks the gold'); assert.strictEqual(r.phase, 'left'); assert.strictEqual(p.best, 5);
   r.returnToCamp(); assert.strictEqual(r.phase, 'camp'); assert.strictEqual(sim.allies.length, 0);
   // the second trip: press on past the vote
-  r.depart(); applyCmd(sim, { t: 'set', inv: true }); guard = 0; while (r.phase !== 'vote' && guard++ < 60 * 400) { killAll(r); tick(r); } assert(r.vote(false)); assert.strictEqual(r.phase, 'between'); guard = 0; while (r.wave < 6 && guard++ < 600) tick(r); assert.strictEqual(r.wave, 6, 'wave 6 follows');
+  go(r); applyCmd(sim, { t: 'set', inv: true }); guard = 0; while (r.phase !== 'vote' && guard++ < 60 * 400) { killAll(r); tick(r); } assert(r.vote(false)); assert.strictEqual(r.phase, 'between'); guard = 0; while (r.wave < 6 && guard++ < 600) tick(r); assert.strictEqual(r.wave, 6, 'wave 6 follows');
   console.log('PASS run: waves, gold, xp, hirelings, exit vote, back to camp');
 }
 // 6. dying loses the run's gold and nothing else
 {
-  const { sim, p, r } = mkRun(); p.gold = 77; p.owned.weapons.push('axe'); r.depart(); r.gold = 50; const lvl = p.level;
+  const { sim, p, r } = mkRun(); p.gold = 77; p.owned.weapons.push('axe'); go(r); r.gold = 50; const lvl = p.level;
   applyCmd(sim, { t: 'set', hp: 0 }); tick(r); assert.strictEqual(r.phase, 'dead'); assert.strictEqual(r.result.lost, 50, 'the run gold is reported lost'); assert.strictEqual(r.gold, 0);
   assert.strictEqual(p.gold, 77, 'banked gold is safe'); assert(p.owned.weapons.includes('axe'), 'gear is safe'); assert(p.level >= lvl);
   r.returnToCamp(); assert.strictEqual(r.phase, 'camp'); assert.strictEqual(sim.player.hp, sim.player.maxHp, 'back in camp, healed');
   // a real death: an enemy swing finishes you and the player stays down
-  const m = mkRun(); m.r.depart(); applyCmd(m.sim, { t: 'set', hp: 1, inv: false }); const e = m.sim.spawn({ kind: 'soldier', ai: 'advance' }); e.x = m.sim.player.x + 20; e.y = m.sim.player.y; m.sim.enemyHitsPlayer(e);
+  const m = mkRun(); go(m.r); applyCmd(m.sim, { t: 'set', hp: 1, inv: false }); const e = m.sim.spawn({ kind: 'soldier', ai: 'advance' }); e.x = m.sim.player.x + 20; e.y = m.sim.player.y; m.sim.enemyHitsPlayer(e);
   assert(m.sim.player.hp <= 0, 'the player is down and not restored in a run'); tick(m.r); assert.strictEqual(m.r.phase, 'dead');
   console.log('PASS death: run gold lost, the rest kept');
 }
 // 7. style rank rewards variety and breaks on a hit
 {
-  const { sim, p, r } = mkRun(); r.depart(); applyCmd(sim, { t: 'set', inv: true });
+  const { sim, p, r } = mkRun(); go(r); applyCmd(sim, { t: 'set', inv: true });
   const feed = f => { sim.feed.push(f); r.update(0.001); };
   for (const m of ['light', 'heavy', 'dash', 'jump', 'light', 'heavy', 'dash', 'jump', 'counter', 'light']) feed({ t: 'hit', move: m }); const t1 = r.tier; assert(t1 >= 2, 'varied moves raise the rank (' + r.rankName + ')');
   const before = r.rank.score; for (let i = 0; i < 4; i++) feed({ t: 'hit', move: 'light' }); assert(r.rank.score < before, 'repeating one move lowers it');
@@ -118,9 +119,43 @@ const killAll = r => { for (const e of r.sim.enemies) if (e.state === 'alive') r
   const a = s.startSwing('light', s.weaponInfo()); const b0 = a.style; s.player.chain = 1; const b = s.startSwing('light', s.weaponInfo()); assert(b0 === 'cut' && b.style === 'chop', 'light swings follow the chain order');
   console.log('PASS styles and chain');
 }
+// 10. a party: everyone at the cart, join in progress, shared vote, downed fighters
+{
+  const { sim, p, r } = mkRun(5); const bob = R.newProfile('Bob'); const mb = r.addMember('bob', R.buildOf(bob), null);
+  assert.strictEqual(r.members.length, 2); assert.strictEqual(sim.players.length, 2);
+  const cart = R.RUNCFG.cart.x;
+  sim.players[0].x = cart; r.readyUp(r.me.pid); assert.strictEqual(r.phase, 'camp', 'one at the cart is not enough');
+  assert(!r.readyUp('bob'), 'a player away from the cart cannot ready up'); sim.players[1].x = cart + 10; assert(r.readyUp('bob') && r.phase === 'wave', 'both ready at the cart: the run starts');
+  assert(sim.players.every(q => !q.inv), 'both can be hurt in a run');
+  // walking away takes the ready back
+  const t = mkRun(6); t.r.addMember('bob', R.buildOf(R.newProfile('Bob'))); t.sim.players[0].x = cart; t.sim.players[1].x = cart; t.r.readyUp(t.r.me.pid); t.sim.players[0].x = 100; tick(t.r); assert(!t.r.me.ready, 'walking away unreadies');
+  // kills are paid to the one who made them
+  const g0 = r.me.gold, b0 = mb.gold; sim.feed.push({ t: 'kill', kind: 'soldier', pid: 'bob' }); tick(r); assert(mb.gold > b0 && r.me.gold === g0 && mb.kills === 1, 'the kill pays the striker only');
+  // join in progress
+  const cara = r.addMember('cara', R.buildOf(R.newProfile('Cara'))); assert(cara && sim.players.length === 3 && !sim.players[2].inv && sim.players[2].hp > 0, 'a late joiner enters the fight'); assert.strictEqual(r.phase, 'wave');
+  // one downed does not end the run; all downed does
+  sim.players[1].hp = 0; tick(r); assert(mb.down && r.phase === 'wave', 'one down, the run goes on');
+  sim.players[0].hp = 0; sim.players[2].hp = 0; tick(r); assert.strictEqual(r.phase, 'dead', 'everyone down ends it'); assert(mb.result.kind === 'dead' && r.me.result.kind === 'dead');
+  // after the result, everyone goes back to camp (all acknowledge)
+  r.ack('bob'); r.ack('cara'); assert.strictEqual(r.phase, 'dead'); r.ack(r.me.pid); assert.strictEqual(r.phase, 'camp', 'all acknowledged: back to camp');
+  // a downed player is revived when the wave is cleared
+  const u = mkRun(8); u.r.addMember('bob', R.buildOf(R.newProfile('Bob'))); u.sim.players[0].x = cart; u.sim.players[1].x = cart; u.r.readyUp(u.r.me.pid); u.r.readyUp('bob'); applyCmd(u.sim, { t: 'set', inv: true, p: 0 });
+  u.sim.players[1].hp = 0; let guard = 0; while (u.r.phase === 'wave' && guard++ < 60 * 100) { killAll(u.r); tick(u.r); } assert.notStrictEqual(u.r.phase, 'dead'); assert(u.sim.players[1].hp > 0 && !u.r.members[1].down, 'revived when the wave is cleared');
+  // the exit vote: a tie stays, a majority leaves; silence counts as staying
+  const v = mkRun(9); v.r.addMember('bob', R.buildOf(R.newProfile('Bob'))); v.r.addMember('cara', R.buildOf(R.newProfile('Cara')));
+  const toVote = () => { v.r.phase = 'vote'; v.r.wave = 5; v.r.voteAt = v.sim.t + 25; for (const m of v.r.members) { m.vote = null; m.gold = 40; } };
+  toVote(); v.r.castVote('bob', true); assert.strictEqual(v.r.phase, 'vote', 'waits for everyone'); v.r.castVote('cara', false); v.r.castVote(v.r.me.pid, false); assert.strictEqual(v.r.phase, 'between', '1 leave vs 2 stay: press on');
+  toVote(); v.r.castVote('bob', true); v.r.castVote('cara', true); assert.strictEqual(v.r.phase, 'vote'); v.r.castVote(v.r.me.pid, false); assert.strictEqual(v.r.phase, 'left', '2 leave vs 1 stay: everyone leaves'); assert.strictEqual(v.r.members[1].result.gold, 40); assert.strictEqual(v.r.p.gold, R.RUNCFG.startGold + 40);
+  toVote(); v.r.castVote(v.r.me.pid, true); v.sim.t += 30; v.r.update(1 / 60); assert.strictEqual(v.r.phase, 'between', 'the timer runs out: silence counts as staying');
+  // a remote member's browser applies the reward the host sends
+  const rp = R.newProfile('Bob'); const out = R.applyRemoteResult(rp, { kind: 'left', wave: 5, gold: 30, xp: R.xpNeed(1) + 1, uses: { heavy: 60 }, hireXp: 0 }); assert(out.levels === 1 && rp.gold === R.RUNCFG.startGold + 30 && rp.grown.str === 1, 'rewards land on the guest profile');
+  // leaving the party mid-vote lets the rest decide
+  const w = mkRun(10); w.r.addMember('bob', R.buildOf(R.newProfile('Bob'))); w.r.phase = 'vote'; w.r.wave = 5; w.r.voteAt = w.sim.t + 25; w.r.members.forEach(m => m.vote = null); w.r.castVote(w.r.me.pid, true); w.r.removeMember('bob'); assert.strictEqual(w.r.phase, 'left', 'the rest decide when someone leaves');
+  console.log('PASS party: cart ready, join in progress, credit, downed, vote');
+}
 // 9. determinism
 {
-  const go = () => { const { sim, r } = mkRun(11); r.depart(); applyCmd(sim, { t: 'set', inv: true }); for (let i = 0; i < 900; i++) { if (i % 20 === 0) killAll(r); tick(r); } const o = sim.saveState(); delete o.events; return JSON.stringify([o, r.wave, r.gold, r.p.xp, r.queue.length]); };
-  assert.strictEqual(go(), go(), 'the same seed gives the same run'); console.log('PASS run determinism');
+  const goRun = () => { const { sim, r } = mkRun(11); go(r); applyCmd(sim, { t: 'set', inv: true }); for (let i = 0; i < 900; i++) { if (i % 20 === 0) killAll(r); tick(r); } const o = sim.saveState(); delete o.events; return JSON.stringify([o, r.wave, r.gold, r.p.xp, r.queue.length]); };
+  assert.strictEqual(goRun(), goRun(), 'the same seed gives the same run'); console.log('PASS run determinism');
 }
 console.log('ALL RUN TESTS PASSED');

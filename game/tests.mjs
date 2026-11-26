@@ -388,4 +388,30 @@ console.log('PASS shrug off after surviving crit');
   console.log('PASS jump: arc, air limits, jump attack, air dodge, replay');
 }
 
+// several players in one fight
+{
+  const mk = () => { const s = new Sim(CFG, 6); applyCmd(s, { t: 'manual', on: true }); applyCmd(s, { t: 'set', inv: false }); s.mode = 'run'; return s; };
+  const s = mk(); const p0 = s.players[0], p1 = s.addPlayer('bob', 'Bob'); assert.strictEqual(s.players.length, 2); assert.strictEqual(p1.pid, 'bob');
+  p0.x = 100; p0.y = 282; p1.x = 560; p1.y = 282; p0.hp = p0.maxHp = 30; p1.hp = p1.maxHp = 30;
+  const e = s.spawn({ kind: 'soldier', ai: 'advance' }); e.x = 500; e.y = 282;
+  assert.strictEqual(s.pickTarget(e), p1, 'an enemy picks the nearer player');
+  p1.hp = 0; assert.strictEqual(s.pickTarget(e), p0, 'a downed player is not a target');
+  // each player has their own input and moves independently
+  p1.hp = 30; e.state = 'dead'; s.enemies = [];
+  applyCmd(s, { t: 'input', p: 0, x: 1, y: 0 }); applyCmd(s, { t: 'input', p: 1, x: -1, y: 0 });
+  const x0 = p0.x, x1 = p1.x; for (let i = 0; i < 30; i++) s.step(1 / 60); assert(p0.x > x0 && p1.x < x1, 'both move on their own input');
+  // kill credit goes to the player who struck
+  applyCmd(s, { t: 'input', p: 0, x: 0, y: 0 }); applyCmd(s, { t: 'input', p: 1, x: 0, y: 0 }); const q = s.spawn({ kind: 'soldier', ai: 'stand' }); q.hp = 1; q.x = p1.x - 30; q.y = p1.y; s.feed = [];
+  applyCmd(s, { t: 'set', p: 1, dmgOverride: 99, inv: true }); p1.face = -1; applyCmd(s, { t: 'input', p: 1, x: 0, y: 0, act: true }); for (let i = 0; i < 40 && !s.feed.some(f => f.t === 'kill'); i++) s.step(1 / 60);
+  const k = s.feed.find(f => f.t === 'kill'); assert(k && k.pid === 'bob', 'the kill is credited to the striker');
+  // a downed fighter takes no part; the fight is only lost when everyone is down
+  const b = mk(); b.mode = 'battle'; b.addPlayer('bob'); b.spawn({ kind: 'soldier', ai: 'stand' }); b.players[0].hp = 0; b.step(1 / 60); assert(!b.outcome, 'one down is not a loss'); b.players[1].hp = 0; b.step(1 / 60); assert.strictEqual(b.outcome, 'lost');
+  // save and restore keep both players, and the copy plays on the same
+  const c = mk(); c.addPlayer('bob'); applyCmd(c, { t: 'input', p: 1, x: 1, y: 0 }); for (let i = 0; i < 20; i++) c.step(1 / 60);
+  const d = Sim.fromState(c.saveState(), JSON.parse(JSON.stringify(CFG))); assert.strictEqual(d.players.length, 2); assert.strictEqual(d.player, d.players[0]);
+  for (let i = 0; i < 20; i++) { c.step(1 / 60); d.step(1 / 60); } assert.deepStrictEqual(c.saveState().players.map(p => [p.x, p.y]), d.saveState().players.map(p => [p.x, p.y]), 'a restored fight with two players plays on identically');
+  const r = c.players[1]; c.removePlayer('bob'); assert.strictEqual(c.players.length, 1);
+  console.log('PASS several players');
+}
+
 console.log('\nALL SIM TESTS PASSED');

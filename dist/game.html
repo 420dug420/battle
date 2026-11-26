@@ -15864,12 +15864,14 @@ void main(){
     };
     return f;
   }
-  var NOT_STATE = ["cfg", "rng", "fxRng", "moves", "fx", "texts", "textOut", "feed"];
+  var NOT_STATE = ["cfg", "rng", "fxRng", "moves", "fx", "texts", "textOut", "feed", "player", "input", "credit"];
   function applyCmd(sim, c) {
     switch (c.t) {
-      case "input":
-        sim.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || "", heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, jump: !!c.jump, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay };
+      case "input": {
+        const tp2 = sim.players[c.p | 0] || sim.player;
+        tp2.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || "", heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, jump: !!c.jump, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay };
         break;
+      }
       case "manual":
         sim.manual = !!c.on;
         break;
@@ -15891,9 +15893,11 @@ void main(){
         sim.resetPlayer();
         sim.say("info", "Player reset.");
         break;
-      case "set":
-        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move", "kindMoves", "skills", "chainStyles", "armorPct", "dur", "durMax", "broken", "hp", "maxHp", "san", "chr", "dmgMult", "spdMult", "regenMult", "staminaMax", "stamina"]) if (k in c) sim.player[k] = c[k];
+      case "set": {
+        const tp2 = sim.players[c.p | 0] || sim.player;
+        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move", "kindMoves", "skills", "chainStyles", "armorPct", "dur", "durMax", "broken", "hp", "maxHp", "san", "chr", "dmgMult", "spdMult", "regenMult", "staminaMax", "stamina"]) if (k in c) tp2[k] = c[k];
         break;
+      }
       case "ally":
         sim.spawnAlly(c.o);
         break;
@@ -15986,6 +15990,13 @@ void main(){
       delete d.rngState;
       delete d.fxRngState;
       Object.assign(s, d);
+      if (!s.players) s.players = [d.player];
+      for (const q of s.players) {
+        if (!q.input) q.input = { x: 0, y: 0, act: false, g: false, fin: "", heavy: false, block: false, dash: false, fire: false, jump: false, ax: null, ay: null };
+        if (!q.ed) q.ed = { act: false, g: false, fin: "", heavy: false, block: false, dash: false, fire: false, jump: false };
+      }
+      s.player = s.players[0];
+      s.credit = null;
       if (r != null) s.rng.set(r);
       if (fr2 != null) s.fxRng.set(fr2);
       s.moves = moves || {};
@@ -16001,56 +16012,9 @@ void main(){
       this.shake = 0;
       this.manual = this.manual || false;
       this.proj = [];
-      this.player = {
-        x: 170,
-        y: 282,
-        face: 1,
-        hp: c.player.hp,
-        maxHp: c.player.hp,
-        weapon: "longsword",
-        dex: 5,
-        dmgOverride: null,
-        inv: true,
-        swing: null,
-        chain: 0,
-        cooldown: 0,
-        moved: false,
-        flash: 0,
-        hurt: 0,
-        walkT: 0,
-        moving: false,
-        armorPct: 0,
-        dur: 0,
-        durMax: 0,
-        broken: false,
-        chainStyles: null,
-        san: 5,
-        chr: 5,
-        stamina: c.stamina.max,
-        staminaMax: c.stamina.max,
-        stamRegenT: 0,
-        blocking: false,
-        blockT: 0,
-        stunT: 0,
-        freeze: 0,
-        dash: null,
-        dashT: 99,
-        kvx: 0,
-        projCd: 0,
-        counter: null,
-        clashT: 0,
-        clashMax: 0,
-        z: 0,
-        vz: 0,
-        air: false,
-        jumpT: 0,
-        dmgMult: 1,
-        spdMult: 1,
-        regenMult: 1,
-        skills: { riposte: false, shove: false, multi: false },
-        kindMoves: {}
-        // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
-      };
+      this.players = [this.mkPlayer(0, null)];
+      this.player = this.players[0];
+      this.credit = null;
       this.mode = this.mode || "arena";
       this.outcome = null;
       this.spawned = 0;
@@ -16064,16 +16028,100 @@ void main(){
       this.logVer = 0;
       this.lastHit = null;
       this.moves = this.moves || {};
-      this.input = { x: 0, y: 0, act: false, g: false, fin: "", heavy: false, block: false, dash: false, fire: false, ax: null, ay: null };
-      this.actPrev = false;
-      this.gPrev = false;
-      this.finPrev = "";
-      this.heavyPrev = false;
-      this.blockPrev = false;
-      this.dashPrev = false;
-      this.firePrev = false;
-      this.jumpPrev = false;
       this.lastClash = null;
+    }
+    mkPlayer(i15, pid) {
+      const c = this.cfg, p = (() => {
+        return {
+          x: 170,
+          y: 282,
+          face: 1,
+          hp: c.player.hp,
+          maxHp: c.player.hp,
+          weapon: "longsword",
+          dex: 5,
+          dmgOverride: null,
+          inv: true,
+          swing: null,
+          chain: 0,
+          cooldown: 0,
+          moved: false,
+          flash: 0,
+          hurt: 0,
+          walkT: 0,
+          moving: false,
+          armorPct: 0,
+          dur: 0,
+          durMax: 0,
+          broken: false,
+          chainStyles: null,
+          san: 5,
+          chr: 5,
+          stamina: c.stamina.max,
+          staminaMax: c.stamina.max,
+          stamRegenT: 0,
+          blocking: false,
+          blockT: 0,
+          stunT: 0,
+          freeze: 0,
+          dash: null,
+          dashT: 99,
+          kvx: 0,
+          projCd: 0,
+          counter: null,
+          clashT: 0,
+          clashMax: 0,
+          z: 0,
+          vz: 0,
+          air: false,
+          jumpT: 0,
+          dmgMult: 1,
+          spdMult: 1,
+          regenMult: 1,
+          skills: { riposte: false, shove: false, multi: false },
+          kindMoves: {}
+          // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
+        };
+      })();
+      p.i = i15;
+      p.pid = pid;
+      p.name = "";
+      p.look = null;
+      p.input = { x: 0, y: 0, act: false, g: false, fin: "", heavy: false, block: false, dash: false, fire: false, jump: false, ax: null, ay: null };
+      p.ed = { act: false, g: false, fin: "", heavy: false, block: false, dash: false, fire: false, jump: false };
+      return p;
+    }
+    addPlayer(pid, name) {
+      if (this.players.some((q) => q.pid === pid)) return this.players.find((q) => q.pid === pid);
+      const p = this.mkPlayer(this.players.length, pid);
+      p.name = name || "";
+      const b = this.players[0];
+      p.x = Math.max(this.cfg.arena.left + 10, b.x - 30 * this.players.length);
+      p.y = this.clampY(b.y + (this.players.length % 2 ? 20 : -20));
+      p.face = b.face;
+      p.inv = b.inv;
+      this.players.push(p);
+      return p;
+    }
+    removePlayer(pid) {
+      const i15 = this.players.findIndex((q) => q.pid === pid);
+      if (i15 > 0) {
+        this.players.splice(i15, 1);
+        this.players.forEach((q, k) => q.i = k);
+      }
+    }
+    get input() {
+      return this.player.input;
+    }
+    set input(v2) {
+      this.player.input = v2;
+    }
+    useP(pl2) {
+      this.player = pl2;
+      this.credit = pl2.pid;
+    }
+    pidOf(i15) {
+      return this.players[i15] ? this.players[i15].pid : null;
     }
     clearEnemies() {
       this.enemies = [];
@@ -16195,7 +16243,8 @@ void main(){
         hurt: 0,
         kvx: 0,
         look: o.look || null,
-        lookSeed: hash32(this.seed, this.nextId * 7)
+        lookSeed: hash32(this.seed, this.nextId * 7),
+        owner: o.owner == null ? null : o.owner
       };
       this.allies.push(a);
       return a;
@@ -16231,24 +16280,36 @@ void main(){
     /* ---------- main step ---------- */
     step(dt) {
       this.stepN++;
-      const I = this.input, edge = (now, key) => {
-        const v2 = !!now, pr2 = v2 && !this[key];
-        this[key] = v2;
-        return pr2;
-      };
-      const pressed = edge(I.act, "actPrev"), gPress = edge(I.g, "gPrev"), heavyP = edge(I.heavy, "heavyPrev"), blockP = edge(I.block, "blockPrev"), dashP = edge(I.dash, "dashPrev"), fireP = edge(I.fire, "firePrev"), jumpP = edge(I.jump, "jumpPrev");
-      const fin = I.fin || "", finPress = fin && fin !== this.finPrev ? fin : "";
-      this.finPrev = fin;
-      this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP };
       if (this.shake > 0) this.shake -= dt;
       this.t += dt;
-      this.checkClash();
-      const p = this.player;
-      if (p.freeze > 0) {
-        p.freeze -= dt;
-        p.moving = false;
-        if (p.clashT > 0) p.clashT -= dt;
-      } else this.updatePlayer(dt);
+      for (const pl2 of this.players) {
+        this.useP(pl2);
+        const I = pl2.input, E = pl2.ed, edge = (now, key) => {
+          const v2 = !!now, pr2 = v2 && !E[key];
+          E[key] = v2;
+          return pr2;
+        };
+        const pressed = edge(I.act, "act"), gPress = edge(I.g, "g"), heavyP = edge(I.heavy, "heavy"), blockP = edge(I.block, "block"), dashP = edge(I.dash, "dash"), fireP = edge(I.fire, "fire"), jumpP = edge(I.jump, "jump");
+        const fin = I.fin || "", finPress = fin && fin !== E.fin ? fin : "";
+        E.fin = fin;
+        this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP };
+        if (pl2.hp <= 0 && (this.mode === "battle" || this.mode === "run")) {
+          pl2.moving = false;
+          pl2.swing = null;
+          pl2.blocking = false;
+          pl2.dash = null;
+          if (pl2.grab) this.endGrab(0);
+          continue;
+        }
+        this.checkClash();
+        if (pl2.freeze > 0) {
+          pl2.freeze -= dt;
+          pl2.moving = false;
+          if (pl2.clashT > 0) pl2.clashT -= dt;
+        } else this.updatePlayer(dt);
+      }
+      this.useP(this.players[0]);
+      this.credit = null;
       for (const e of this.enemies) {
         if (e.freeze > 0) {
           e.freeze -= dt;
@@ -16263,7 +16324,7 @@ void main(){
       this.updateProj(dt);
       this.enemies = this.enemies.filter((e) => !(e.state === "dying" && e.deathT > 2.6) && e.state !== "routed");
       if (this.mode === "battle" && !this.outcome) {
-        if (this.player.hp <= 0) this.outcome = "lost";
+        if (this.players.every((q) => q.hp <= 0)) this.outcome = "lost";
         else if (this.spawned > 0 && !this.enemies.some((e) => e.state === "alive")) this.outcome = "won";
       }
       this.updateFx(dt);
@@ -16503,7 +16564,7 @@ void main(){
       const L2 = Math.sqrt(dx2 * dx2 + dy * dy);
       dx2 /= L2;
       dy /= L2;
-      this.proj.push({ id: this.nextId++, x: p.x + p.face * 14, y: p.y, vx: dx2 * P2.speed, vy: dy * P2.speed, life: P2.range / P2.speed, dmg: P2.dmg });
+      this.proj.push({ owner: p.pid, id: this.nextId++, x: p.x + p.face * 14, y: p.y, vx: dx2 * P2.speed, vy: dy * P2.speed, life: P2.range / P2.speed, dmg: P2.dmg });
       p.projCd = P2.cd;
       p.shotT = 0.25;
     }
@@ -16518,7 +16579,9 @@ void main(){
         for (const e of this.enemies) {
           if (e.state !== "alive" || e.held || e.fly) continue;
           if (Math.abs(e.x - q.x) <= c.proj.hitR && Math.abs(e.y - q.y) <= c.laneTol) {
+            this.credit = q.owner == null ? null : q.owner;
             this.applyHit(e, q.dmg, null);
+            this.credit = null;
             this.burst(q.x, q.y - 40, 5, "#f4ecd8", 90);
             q.life = 0;
             break;
@@ -16847,7 +16910,7 @@ void main(){
     applyHit(e, raw, swing, fin) {
       const c = this.cfg, p = this.player;
       if (swing || fin) {
-        this.feed.push({ t: "hit", move: fin || swing.kind || "light" });
+        this.feed.push({ t: "hit", move: fin || swing.kind || "light", pid: this.credit });
         if (this.feed.length > 300) this.feed.shift();
       }
       const wasW = e.wounded > 0, wasB = e.broken;
@@ -16929,7 +16992,7 @@ void main(){
     }
     kill(e, dramatic, swing) {
       const p = this.player;
-      this.feed.push({ t: "kill", kind: e.kind || "soldier", tier: e.tier, x: e.x, y: e.y });
+      this.feed.push({ t: "kill", kind: e.kind || "soldier", tier: e.tier, x: e.x, y: e.y, pid: this.credit });
       if (this.feed.length > 300) this.feed.shift();
       e.state = "dying";
       e.deathT = 0;
@@ -17133,7 +17196,15 @@ void main(){
       }
     }
     pickTarget(e) {
-      let best = this.player.hp > 0 ? this.player : null, bd2 = best ? (best.x - e.x) ** 2 + 4 * (best.y - e.y) ** 2 : 1e12;
+      let best = null, bd2 = 1e12;
+      for (const q of this.players) {
+        if (q.hp <= 0) continue;
+        const d = (q.x - e.x) ** 2 + 4 * (q.y - e.y) ** 2;
+        if (d < bd2) {
+          best = q;
+          bd2 = d;
+        }
+      }
       for (const a of this.allies) {
         if (a.state !== "alive") continue;
         const d = (a.x - e.x) ** 2 + 4 * (a.y - e.y) ** 2;
@@ -17145,8 +17216,13 @@ void main(){
       return best;
     }
     enemyHits(e, t) {
-      if (t === this.player) this.enemyHitsPlayer(e);
-      else this.enemyHitsAlly(e, t);
+      if (this.players.includes(t)) {
+        const keep = this.player;
+        this.useP(t);
+        this.enemyHitsPlayer(e);
+        this.useP(keep);
+        this.credit = null;
+      } else this.enemyHitsAlly(e, t);
     }
     // damage to a worn-armor fighter: percent off (at least 1), durability drops by the raw hit, a broken set protects nothing
     takeHit(t, raw) {
@@ -17172,7 +17248,7 @@ void main(){
       if (!p.inv) {
         const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));
         this.text(p.x, p.y - 96, "-" + r.dmg, "#ff7a6a", 10);
-        this.feed.push({ t: "hurt", dmg: r.dmg });
+        this.feed.push({ t: "hurt", dmg: r.dmg, pid: p.pid });
         if (r.broke) {
           this.say("break", "Your armor broke.");
           this.text(p.x, p.y - 110, "ARMOR BROKEN", "#ff9a6a", 9);
@@ -17216,7 +17292,16 @@ void main(){
       }
     }
     updateAlly(a, dt) {
-      const c = this.cfg, p = this.player;
+      const c = this.cfg;
+      let p = this.players[0], pd2 = 1e12;
+      for (const q of this.players) {
+        const d = Math.abs(q.x - a.x);
+        if (q.hp > 0 && d < pd2) {
+          p = q;
+          pd2 = d;
+        }
+      }
+      this.credit = a.owner == null ? null : a.owner;
       a.flash = Math.max(0, a.flash - dt);
       a.hurt = Math.max(0, (a.hurt || 0) - dt);
       this.kv(a, dt);

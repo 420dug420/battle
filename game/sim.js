@@ -108,19 +108,19 @@ export function makeRng(seed) {
 }
 
 /* ---------- replays: rules version, saved state, and the one way anything outside changes a fight ---------- */
-export const SIM_VERSION = 6;                                       // bump when a rule changes, so old replays are flagged
-const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut', 'feed'];   // feed: what happened this frame, for a run layer to read (xp, gold, style rank)
+export const SIM_VERSION = 7;                                       // bump when a rule changes, so old replays are flagged
+const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut', 'feed', 'player', 'input', 'credit'];   // feed: what happened this frame, for a run layer to read (xp, gold, style rank)
 // every outside change (input, spawns, settings) goes through here, live and in replays, so a replay repeats the fight exactly
 export function applyCmd(sim, c) {
   switch (c.t) {
-    case 'input': sim.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || '', heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, jump: !!c.jump, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay }; break;
+    case 'input': { const tp = sim.players[c.p | 0] || sim.player; tp.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || '', heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, jump: !!c.jump, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay }; break; }
     case 'manual': sim.manual = !!c.on; break;
     case 'spawn': for (const o of c.list) sim.spawn(Object.assign({}, o, { index: sim.enemies.filter(e => e.state === 'alive').length % 5 })); if (c.say) sim.say('info', c.say); break;
     case 'clear': sim.clearEnemies(); sim.say('info', 'Arena cleared.'); break;
     case 'heal': sim.healAll(); break;
     case 'repair': sim.repairAll(); break;
     case 'resetp': sim.resetPlayer(); sim.say('info', 'Player reset.'); break;
-    case 'set': for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'kindMoves', 'skills', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr', 'dmgMult', 'spdMult', 'regenMult', 'staminaMax', 'stamina']) if (k in c) sim.player[k] = c[k]; break;
+    case 'set': { const tp = sim.players[c.p | 0] || sim.player; for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'kindMoves', 'skills', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr', 'dmgMult', 'spdMult', 'regenMult', 'staminaMax', 'stamina']) if (k in c) tp[k] = c[k]; break; }
     case 'ally': sim.spawnAlly(c.o); break;
     case 'mode': sim.mode = c.mode; break;
     case 'cfg': { const d = JSON.parse(JSON.stringify(c.cfg)); for (const k in d) sim.cfg[k] = d[k]; break; }
@@ -183,13 +183,24 @@ export class Sim {
   static fromState(st, cfg, moves) {
     const s = new Sim(cfg, st.seed); const d = JSON.parse(JSON.stringify(st));
     const r = d.rngState, fr = d.fxRngState; delete d.rngState; delete d.fxRngState; Object.assign(s, d);
+    if (!s.players) s.players = [d.player]; for (const q of s.players) { if (!q.input) q.input = { x: 0, y: 0, act: false, g: false, fin: '', heavy: false, block: false, dash: false, fire: false, jump: false, ax: null, ay: null }; if (!q.ed) q.ed = { act: false, g: false, fin: '', heavy: false, block: false, dash: false, fire: false, jump: false }; }
+    s.player = s.players[0]; s.credit = null;
     if (r != null) s.rng.set(r); if (fr != null) s.fxRng.set(fr); s.moves = moves || {}; s.fx = []; s.texts = []; return s;
   }
 
   resetAll() {
     const c = this.cfg;
     this.feed = []; this.t = 0; this.nextId = 1; this.shake = 0; this.manual = this.manual || false; this.proj = [];
-    this.player = {
+    this.players = [this.mkPlayer(0, null)]; this.player = this.players[0]; this.credit = null;
+    this.mode = this.mode || 'arena'; this.outcome = null; this.spawned = 0; this.allies = []; this.fallen = [];   // mode 'battle': a downed player loses the fight instead of being restored
+    this.enemies = []; this.fx = []; this.texts = []; this.routed = 0;
+    this.log = []; this.logVer = 0; this.lastHit = null;
+    this.moves = this.moves || {};                                // baked weapon paths by move id; a move without one uses the reach rule
+    this.lastClash = null;
+  }
+  mkPlayer(i, pid) {
+    const c = this.cfg, p = (() => {
+      return {
       x: 170, y: 282, face: 1, hp: c.player.hp, maxHp: c.player.hp,
       weapon: 'longsword', dex: 5, dmgOverride: null, inv: true,
       swing: null, chain: 0, cooldown: 0, moved: false, flash: 0, hurt: 0, walkT: 0, moving: false,
@@ -197,13 +208,19 @@ export class Sim {
       stamina: c.stamina.max, staminaMax: c.stamina.max, stamRegenT: 0, blocking: false, blockT: 0, stunT: 0, freeze: 0, dash: null, dashT: 99, kvx: 0, projCd: 0, counter: null, clashT: 0, clashMax: 0, z: 0, vz: 0, air: false, jumpT: 0, dmgMult: 1, spdMult: 1, regenMult: 1,
       skills: { riposte: false, shove: false, multi: false }, kindMoves: {},   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
     };
-    this.mode = this.mode || 'arena'; this.outcome = null; this.spawned = 0; this.allies = []; this.fallen = [];   // mode 'battle': a downed player loses the fight instead of being restored
-    this.enemies = []; this.fx = []; this.texts = []; this.routed = 0;
-    this.log = []; this.logVer = 0; this.lastHit = null;
-    this.moves = this.moves || {};                                // baked weapon paths by move id; a move without one uses the reach rule
-    this.input = { x: 0, y: 0, act: false, g: false, fin: '', heavy: false, block: false, dash: false, fire: false, ax: null, ay: null };
-    this.actPrev = false; this.gPrev = false; this.finPrev = ''; this.heavyPrev = false; this.blockPrev = false; this.dashPrev = false; this.firePrev = false; this.jumpPrev = false; this.lastClash = null;
+    })();
+    p.i = i; p.pid = pid; p.name = ''; p.look = null; p.input = { x: 0, y: 0, act: false, g: false, fin: '', heavy: false, block: false, dash: false, fire: false, jump: false, ax: null, ay: null };
+    p.ed = { act: false, g: false, fin: '', heavy: false, block: false, dash: false, fire: false, jump: false }; return p;
   }
+  addPlayer(pid, name) {                                              // another human joins: a fresh fighter beside the others
+    if (this.players.some(q => q.pid === pid)) return this.players.find(q => q.pid === pid);
+    const p = this.mkPlayer(this.players.length, pid); p.name = name || ''; const b = this.players[0]; p.x = Math.max(this.cfg.arena.left + 10, b.x - 30 * this.players.length); p.y = this.clampY(b.y + (this.players.length % 2 ? 20 : -20)); p.face = b.face; p.inv = b.inv; this.players.push(p); return p;
+  }
+  removePlayer(pid) { const i = this.players.findIndex(q => q.pid === pid); if (i > 0) { this.players.splice(i, 1); this.players.forEach((q, k) => q.i = k); } }
+  get input() { return this.player.input; }
+  set input(v) { this.player.input = v; }
+  useP(pl) { this.player = pl; this.credit = pl.pid; }
+  pidOf(i) { return this.players[i] ? this.players[i].pid : null; }
   clearEnemies() { this.enemies = []; this.fx = []; this.texts = []; }
   clearAllies() { this.allies = []; }
   resetPlayer() {
@@ -257,7 +274,7 @@ export class Sim {
       hp: o.hp || 18, maxHp: o.hp || 18, tier: t, armorPct: o.armorPct != null ? o.armorPct : c.tiers[t].pct,
       dur: o.dur != null ? o.dur : c.tiers[t].dur, durMax: o.dur != null ? o.dur : c.tiers[t].dur, broken: false,
       weapon: w, dex: o.dex || 5, dmgMult: o.dmgMult || 1, state: 'alive', atk: null, atkCd: 0.5, deathT: 0, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0, hurt: 0, kvx: 0,
-      look: o.look || null, lookSeed: hash32(this.seed, this.nextId * 7),
+      look: o.look || null, lookSeed: hash32(this.seed, this.nextId * 7), owner: o.owner == null ? null : o.owner,
     };
     this.allies.push(a); return a;
   }
@@ -279,23 +296,27 @@ export class Sim {
   /* ---------- main step ---------- */
   step(dt) {
     this.stepN++;
-    const I = this.input, edge = (now, key) => { const v = !!now, pr = v && !this[key]; this[key] = v; return pr; };   // a press is the moment the key goes down
-    const pressed = edge(I.act, 'actPrev'), gPress = edge(I.g, 'gPrev'), heavyP = edge(I.heavy, 'heavyPrev'), blockP = edge(I.block, 'blockPrev'), dashP = edge(I.dash, 'dashPrev'), fireP = edge(I.fire, 'firePrev'), jumpP = edge(I.jump, 'jumpPrev');
-    const fin = I.fin || '', finPress = fin && fin !== this.finPrev ? fin : ''; this.finPrev = fin;
-    this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP };
     if (this.shake > 0) this.shake -= dt;
     this.t += dt;                                                      // one clock for everyone: nothing in the game slows or stops time
-    this.checkClash();
-    const p = this.player;
-    if (p.freeze > 0) { p.freeze -= dt; p.moving = false; if (p.clashT > 0) p.clashT -= dt; }   // only a clashing fighter holds, for a few frames
-    else this.updatePlayer(dt);
+    for (const pl of this.players) {
+      this.useP(pl);
+      const I = pl.input, E = pl.ed, edge = (now, key) => { const v = !!now, pr = v && !E[key]; E[key] = v; return pr; };   // a press is the moment the key goes down
+      const pressed = edge(I.act, 'act'), gPress = edge(I.g, 'g'), heavyP = edge(I.heavy, 'heavy'), blockP = edge(I.block, 'block'), dashP = edge(I.dash, 'dash'), fireP = edge(I.fire, 'fire'), jumpP = edge(I.jump, 'jump');
+      const fin = I.fin || '', finPress = fin && fin !== E.fin ? fin : ''; E.fin = fin;
+      this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP };
+      if (pl.hp <= 0 && (this.mode === 'battle' || this.mode === 'run')) { pl.moving = false; pl.swing = null; pl.blocking = false; pl.dash = null; if (pl.grab) this.endGrab(0); continue; }   // a downed fighter takes no part
+      this.checkClash();
+      if (pl.freeze > 0) { pl.freeze -= dt; pl.moving = false; if (pl.clashT > 0) pl.clashT -= dt; }   // only a clashing fighter holds, for a few frames
+      else this.updatePlayer(dt);
+    }
+    this.useP(this.players[0]); this.credit = null;
     for (const e of this.enemies) { if (e.freeze > 0) { e.freeze -= dt; e.moving = false; if (e.clashT > 0) e.clashT -= dt; continue; } this.updateEnemy(e, dt); }
     this.separate(dt);
     for (const a of this.allies) this.updateAlly(a, dt);
     this.updateProj(dt);
     this.enemies = this.enemies.filter(e => !(e.state === 'dying' && e.deathT > 2.6) && e.state !== 'routed');
     if (this.mode === 'battle' && !this.outcome) {
-      if (this.player.hp <= 0) this.outcome = 'lost';
+      if (this.players.every(q => q.hp <= 0)) this.outcome = 'lost';
       else if (this.spawned > 0 && !this.enemies.some(e => e.state === 'alive')) this.outcome = 'won';
     }
     this.updateFx(dt);
@@ -438,7 +459,7 @@ export class Sim {
     if (dx * p.face < 0.2) dx = p.face * 0.2;                          // the shot goes the way you face
     dy = Math.max(-0.6 * Math.abs(dx), Math.min(0.6 * Math.abs(dx), dy));
     const L2 = Math.sqrt(dx * dx + dy * dy); dx /= L2; dy /= L2;
-    this.proj.push({ id: this.nextId++, x: p.x + p.face * 14, y: p.y, vx: dx * P.speed, vy: dy * P.speed, life: P.range / P.speed, dmg: P.dmg });
+    this.proj.push({ owner: p.pid, id: this.nextId++, x: p.x + p.face * 14, y: p.y, vx: dx * P.speed, vy: dy * P.speed, life: P.range / P.speed, dmg: P.dmg });
     p.projCd = P.cd; p.shotT = 0.25;
   }
   updateProj(dt) {
@@ -449,7 +470,7 @@ export class Sim {
       if (q.life <= 0) continue;
       for (const e of this.enemies) {
         if (e.state !== 'alive' || e.held || e.fly) continue;
-        if (Math.abs(e.x - q.x) <= c.proj.hitR && Math.abs(e.y - q.y) <= c.laneTol) { this.applyHit(e, q.dmg, null); this.burst(q.x, q.y - 40, 5, '#f4ecd8', 90); q.life = 0; break; }
+        if (Math.abs(e.x - q.x) <= c.proj.hitR && Math.abs(e.y - q.y) <= c.laneTol) { this.credit = q.owner == null ? null : q.owner; this.applyHit(e, q.dmg, null); this.credit = null; this.burst(q.x, q.y - 40, 5, '#f4ecd8', 90); q.life = 0; break; }
       }
     }
     this.proj = this.proj.filter(q => q.life > 0);
@@ -623,7 +644,7 @@ export class Sim {
   /* ---------- the rules under test ---------- */
   applyHit(e, raw, swing, fin) {
     const c = this.cfg, p = this.player;   // fin: a grab finisher; armor percent ignored, durability still wears, no crit or wound rules
-    if (swing || fin) { this.feed.push({ t: 'hit', move: fin || swing.kind || 'light' }); if (this.feed.length > 300) this.feed.shift(); }
+    if (swing || fin) { this.feed.push({ t: 'hit', move: fin || swing.kind || 'light', pid: this.credit }); if (this.feed.length > 300) this.feed.shift(); }
     const wasW = e.wounded > 0, wasB = e.broken;
     const crit = !fin && (wasW || wasB);
     const pct = (wasB || fin) ? 0 : e.armorPct * (1 - ((swing && swing.pierce) || 0));
@@ -676,7 +697,7 @@ export class Sim {
 
   kill(e, dramatic, swing) {
     const p = this.player;
-    this.feed.push({ t: 'kill', kind: e.kind || 'soldier', tier: e.tier, x: e.x, y: e.y }); if (this.feed.length > 300) this.feed.shift();
+    this.feed.push({ t: 'kill', kind: e.kind || 'soldier', tier: e.tier, x: e.x, y: e.y, pid: this.credit }); if (this.feed.length > 300) this.feed.shift();
     e.state = 'dying'; e.deathT = 0; e.dramatic = dramatic; e.wounded = 0; e.atk = null; e.flee = false;
     this.events.push({ kind: dramatic ? 'dramatic' : 'kill', step: this.stepN, x: e.x, y: e.y, id: e.id }); if (this.events.length > 20) this.events.shift();   // kill cams
     const dir = Math.sign(e.x - p.x) || 1;
@@ -804,11 +825,12 @@ export class Sim {
     }
   }
   pickTarget(e) {
-    let best = this.player.hp > 0 ? this.player : null, bd = best ? (best.x - e.x) ** 2 + 4 * (best.y - e.y) ** 2 : 1e12;
+    let best = null, bd = 1e12;
+    for (const q of this.players) { if (q.hp <= 0) continue; const d = (q.x - e.x) ** 2 + 4 * (q.y - e.y) ** 2; if (d < bd) { best = q; bd = d; } }
     for (const a of this.allies) { if (a.state !== 'alive') continue; const d = (a.x - e.x) ** 2 + 4 * (a.y - e.y) ** 2; if (d < bd) { best = a; bd = d; } }
     return best;
   }
-  enemyHits(e, t) { if (t === this.player) this.enemyHitsPlayer(e); else this.enemyHitsAlly(e, t); }
+  enemyHits(e, t) { if (this.players.includes(t)) { const keep = this.player; this.useP(t); this.enemyHitsPlayer(e); this.useP(keep); this.credit = null; } else this.enemyHitsAlly(e, t); }
   // damage to a worn-armor fighter: percent off (at least 1), durability drops by the raw hit, a broken set protects nothing
   takeHit(t, raw) {
     const dmg = Math.max(1, Math.floor(raw * (1 - (t.broken ? 0 : t.armorPct)) + 1e-9)); let broke = false;
@@ -822,7 +844,7 @@ export class Sim {
     p.flash = 0.2; p.hurt = 0.6; p.blocking = false; p.blockLock = !!this.input.block;
     if (!p.inv) {
       const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));
-      this.text(p.x, p.y - 96, '-' + r.dmg, '#ff7a6a', 10); this.feed.push({ t: 'hurt', dmg: r.dmg });
+      this.text(p.x, p.y - 96, '-' + r.dmg, '#ff7a6a', 10); this.feed.push({ t: 'hurt', dmg: r.dmg, pid: p.pid });
       if (r.broke) { this.say('break', 'Your armor broke.'); this.text(p.x, p.y - 110, 'ARMOR BROKEN', '#ff9a6a', 9); }
       if (p.hp <= 0) { if (this.mode === 'battle' || this.mode === 'run') p.hp = 0; else { this.say('info', 'Player downed; restored.'); p.hp = p.maxHp; } }
     } else this.text(p.x, p.y - 96, 'HIT', '#9fd0ff', 10);
@@ -845,7 +867,8 @@ export class Sim {
     }
   }
   updateAlly(a, dt) {
-    const c = this.cfg, p = this.player;
+    const c = this.cfg; let p = this.players[0], pd = 1e12; for (const q of this.players) { const d = Math.abs(q.x - a.x); if (q.hp > 0 && d < pd) { p = q; pd = d; } }
+    this.credit = a.owner == null ? null : a.owner;
     a.flash = Math.max(0, a.flash - dt); a.hurt = Math.max(0, (a.hurt || 0) - dt); this.kv(a, dt);
     if (a.state === 'dying') { a.deathT += dt; a.x = this.clampX(a.x + a.vx * dt); a.vx *= 0.9; return; }
     a.moving = false;

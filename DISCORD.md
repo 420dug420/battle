@@ -23,3 +23,11 @@ The code side is ready; the steps below need your Discord and Cloudflare account
 - Scopes asked: `identify`, `guilds`, `rpc.activities.write`. Rich Presence updates are rate limited, so the page sends at most one per 6 seconds and only when the text changes.
 - Online play still carries only the old inputs (see `server/README.md`), so the Discord room is wired but multiplayer combat is not finished.
 - The Activity needs the Worker deployed; it cannot be tested from the claude.ai artifact page.
+
+## Party play (1 to 5 players)
+- One browser hosts: it runs the fight and the run for everyone. The first to open the activity in a Discord voice channel is the host; later ones join that camp. If the host leaves, the others go back to their own camp (no host hand-over yet).
+- The relay is a Durable Object (`server/party-room.js`, route `/party/<room>`, free-plan SQLite class). It only passes messages. Redeploy the Worker with `server/` (wrangler) for it to exist; the dashboard single-file upload cannot carry Durable Objects.
+- In camp everyone has to stand at the cart and press Ready; the run starts when all are. Someone who joins mid-run drops into the fight at the current wave.
+- Every 5 waves the party votes (leave only if leave votes beat stay; ties and silence press on). If everyone falls, gold from the run is lost; gear, levels and skills stay.
+- Guests are trusted for their build (gear, stats are clamped to sane ranges, not verified).
+- Local test: `cd server && npx wrangler dev --local --port 8788`, open `http://127.0.0.1:8788/arena.html` in two windows, set Server `ws://127.0.0.1:8788` and the same Room in Test arena, press Connect.

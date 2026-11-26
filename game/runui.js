@@ -23,9 +23,10 @@ export function initRunUI(env) {
   let profile = null;
   try { profile = R.fromJSON(localStorage.getItem(KEY) || ''); } catch (e) { }
   if (!profile) profile = R.newProfile('Baron');
-  const run = new R.Run(live, profile, (Date.now() >>> 0) || 1);
+  let run = new R.Run(live, profile, (Date.now() >>> 0) || 1);
   const save = () => { try { localStorage.setItem(KEY, R.toJSON(profile)); } catch (e) { } };
-  const ui = { active: false, modal: null, run, profile, R, styles: () => env.styles() };
+  let wasPhase = 'camp';
+  const ui = { active: false, modal: null, run, profile, setRun: r => { run = r; ui.run = r; wasPhase = r.phase; }, R, styles: () => env.styles() };
 
   /* ---------- the overlay: menus are plain HTML over the stage ---------- */
   const host = $('stage').parentElement, ov = document.createElement('div'); ov.id = 'runui'; ov.hidden = true; host.appendChild(ov);
@@ -109,17 +110,49 @@ export function initRunUI(env) {
     }
     return h + '<p class="d">Hirelings keep fighting for you for good. Fallen ones are back next wave, no penalty.</p>' + msg();
   }
+  const partyOf = () => run.members || [];
   function cartPanel() {
-    const p = profile; let h = head('The cart');
+    const p = profile, ms = partyOf(), multi = ms.length > 1 || run.isGuest, me = run.me; let h = head('The cart');
+    if (multi) {
+      h += '<div class="sec">Party</div>' + ms.map(m => '<div class="srow"><span>' + esc(m.name) + (m.pid === me.pid ? ' (you)' : '') + '</span><span class="d">' + (m.ready ? 'ready' : (run.atCart(m) ? 'at the cart' : 'walk to the cart')) + '</span><span></span></div>').join('');
+      h += '<p class="d">Everyone has to stand at the cart and be ready. The run starts when all of you are.</p>';
+    }
     h += '<div class="sec">Choose a map</div>';
-    for (const k of Object.keys(R.MAPS)) h += '<div class="map"><b>' + esc(R.MAPS[k].n) + '</b><span class="d">' + esc(R.MAPS[k].d) + '</span><span class="d">Best: wave ' + p.best + '</span><button class="rb go" data-a="depart:' + k + '">Depart</button></div>';
-    h += '<p class="d">Waves grow. Every 5 waves you may leave and keep the gold, with a bonus the deeper you go. If you fall, the gold from this run is lost. Gear, levels and skills stay.</p>';
-    h += '<div class="sum">Party: you' + p.hirelings.map(x => ', ' + esc(x.name)).join('') + '</div>';
+    for (const k of Object.keys(R.MAPS)) h += '<div class="map"><b>' + esc(R.MAPS[k].n) + '</b><span class="d">' + esc(R.MAPS[k].d) + '</span><span class="d">Best: wave ' + p.best + '</span>' + (me.ready ? '<button class="rb" data-a="unready">Not ready</button>' : '<button class="rb go" data-a="depart:' + k + '">' + (multi ? 'Ready' : 'Depart') + '</button>') + '</div>';
+    h += '<p class="d">Waves grow. Every 5 waves the party votes to leave or press on; leaving keeps the gold, with a bonus the deeper you go. If everyone falls, the gold from this run is lost. Gear, levels and skills stay. Someone who joins mid-run drops straight into the fight.</p>';
+    h += '<div class="sum">Hirelings: ' + (p.hirelings.length ? p.hirelings.map(x => esc(x.name)).join(', ') : 'none') + '</div>' + msg();
     return h;
   }
+  function equipPanel() {
+    const p = profile; let h = head('Equipment', goldLine());
+    const d = R.derive(p), wc = CFG.weaponClasses[CFG.weapons[p.weapon].cls], ar = CFG.tiers[p.armor];
+    h += '<div class="sum">Wielding ' + esc(CFG.weapons[p.weapon].label) + ' (' + (wc.twoHanded ? 'two-handed' : 'one-handed') + ') · wearing ' + esc(ar.label) + ' · HP ' + d.maxHp + ' · Damage x' + d.dmgMult.toFixed(2) + '</div>';
+    h += '<div class="sec">Weapons</div>';
+    for (const k of p.owned.weapons) { const w = CFG.weapons[k], c = CFG.weaponClasses[w.cls];
+      h += '<div class="srow"><span>' + esc(w.label) + '</span><span class="d">dmg ' + c.dmg + ', reach ' + c.reach + ', ' + (c.twoHanded ? 'two-handed' : 'one-handed') + '</span><button class="rb" data-a="equip:weapon:' + k + '"' + (p.weapon === k ? ' disabled>Equipped' : '>Equip') + '</button></div>'; }
+    h += '<div class="sec">Armor</div>';
+    for (const k of p.owned.armor) { const t = CFG.tiers[k];
+      h += '<div class="srow"><span>' + esc(t.label) + '</span><span class="d">' + Math.round(t.pct * 100) + '% off, durability ' + t.dur + '</span><button class="rb" data-a="equip:armor:' + k + '"' + (p.armor === k ? ' disabled>Worn' : '>Wear') + '</button></div>'; }
+    const lk = p.look || {}; h += '<div class="sec">Look</div>' + lookSelect('head', 'Head', lk.head) + lookSelect('body', 'Body', lk.body) + lookSelect('liv', 'Livery', lk.liv) + lookSelect('metal', 'Metal', lk.metal);
+    return h + '<p class="d">Buy more at the Smith. A change takes effect in camp and goes with you on the next run.</p>' + msg();
+  }
+  const lookSelect = (k, lab, cur) => { const o = env.lookOptions ? env.lookOptions() : {}; return '<div class="srow"><span>' + lab + '</span><select class="rsel" data-c="' + k + '">' + (o[k] || [{ v: '', l: 'From armor' }]).map(x => '<option value="' + esc(x.v) + '"' + ((cur || '') === x.v ? ' selected' : '') + '>' + esc(x.l) + '</option>').join('') + '</select><span></span></div>'; };
+  let draft = null;
+  function createPanel() {
+    draft = draft || { name: profile.name === 'Baron' ? '' : profile.name, head: '', body: '', liv: '', metal: '' };
+    const sel = (k, lab) => lookSelect(k, lab, draft[k]);
+    return '<div class="rhead"><span>Create your fighter</span></div>' +
+      '<div class="srow"><span>Name</span><input class="rsel" data-c="name" maxlength="16" value="' + esc(draft.name) + '" placeholder="Your name"><span></span></div>' +
+      sel('head', 'Head') + sel('body', 'Body') + sel('liv', 'Livery') + sel('metal', 'Metal') +
+      '<p class="d">Your fighter is shown in camp as you change it. You can change the look later on the Equipment screen (I).</p>' + msg() +
+      '<div class="btnrow"><button class="rb go" data-a="create">Begin</button></div>';
+  }
   function votePanel() {
-    return '<div class="rhead"><span>Wave ' + run.wave + ' cleared</span></div><div class="big">Leave with <b>' + run.leavePay() + ' G</b>?</div>' +
-      '<p class="d">That is ' + run.gold + ' gold earned' + (R.stageOf(run.wave) > 1 ? ', plus a deep-run bonus' : '') + '. Press on and the next stage pays more, but falling loses it all.</p>' +
+    const ms = partyOf(), me = run.me, mine = me.vote, left = Math.ceil(run.voteIn != null && run.isGuest ? run.voteIn : Math.max(0, run.voteAt - live.t));
+    return '<div class="rhead"><span>Wave ' + run.wave + ' cleared</span><span class="d">' + left + 's</span></div><div class="big">Leave with <b>' + run.leavePay() + ' G</b>?</div>' +
+      '<p class="d">Press on and the next stage pays more, but if everyone falls the run\'s gold is lost. Most votes decide; a tie, or no answer, presses on.</p>' +
+      (ms.length > 1 ? ms.map(m => '<div class="srow"><span>' + esc(m.name) + '</span><span class="d">' + (m.vote === 'leave' ? 'leave' : m.vote === 'stay' ? 'press on' : 'deciding...') + '</span><span></span></div>').join('') : '') +
+      (mine ? '<p class="d">You voted to ' + (mine === 'leave' ? 'leave' : 'press on') + '. Waiting for the others.</p>' : '') +
       '<div class="btnrow"><button class="rb go" data-a="vote:leave">Leave</button><button class="rb" data-a="vote:stay">Press on</button></div>';
   }
   function resultPanel() {
@@ -127,16 +160,25 @@ export function initRunUI(env) {
     return '<div class="rhead"><span>' + (r.kind === 'dead' ? 'You fell' : 'Back from the field') + '</span></div>' +
       '<div class="big">Wave ' + r.wave + '</div><div class="sum">Kills ' + r.kills + ' · XP ' + r.xp + (r.levels ? ' · Levels +' + r.levels : '') + '</div>' +
       (r.kind === 'dead' ? '<div class="big bad">Lost ' + r.lost + ' G</div><p class="d">Gold from this run is gone. Gear, levels, skills and hirelings are safe.</p>' : '<div class="big">+' + r.gold + ' G</div>') +
-      '<div class="btnrow"><button class="rb go" data-a="camp">Return to camp</button></div>';
+      '<div class="btnrow"><button class="rb go" data-a="camp">' + (run.me.acked ? 'Waiting for the others...' : 'Return to camp') + '</button></div>';
   }
-  const PANELS = { stats: statsPanel, shop: shopPanel, style: stylePanel, hire: hirePanel, cart: cartPanel, vote: votePanel, result: resultPanel };
+  const PANELS = { stats: statsPanel, shop: shopPanel, style: stylePanel, hire: hirePanel, cart: cartPanel, vote: votePanel, result: resultPanel, equip: equipPanel, create: createPanel };
   function render() {
     if (!ui.modal) { ov.innerHTML = ''; return; }
-    ov.innerHTML = '<div class="rback"><div class="ff rpanel p-' + ui.modal + '">' + PANELS[ui.modal]() + '</div></div>';
+    ov.innerHTML = '<div class="rback' + (ui.modal === 'create' ? ' r-create' : '') + '"><div class="ff rpanel p-' + ui.modal + '">' + PANELS[ui.modal]() + '</div></div>';
   }
-  const rebuild = () => { env.clearKeys(); run.applyBuild(false); applyCmd(live, { t: 'set', inv: true }); const t = $('ptier'); if (t && [...t.options].some(o => o.value === profile.armor)) t.value = profile.armor; env.readLook(); save(); };
+  const applyLook = lk => { const L = lk || profile.look || {}; for (const [id, k] of [['lkhead', 'head'], ['lkbody', 'body'], ['lkliv', 'liv'], ['lkmetal', 'metal']]) { const el = $(id); if (el && [...el.options].some(o => o.value === (L[k] || ''))) el.value = L[k] || ''; } };
+  const rebuild = () => { applyLook(); env.clearKeys(); run.applyBuild(false); applyCmd(live, { t: 'set', inv: true }); const t = $('ptier'); if (t && [...t.options].some(o => o.value === profile.armor)) t.value = profile.armor; env.readLook(); save(); };
 
+  const onC = (ev, live2) => {
+    const k = ev.target.dataset && ev.target.dataset.c; if (!k) return false;
+    if (ui.modal === 'create') { draft[k] = ev.target.value; if (k !== 'name') { applyLook(draft); env.readLook(); const q = live.player; q.look = { head: draft.head, body: draft.body, liv: draft.liv, metal: draft.metal }; } }
+    else if (k !== 'name') { profile.look = Object.assign({ head: '', body: '', liv: '', metal: '' }, profile.look, { [k]: ev.target.value }); rebuild(); }
+    return true;
+  };
+  ov.addEventListener('input', ev => { if (ev.target.dataset && ev.target.dataset.c === 'name') draft.name = ev.target.value; });
   ov.addEventListener('change', ev => {
+    if (onC(ev)) return;
     const f = ev.target.dataset && ev.target.dataset.f; if (!f) return; const [k, x] = f.split(':'); const v = ev.target.value || null;
     const r = k === 'chain' ? R.setChain(profile, +x, v) : R.setRole(profile, x, v); note = r.ok ? '' : r.why; rebuild(); render();
   });
@@ -152,9 +194,11 @@ export function initRunUI(env) {
     else if (a === 'hire') { const r = R.hire(profile, R.recruits(profile, run.seed)[+x]); note = r.ok ? '' : r.why; save(); }
     else if (a === 'dismiss') { R.dismiss(profile, +x); save(); }
     else if (a === 'reset') { if (!ui.confirmReset) { ui.confirmReset = true; note = 'Press Delete save again to wipe your progress.'; render(); return; } ui.confirmReset = false; localStorage.removeItem(KEY); Object.assign(profile, R.newProfile('Baron')); run.enterCamp(); rebuild(); note = 'Save deleted.'; }
-    else if (a === 'depart') { close(); save(); run.depart(x); env.readLook(); return; }
-    else if (a === 'vote') { run.vote(x === 'leave'); if (x === 'leave') { save(); open('result'); } else close(); return; }
-    else if (a === 'camp') { run.returnToCamp(); rebuild(); close(); return; }
+    else if (a === 'create') { if (!draft) return; profile.name = (draft.name || '').trim().slice(0, 16) || 'Baron'; profile.look = { head: draft.head, body: draft.body, liv: draft.liv, metal: draft.metal }; profile.created = true; draft = null; run.me.name = profile.name; live.player.x = 330; rebuild(); close(); return; }
+    else if (a === 'unready') { run.unready(run.me.pid); }
+    else if (a === 'depart') { save(); const multi = partyOf().length > 1 || run.isGuest; run.depart(x); if (multi && run.phase === 'camp') { note = run.atCart() ? 'Ready. Waiting for the others.' : 'Stand at the cart first.'; render(); return; } close(); env.readLook(); return; }
+    else if (a === 'vote') { run.vote(x === 'leave'); render(); return; }
+    else if (a === 'camp') { run.returnToCamp(); if (run.phase === 'camp' || !partyOf().length) { rebuild(); close(); } else render(); return; }
     ui.confirmReset = a === 'reset' ? ui.confirmReset : false;
     render();
   });
@@ -162,24 +206,30 @@ export function initRunUI(env) {
   /* ---------- mode control ---------- */
   ui.enter = () => {
     ui.active = true; ov.hidden = false; env.stopRec(); env.clearKeys();
-    run.enterCamp(); rebuild(); close();
+    run.enterCamp(); rebuild(); close(); if (!profile.created) { live.player.x = 150; open('create'); }
   };
   ui.leave = () => {
     ui.active = false; ov.hidden = true; ui.modal = null; ov.innerHTML = '';
     live.mode = 'arena'; live.clearEnemies(); live.clearAllies(); live.proj = []; live.feed = []; env.clearKeys(); env.afterLeave();
   };
-  let wasPhase = 'camp';
+  let refT = 0;
+  ui.afterResult = () => { save(); };
   ui.update = dt => {
     run.update(dt);
     if (run.phase !== wasPhase) {                                    // the run changed phase: open what the player needs to answer
-      if (run.phase === 'vote') open('vote'); else if (run.phase === 'dead') { save(); open('result'); } else if (run.phase === 'camp' && wasPhase !== 'camp') save();
-      wasPhase = run.phase;
+      const was = wasPhase; wasPhase = run.phase;
+      if (run.phase === 'vote') open('vote');
+      else if (run.phase === 'dead' || run.phase === 'left') { save(); open('result'); }
+      else if (run.phase === 'camp' && was !== 'camp') { save(); rebuild(); close(); }
+      else if (run.phase === 'wave' && (ui.modal === 'cart' || ui.modal === 'vote')) close();
     }
+    if (ui.modal && ['cart', 'vote', 'result'].includes(ui.modal) && (refT += dt) > 0.25) { refT = 0; render(); }       // other members' ready, votes and acks change under the open panel
   };
   const near = () => { if (run.phase !== 'camp') return null; const x = live.player.x; return STATIONS.find(s => Math.abs(s.x - x) <= NEAR) || null; };
   ui.key = (code, act) => {                                          // true when the key was used here
     if (!ui.active) return false;
-    if (ui.modal) { if (code === 'Escape' && ui.modal !== 'vote' && ui.modal !== 'result') close(); return true; }
+    if (ui.modal) { if (code === 'Escape' && ui.modal !== 'vote' && ui.modal !== 'result' && ui.modal !== 'create') close(); return true; }
+    if (code === 'KeyI' && run.phase === 'camp') { open('equip'); return true; }
     if (act === 'use' && run.phase === 'camp') { const s = near(); if (s) open(s.id); return true; }
     return false;
   };
@@ -227,10 +277,11 @@ export function initRunUI(env) {
       const s = near();
       win(c, 120, H - 40, 400, 32);
       if (s) { txt(c, 'T', 134, H - 20, '#ffe27a', 12); txt(c, s.name + ': ' + s.hint, 152, H - 20, '#fff', 10); }
-      else txt(c, 'W A S D walk · Walk up to a sign and press T · The cart starts a run', W / 2, H - 20, '#cfe', 9, 'center');
+      else txt(c, 'W A S D walk · Sign + T · I equipment · The cart starts a run', W / 2, H - 20, '#cfe', 9, 'center');
     } else {
       // party window (bottom left): you and your hirelings
-      const rows = [{ n: profile.name, hp: p.hp, max: p.maxHp, st: p.stamina, smax: p.staminaMax, lv: profile.level }].concat(live.allies.map(a => ({ n: a.name.split(' ')[0], hp: a.hp, max: a.maxHp, ally: true })));
+      const others = live.players.filter(q => q !== p).map(q => { const m = partyOf().find(x => x.pid === q.pid); return { n: (q.name || 'Ally').slice(0, 9), hp: Math.max(0, q.hp), max: q.maxHp, lv: m && m.level, ally: true }; });
+      const rows = [{ n: profile.name, hp: p.hp, max: p.maxHp, st: p.stamina, smax: p.staminaMax, lv: profile.level }].concat(others).concat(live.allies.map(a => ({ n: a.name.split(' ')[0], hp: a.hp, max: a.maxHp, ally: true })));
       const rh = 24, hh = 10 + rows.length * rh; win(c, 6, H - hh - 6, 218, hh);
       rows.forEach((r, i) => {
         const y = H - hh - 6 + 8 + i * rh;

@@ -3,10 +3,13 @@
    POST /api/token turns a Discord OAuth code into an access token (Discord Activity login). Secrets: DISCORD_CLIENT_ID (a var) and DISCORD_CLIENT_SECRET (wrangler secret put).
    Everything else serves the built pages from ../dist (the Worker's free static assets); "/" is the arena page. */
 export { FightRoom } from './room.js';
+export { PartyRoom } from './party-room.js';
 const json = (o, status) => new Response(JSON.stringify(o), { status: status || 200, headers: { 'content-type': 'application/json' } });
 export default {
   async fetch(req, env) {
     const url = new URL(req.url), m = url.pathname.match(/^\/(?:ws\/)?room\/([\w-]{1,40})$/);
+    const pm = url.pathname.match(/^\/(?:ws\/)?party\/([\w-]{1,40})$/);
+    if (pm && env.PARTY) return env.PARTY.get(env.PARTY.idFromName(pm[1])).fetch(req);
     if (m) return env.ROOMS.get(env.ROOMS.idFromName(m[1])).fetch(req);
     if ((url.pathname === "/api/token" || url.pathname === "/token") && req.method === "POST") {
       if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET) return json({ error: 'Discord is not configured on this server.' }, 501);

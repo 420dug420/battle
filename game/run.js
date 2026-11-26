@@ -36,7 +36,7 @@ export const RUNCFG = {
 /* ---------- profile ---------- */
 export function newProfile(name) {
   return {
-    v: 1, name: name || 'Baron', gold: RUNCFG.startGold, xp: 0, level: 1, points: 0,
+    v: 1, created: false, look: null, name: name || 'Baron', gold: RUNCFG.startGold, xp: 0, level: 1, points: 0,
     attrs: Object.fromEntries(ATTRS.map(a => [a, RUNCFG.base])), grown: { str: 0, dex: 0, agi: 0, con: 0 }, use: { str: 0, dex: 0, agi: 0, con: 0 },
     weapon: 'longsword', armor: 'leather', owned: { weapons: ['longsword'], armor: ['leather'], skills: [] }, skills: [],
     upgrades: { hp: 0, stamina: 0, damage: 0, slots: 0, chain: 0 }, styles: { owned: ['cut', 'chop'], chain: ['cut', 'chop'], roles: { heavy: null, dash: null, counter: null, jump: null } }, hirelings: [], nextHid: 1, runs: 0, best: 0,
@@ -45,7 +45,7 @@ export function newProfile(name) {
 export const toJSON = p => JSON.stringify(p);
 export function fromJSON(txt) {
   try {
-    const o = JSON.parse(txt); if (!o || o.v !== 1) return null; const d = newProfile(), p = Object.assign(d, o);
+    const o = JSON.parse(txt); if (!o || o.v !== 1) return null; const d = newProfile(), p = Object.assign(d, o); if (o.created == null) p.created = true;      // saves from before character creation count as made
     p.upgrades = Object.assign({}, newProfile().upgrades, o.upgrades || {}); p.styles = Object.assign({}, newProfile().styles, o.styles || {}); p.styles.roles = Object.assign({}, newProfile().styles.roles, p.styles.roles || {}); return p;
   } catch (e) { return null; }
 }
@@ -127,6 +127,13 @@ export function setRole(p, role, id) {
   if (id && !p.styles.owned.includes(id)) return { ok: false, why: 'Not learned.' };
   p.styles.roles[role] = id || null; return { ok: true };
 }
+/* a build's styles turned into what plays: the chain that fits the weapon's hands (never empty) and the role attacks that fit */
+export function resolveStyles(styles, all, hands) {
+  const ok = id => { const st = id && all.find(x => x.id === id); return st && styleFits(st, hands) ? id : null; };
+  const chain = (styles.chain || []).map(ok).filter(Boolean), roles = {};
+  for (const r in ROLES) { const id = ok(styles.roles && styles.roles[r]); if (id) roles[r] = id; }
+  return { chain: chain.length ? chain : ['cut'], roles };
+}
 export function chainFor(p, all, hands) {            // equipped chain ids that fit the weapon's hands, in order; never empty
   const out = [], n = derive(p).chainSlots;
   for (const id of p.styles.chain.slice(0, n)) { const st = all.find(s => s.id === id); if (st && p.styles.owned.includes(id) && styleFits(st, hands)) out.push(id); }
@@ -173,47 +180,120 @@ export function wavePlan(n) {                          // the kinds of the n-th 
 export const MAPS = { fields: { n: 'Training Fields', d: 'Open ground outside the camp. A basic map.' } };
 export const stageOf = wave => Math.floor(wave / RUNCFG.exitEvery);
 
-/* ---------- the run ---------- */
+/* ---------- what the host needs to know about a member ---------- */
+export function buildOf(p) {
+  const d = derive(p);
+  return { name: p.name, look: p.look || null, level: p.level, weapon: p.weapon, armor: p.armor, skills: p.skills.slice(),
+    d: { dex: d.dex, maxHp: d.maxHp, staminaMax: d.staminaMax, dmgMult: d.dmgMult, spdMult: d.spdMult, regenMult: d.regenMult },
+    styles: { chain: p.styles.chain.slice(0, d.chainSlots), roles: Object.assign({}, p.styles.roles) }, hirelings: p.hirelings.map(h => allySpec(h, p)) };
+}
+RUNCFG.cart = { x: 570, r: 46 };                    // standing here (within r) with the cart panel open is what "at the cart" means
+RUNCFG.voteSecs = 25; RUNCFG.ackSecs = 15; RUNCFG.reviveHp = 0.4;
+
+/* ---------- the run: one or more members share it. Member 0 is the local player (with a profile); others are remote (a build only) ---------- */
 export class Run {
-  constructor(sim, profile, seed) {
-    this.sim = sim; this.p = profile; this.rng = makeRng(hash32(seed || 1, profile.runs + 3)); this.seed = seed || 1;
-    this.phase = 'camp'; this.wave = 0; this.gold = 0; this.kills = 0; this.xpGain = 0; this.timer = 0; this.queue = []; this.spawnT = 0; this.waveKills = 0;
-    this.rank = { score: 0, last: '', idle: 0, tier: 0 }; this.msgs = []; this.dummyT = 0; this.result = null; this.levelUps = 0; this.banner = null;
+  constructor(sim, profile, seed, pid) {
+    this.sim = sim; this.seed = seed || 1; this.rng = makeRng(hash32(this.seed, profile.runs + 3)); this.hooks = {};
+    this.phase = 'camp'; this.wave = 0; this.timer = 0; this.queue = []; this.spawnT = 0; this.waveKills = 0; this.msgs = []; this.dummyT = 0; this.banner = null; this.members = []; this.voteAt = 0; this.ackAt = 0; this.map = 'fields';
+    sim.players[0].pid = pid || 'host';
+    this.me = this.addMember(pid || 'host', buildOf(profile), profile);
     this.enterCamp();
   }
+  setPid(pid) {                                        // the relay names the host; every place the old name was used follows
+    const old = this.me.pid; if (old === pid) return; this.me.pid = pid; const q = this.sim.players[0]; q.pid = pid;
+    for (const a of this.sim.allies) if (a.owner === old) a.owner = pid;
+  }
+  /* the local member's numbers, under the old names */
+  get p() { return this.me.p; }
+  get gold() { return this.me.gold; } set gold(v) { this.me.gold = v; }
+  get kills() { return this.me.kills; } set kills(v) { this.me.kills = v; }
+  get xpGain() { return this.me.xpGain; } set xpGain(v) { this.me.xpGain = v; }
+  get levelUps() { return this.me.levelUps; } set levelUps(v) { this.me.levelUps = v; }
+  get rank() { return this.me.rank; }
+  get result() { return this.me.result; } set result(v) { this.me.result = v; }
   say(t) { this.msgs.push({ t: this.sim.t, text: t }); if (this.msgs.length > 12) this.msgs.shift(); }
-  get tier() { const a = RUNCFG.rank.at; let t = 0; for (let i = 0; i < a.length; i++) if (this.rank.score >= a[i]) t = i; return t; }
+  tierOf(m) { const a = RUNCFG.rank.at; let t = 0; for (let i = 0; i < a.length; i++) if (m.rank.score >= a[i]) t = i; return t; }
+  get tier() { return this.tierOf(this.me); }
   get rankName() { return RUNCFG.rank.names[this.tier]; }
-  goldMult() { return 1 + RUNCFG.rank.goldMult * this.tier; }
+  goldMult(m) { return 1 + RUNCFG.rank.goldMult * this.tierOf(m || this.me); }
+  byPid(pid) { return this.members.find(m => m.pid === pid) || null; }
+  idx(m) { return this.sim.players.findIndex(q => q.pid === m.pid); }
+  pl(m) { return this.sim.players.find(q => q.pid === m.pid) || null; }
+  atCart(m) { const q = this.pl(m || this.me); return !!q && Math.abs(q.x - RUNCFG.cart.x) <= RUNCFG.cart.r; }
 
-  /* put your build on the fighter: weapon, armor, attributes, skills */
-  applyBuild(inRun) {
-    const p = this.p, d = derive(p), sim = this.sim, tier = CFG.tiers[p.armor], bonus = inRun ? 1 + RUNCFG.rank.dmgBonus * this.tier : 1;
-    applyCmd(sim, { t: 'set', weapon: p.weapon, dex: d.dex, maxHp: d.maxHp, hp: d.maxHp, staminaMax: d.staminaMax, stamina: d.staminaMax, dmgMult: d.dmgMult * bonus, spdMult: d.spdMult, regenMult: d.regenMult,
-      armorPct: tier.pct, dur: tier.dur, durMax: tier.dur, broken: false, inv: false, skills: { riposte: p.skills.includes('riposte'), shove: p.skills.includes('shove'), multi: p.skills.includes('multi') } });
+  /* ---------- members ---------- */
+  addMember(pid, build, profile) {
+    let m = this.byPid(pid); if (m) { m.build = build; return m; }
+    m = { pid, name: build.name, build, p: profile || null, gold: 0, kills: 0, xpGain: 0, levelUps: 0, uses: {}, hireXp: 0, rank: { score: 0, last: '', idle: 0, tier: 0 }, ready: false, vote: null, acked: false, result: null, down: false };
+    this.members.push(m);
+    if (!this.sim.players.some(q => q.pid === pid)) this.sim.addPlayer(pid, build.name);
+    const q = this.pl(m); q.name = build.name; q.look = build.look || null;
+    if (this.members.length > 1) this.say(build.name + ' joined.');
+    if (this.phase === 'camp') { this.applyBuild(false, m); }
+    else if (this.phase === 'dead' || this.phase === 'left') { m.result = { kind: 'wait' }; m.acked = true; this.applyBuild(false, m); }
+    else {                                                                // join in progress: straight into the fight, at the current wave
+      const lead = this.sim.players.find(o => o !== q && o.hp > 0) || this.sim.players[0];
+      q.x = this.sim.clampX(lead.x - 36); q.y = this.sim.clampY(lead.y + 18); q.swing = null;
+      this.applyBuild(true, m); this.spawnAlliesFor(m);
+    }
+    return m;
+  }
+  removeMember(pid) {
+    const m = this.byPid(pid); if (!m || m === this.me) return false;
+    this.members = this.members.filter(o => o !== m); this.sim.removePlayer(pid); this.sim.allies = this.sim.allies.filter(a => a.owner !== pid);
+    this.say(m.name + ' left.');
+    if (this.phase === 'camp') this.checkDepart(); else if (this.phase === 'vote') this.checkVote();
+    return true;
+  }
+  setBuild(pid, build) { const m = this.byPid(pid); if (!m) return; m.build = build; m.name = build.name; if (this.phase === 'camp') this.applyBuild(false, m); else { const q = this.pl(m); if (q) { q.name = build.name; q.look = build.look || null; } } }
+
+  /* put a member's build on their fighter */
+  applyBuild(inRun, m) {
+    m = m || this.me; if (m.p) m.build = buildOf(m.p);
+    const b = m.build, d = b.d, sim = this.sim, tier = CFG.tiers[b.armor], bonus = inRun ? 1 + RUNCFG.rank.dmgBonus * this.tierOf(m) : 1, i = this.idx(m); if (i < 0) return;
+    applyCmd(sim, { t: 'set', p: i, weapon: b.weapon, dex: d.dex, maxHp: d.maxHp, hp: d.maxHp, staminaMax: d.staminaMax, stamina: d.staminaMax, dmgMult: d.dmgMult * bonus, spdMult: d.spdMult, regenMult: d.regenMult,
+      armorPct: tier.pct, dur: tier.dur, durMax: tier.dur, broken: false, inv: !inRun, skills: { riposte: b.skills.includes('riposte'), shove: b.skills.includes('shove'), multi: b.skills.includes('multi') } });
+    const q = sim.players[i]; q.name = b.name; q.look = b.look || null; q.armorKey = b.armor; q.roleStyles = Object.assign({}, b.styles.roles); m.down = false;
+    if (this.hooks.build) this.hooks.build(m, i);                          // the page bakes the chain and attack moves it knows
   }
   enterCamp() {
     const sim = this.sim; this.phase = 'camp'; sim.mode = 'arena'; sim.manual = true;
-    sim.clearEnemies(); sim.clearAllies(); sim.proj = []; sim.player.x = 330; sim.player.y = 282; sim.player.swing = null; sim.player.air = false; sim.player.z = 0;
-    this.applyBuild(false); applyCmd(sim, { t: 'set', inv: true });         // nothing in camp can hurt you
+    sim.clearEnemies(); sim.clearAllies(); sim.proj = [];
+    this.members.forEach((m, k) => { const q = this.pl(m); q.x = 330 + k * 26; q.y = 282; q.swing = null; q.air = false; q.z = 0; q.grab = null; m.ready = false; m.vote = null; m.acked = false; m.result = null; this.applyBuild(false, m); });
     this.spawnDummy();
   }
   spawnDummy() {
     const e = this.sim.spawn({ kind: 'soldier', tier: 'leather', dur: 99, ai: 'stand' }); e.hp = e.maxHp = 60; e.x = 120; e.y = 282; e.face = 1; e.dummy = true; this.dummy = e; return e;
   }
 
-  depart(map) {
-    if (this.phase !== 'camp') return false;
-    const sim = this.sim, p = this.p; p.runs++; this.map = map || 'fields'; this.wave = 0; this.gold = 0; this.kills = 0; this.xpGain = 0; this.levelUps = 0; this.result = null; this.rank.score = 0; this.rank.last = '';
-    sim.clearEnemies(); sim.mode = 'run'; sim.manual = true; sim.proj = []; sim.player.x = 170; sim.player.y = 282; sim.player.swing = null;
-    this.applyBuild(true); this.spawnAllies(); this.say('The run begins.'); this.startWave(1); return true;
+  /* ---------- leaving camp: everyone stands at the cart and is ready ---------- */
+  readyUp(pid, map) {
+    const m = this.byPid(pid); if (!m || this.phase !== 'camp' || !this.atCart(m)) return false;
+    m.ready = true; m.map = map || m.map || 'fields'; this.checkDepart(); return true;
   }
-  spawnAllies() {
-    const sim = this.sim; sim.clearAllies();
-    this.p.hirelings.forEach((h, i) => sim.spawnAlly(Object.assign(allySpec(h, this.p), { index: i })));
+  unready(pid) { const m = this.byPid(pid); if (m) m.ready = false; }
+  checkDepart() {
+    if (this.phase !== 'camp' || !this.members.length) return false;
+    if (!this.members.every(m => m.ready && this.atCart(m))) return false;
+    this.launch(this.members[0].map || 'fields'); return true;
+  }
+  depart(map) { this.readyUp(this.me.pid, map); return this.phase === 'wave'; }          // alone, being ready is leaving
+  launch(map) {
+    const sim = this.sim; this.map = map || 'fields'; this.wave = 0;
+    sim.clearEnemies(); sim.mode = 'run'; sim.manual = true; sim.proj = []; this.result = null;
+    this.members.forEach((m, k) => {
+      if (m.p) m.p.runs++; m.gold = 0; m.kills = 0; m.xpGain = 0; m.levelUps = 0; m.uses = {}; m.hireXp = 0; m.rank = { score: 0, last: '', idle: 0, tier: 0 }; m.result = null; m.vote = null; m.ready = false; m.down = false;
+      const q = this.pl(m); q.x = 170 - k * 26; q.y = 282; q.swing = null; q.grab = null; this.applyBuild(true, m);
+    });
+    this.spawnAllies(); this.say('The run begins.'); this.startWave(1);
+  }
+  spawnAllies() { this.sim.clearAllies(); this.members.forEach(m => this.spawnAlliesFor(m)); }
+  spawnAlliesFor(m) {
+    const sim = this.sim, q = this.pl(m); sim.allies = sim.allies.filter(a => a.owner !== m.pid);
+    m.build.hirelings.forEach((h, i) => { const a = sim.spawnAlly(Object.assign({}, h, { index: i, owner: m.pid })); if (q) { a.x = sim.clampX(q.x - 34 - i * 30); } });
   }
   startWave(n) {
-    this.banner = { text: 'WAVE ' + n, at: this.sim.t }; this.wave = n; this.phase = 'wave'; this.queue = wavePlan(n); this.spawnT = 0.5; this.waveKills = 0; this.waveHits = 0;
+    this.banner = { text: 'WAVE ' + n, at: this.sim.t }; this.wave = n; this.phase = 'wave'; this.queue = wavePlan(n); this.spawnT = 0.5; this.waveKills = 0;
     this.say('Wave ' + n + ': ' + this.queue.length + ' enemies.');
   }
   alive() { return this.sim.enemies.filter(e => e.state === 'alive').length; }
@@ -223,74 +303,105 @@ export class Run {
     const sim = this.sim, R = RUNCFG;
     const feed = sim.feed; sim.feed = [];
     if (this.phase === 'camp') {
-      // the camp dummy gives no growth and no rewards
       if (this.dummy && this.dummy.state !== 'alive') { this.dummyT += dt; if (this.dummyT > 1.5) { this.dummyT = 0; this.dummy = null; this.spawnDummy(); } }
       else if (this.dummy && this.dummy.hp < this.dummy.maxHp) this.dummy.hp = Math.min(this.dummy.maxHp, this.dummy.hp + 8 * dt);
+      for (const m of this.members) if (m.ready && !this.atCart(m)) m.ready = false;       // walking away takes the ready back
       return;
     }
-    // rewards and style rank from what happened this frame
     for (const f of feed) {
-      if (f.t === 'kill') this.onKill(f);
-      else if (f.t === 'hit') this.onHit(f.move);
-      else if (f.t === 'hurt') { this.rank.score = 0; this.rank.last = ''; trainFromUse(this.p, 'hurt'); this.syncRank(); }
+      const who = f.pid != null ? [this.byPid(f.pid)].filter(Boolean) : (f.t === 'kill' ? this.members : [this.me]);
+      if (f.t === 'kill') { for (const m of who) this.onKill(m, f, who.length); }
+      else if (f.t === 'hit') { for (const m of who) this.onHit(m, f.move); }
+      else if (f.t === 'hurt') { for (const m of who) { m.rank.score = 0; m.rank.last = ''; this.train(m, 'hurt'); this.syncRank(m); } }
     }
-    if (this.phase === 'wave' || this.phase === 'between') {
-      this.rank.idle += dt; if (this.rank.idle > R.rank.idle) { this.rank.score = Math.max(0, this.rank.score - R.rank.decay * dt); this.syncRank(); }
+    if (this.phase === 'wave' || this.phase === 'between') for (const m of this.members) { m.rank.idle += dt; if (m.rank.idle > R.rank.idle) { m.rank.score = Math.max(0, m.rank.score - R.rank.decay * dt); this.syncRank(m); } }
+    if (this.phase === 'wave' || this.phase === 'between' || this.phase === 'vote') {
+      for (const m of this.members) { const q = this.pl(m); if (q && q.hp <= 0 && !m.down) { m.down = true; this.say(m.name + ' is down.'); } }
+      if (this.members.length && this.members.every(m => m.down)) { this.die(); return; }
     }
-    if (sim.player.hp <= 0 && this.phase !== 'dead' && this.phase !== 'left') { this.die(); return; }
     if (this.phase === 'wave') {
       this.spawnT -= dt;
-      const cap = R.maxAlive + this.wave * R.maxAlivePerWave;
+      const cap = R.maxAlive + this.wave * R.maxAlivePerWave + 4 * (this.members.length - 1);
       if (this.queue.length && this.spawnT <= 0 && this.alive() < cap) { this.spawnOne(); this.spawnT = R.spawnGap; }
       if (!this.queue.length && this.alive() === 0) this.clearWave();
     } else if (this.phase === 'between') {
       this.timer -= dt; if (this.timer <= 0) this.startWave(this.wave + 1);
+    } else if (this.phase === 'vote') {
+      if (sim.t >= this.voteAt) this.resolveVote();
+    } else if (this.phase === 'dead' || this.phase === 'left') {
+      if (sim.t >= this.ackAt) this.enterCamp();
     }
   }
   spawnOne() {
     const sim = this.sim, kind = this.queue.shift(), side = this.rng() < 0.5 ? -1 : 1;
     const e = sim.spawn({ kind, ai: 'advance' });
     e.x = side > 0 ? CFG.arena.right - 8 : CFG.arena.left + 8; e.y = sim.clampY(CFG.band.top + this.rng() * (CFG.band.bottom - CFG.band.top)); e.face = -side;
-    const k = 1 + R_HP() * (this.wave - 1); e.hp = e.maxHp = Math.max(1, Math.round(e.maxHp * k));
+    const k = 1 + R_HP() * (this.wave - 1) + 0.25 * (this.members.length - 1); e.hp = e.maxHp = Math.max(1, Math.round(e.maxHp * k));
     return e;
   }
-  onKill(f) {
-    const R = RUNCFG, k = f.kind; this.kills++; this.waveKills++;
-    const g = Math.round((R.gold.kill[k] || 1) * this.goldMult()); this.gold += g;
-    this.giveXp(R.xp.kill[k] || 1);
+  train(m, kind) { if (m.p) return trainFromUse(m.p, kind); m.uses[kind] = (m.uses[kind] || 0) + 1; return false; }
+  onKill(m, f, share) {
+    const R = RUNCFG, k = f.kind; m.kills++;
+    m.gold += Math.max(1, Math.round((R.gold.kill[k] || 1) * this.goldMult(m) / share)); this.giveXp(m, Math.max(1, Math.round((R.xp.kill[k] || 1) / share)));
   }
-  giveXp(n) { this.xpGain += n; const up = addXp(this.p, n); if (up) { this.levelUps += up; this.say('Level ' + this.p.level + '! +' + up * RUNCFG.pointsPerLevel + ' attribute points.'); this.sim.text(this.sim.player.x, this.sim.player.y - 120, 'LEVEL UP', '#ffe27a', 12); } }
-  onHit(move) {
-    const R = RUNCFG.rank, g = trainFromUse(this.p, move);
-    if (g) this.say(g.toUpperCase() + ' grew from use.');
-    this.rank.idle = 0;
-    if (this.rank.last && this.rank.last === move) this.rank.score = Math.max(0, this.rank.score + R.repeat); else this.rank.score = Math.min(100, this.rank.score + R.gain);
-    this.rank.last = move; this.syncRank();
+  giveXp(m, n) {
+    m.xpGain += n; if (!m.p) return;
+    const up = addXp(m.p, n); if (up) { m.levelUps += up; this.say(m.name + ' reached level ' + m.p.level + '.'); const q = this.pl(m); if (q) this.sim.text(q.x, q.y - 120, 'LEVEL UP', '#ffe27a', 12); }
   }
-  syncRank() {                                         // the small combat bonus follows the rank tier
-    const t = this.tier; if (t === this.rank.tier) return; this.rank.tier = t;
-    const d = derive(this.p); applyCmd(this.sim, { t: 'set', dmgMult: d.dmgMult * (1 + RUNCFG.rank.dmgBonus * t) });
+  onHit(m, move) {
+    const R = RUNCFG.rank, g = this.train(m, move);
+    if (g && m === this.me) this.say(g.toUpperCase() + ' grew from use.');
+    m.rank.idle = 0;
+    if (m.rank.last && m.rank.last === move) m.rank.score = Math.max(0, m.rank.score + R.repeat); else m.rank.score = Math.min(100, m.rank.score + R.gain);
+    m.rank.last = move; this.syncRank(m);
+  }
+  syncRank(m) {                                        // the small combat bonus follows the rank tier
+    const t = this.tierOf(m); if (t === m.rank.tier) return; m.rank.tier = t;
+    const i = this.idx(m); if (i >= 0) applyCmd(this.sim, { t: 'set', p: i, dmgMult: m.build.d.dmgMult * (1 + RUNCFG.rank.dmgBonus * t) });
   }
   clearWave() {
     const R = RUNCFG, sim = this.sim; this.say('Wave ' + this.wave + ' cleared.'); this.banner = { text: 'WAVE CLEARED', at: sim.t };
-    this.gold += Math.round(R.gold.wave * this.wave * this.goldMult()); this.giveXp(R.xp.wave * this.wave);
-    for (const h of this.p.hirelings) if (hirelingXp(h, 1)) this.say(h.name + ' reached level ' + h.level + '.');
-    const pl = sim.player; pl.hp = Math.min(pl.maxHp, pl.hp + Math.round(pl.maxHp * R.healBetween)); pl.stamina = pl.staminaMax;
+    for (const m of this.members) {
+      m.gold += Math.round(R.gold.wave * this.wave * this.goldMult(m)); this.giveXp(m, R.xp.wave * this.wave);
+      if (m.p) { for (const h of m.p.hirelings) if (hirelingXp(h, 1)) this.say(h.name + ' reached level ' + h.level + '.'); } else m.hireXp++;
+      const q = this.pl(m), i = this.idx(m);
+      if (q.hp <= 0) applyCmd(sim, { t: 'set', p: i, hp: Math.max(1, Math.round(q.maxHp * R.reviveHp)) });       // a downed fighter is back on their feet
+      else applyCmd(sim, { t: 'set', p: i, hp: Math.min(q.maxHp, q.hp + Math.round(q.maxHp * R.healBetween)) });
+      applyCmd(sim, { t: 'set', p: i, stamina: q.staminaMax }); m.down = false;
+    }
     this.spawnAllies();                                // fallen hirelings return, no penalty
-    if (this.wave % R.exitEvery === 0) { this.phase = 'vote'; this.say('Leave with ' + this.leavePay() + ' gold, or press on?'); }
+    if (this.wave % R.exitEvery === 0) { this.phase = 'vote'; this.voteAt = sim.t + R.voteSecs; for (const m of this.members) m.vote = null; this.say('Leave, or press on?'); }
     else { this.phase = 'between'; this.timer = R.between; }
   }
-  leavePay() { return Math.round(this.gold * (1 + RUNCFG.deepBonus * (stageOf(this.wave) - 1))); }
-  vote(leave) {
-    if (this.phase !== 'vote') return false;
-    if (leave) { const g = this.leavePay(); this.p.gold += g; this.p.best = Math.max(this.p.best, this.wave); this.result = { kind: 'left', wave: this.wave, gold: g, kills: this.kills, xp: this.xpGain, levels: this.levelUps }; this.phase = 'left'; }
-    else { this.phase = 'between'; this.timer = RUNCFG.between; }
-    return true;
+  leavePayOf(m) { return Math.round(m.gold * (1 + RUNCFG.deepBonus * (stageOf(this.wave) - 1))); }
+  leavePay() { return this.leavePayOf(this.me); }
+  /* the exit vote: leave if more vote to leave than to stay; silence counts as staying */
+  castVote(pid, leave) { const m = this.byPid(pid); if (!m || this.phase !== 'vote') return false; m.vote = leave ? 'leave' : 'stay'; this.checkVote(); return true; }
+  vote(leave) { return this.castVote(this.me.pid, leave); }
+  checkVote() { if (this.phase === 'vote' && this.members.every(m => m.vote)) this.resolveVote(); }
+  resolveVote() {
+    if (this.phase !== 'vote') return;
+    const leave = this.members.filter(m => m.vote === 'leave').length, stay = this.members.length - leave;
+    if (leave > stay) {
+      for (const m of this.members) { const g = this.leavePayOf(m); if (m.p) { m.p.gold += g; m.p.best = Math.max(m.p.best, this.wave); } m.result = { kind: 'left', wave: this.wave, gold: g, kills: m.kills, xp: m.xpGain, levels: m.levelUps, uses: m.uses, hireXp: m.hireXp }; m.acked = false; }
+      this.phase = 'left'; this.ackAt = this.sim.t + RUNCFG.ackSecs;
+    } else { this.say(this.members.length > 1 ? 'The party presses on.' : ''); this.phase = 'between'; this.timer = RUNCFG.between; }
   }
   die() {
-    this.phase = 'dead'; this.p.best = Math.max(this.p.best, this.wave - 1);
-    this.result = { kind: 'dead', wave: this.wave, lost: this.gold, kills: this.kills, xp: this.xpGain, levels: this.levelUps }; this.gold = 0;   // the run's gold is gone; gear, levels and unlocks stay
+    this.phase = 'dead'; this.ackAt = this.sim.t + RUNCFG.ackSecs;
+    for (const m of this.members) { if (m.p) m.p.best = Math.max(m.p.best, this.wave - 1); m.result = { kind: 'dead', wave: this.wave, lost: m.gold, kills: m.kills, xp: m.xpGain, levels: m.levelUps, uses: m.uses, hireXp: m.hireXp }; m.gold = 0; m.acked = false; }   // the run's gold is gone; gear, levels and unlocks stay
   }
-  returnToCamp() { if (this.phase === 'dead' || this.phase === 'left') this.enterCamp(); }
+  ack(pid) { const m = this.byPid(pid); if (!m) return; m.acked = true; if (this.members.every(o => o.acked)) this.enterCamp(); }
+  returnToCamp() { if (this.phase === 'dead' || this.phase === 'left') this.ack(this.me.pid); }
 }
 const R_HP = () => RUNCFG.waveHp;
+
+/* what a remote member's browser does with the reward the host sends it when a run ends (and for the local run's growth is already applied) */
+export function applyRemoteResult(p, r) {
+  if (!r || r.kind === 'wait') return { levels: 0 };
+  let up = addXp(p, r.xp || 0);
+  for (const k in (r.uses || {})) for (let i = 0; i < r.uses[k]; i++) trainFromUse(p, k);
+  for (const h of p.hirelings) for (let i = 0; i < (r.hireXp || 0); i++) hirelingXp(h, 1);
+  if (r.kind === 'left') { p.gold += r.gold; p.best = Math.max(p.best, r.wave); } else p.best = Math.max(p.best, r.wave - 1);
+  return { levels: up };
+}

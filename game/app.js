@@ -8,6 +8,8 @@ import BUILTIN_ANIMS from './anims.json';
 import { applySnapshot } from '../server/protocol.js';
 import { initRunUI } from './runui.js';
 import { initDiscord } from './discord.js';
+import { PartyHost, GuestRun, applySnap } from './party.js';
+import { buildOf, resolveStyles } from './run.js';
 const DISCORD_CLIENT_ID = typeof __DISCORD_CLIENT_ID__ === 'string' ? __DISCORD_CLIENT_ID__ : '';
 const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: 'Chop', hands: 0 }, { id: 'attack2', name: 'Horizontal sweep', hands: 0 }, { id: 'lunge', name: 'Lunge', hands: 2 }];
 {
@@ -273,6 +275,8 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     if (p.shotT > 0) return { kind: 'shoot', u: 1 - p.shotT / 0.25 };
     return null;
   }
+  const lookOf = q => ({ tier: q.armorKey || 'leather', head: (q.look && q.look.head) || '', body: (q.look && q.look.body) || '', liv: (q.look && q.look.liv) || '', metal: (q.look && q.look.metal) || '', style: 'cut' });
+  const weaponOf = q => { const aw = CFG.weapons[q.weapon] || CFG.weapons.longsword, c = CFG.weaponClasses[aw.cls]; return { twoHanded: c.twoHanded, kind: aw.kind, reach: c.reach }; };
   function render() {
     ctx.imageSmoothingEnabled = false; hudBegin(); hudOn = !(pb && pb.zoom);
     ctx.save();
@@ -292,15 +296,17 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       ctx.fillRect(x0, p.y - CFG.laneTol, w.reach + 8, CFG.laneTol * 2);
     }
 
-    const list = [{ kind: 'p', y: p.y }].concat(sim.enemies.map(e => ({ kind: 'e', e, y: e.y - (e.state === 'dying' ? 0.5 : 0) }))).concat(sim.allies.map(a => ({ kind: 'a', a, y: a.y - (a.state === 'dying' ? 0.5 : 0) })));
+    const list = sim.players.map(q => ({ kind: 'p', q, y: q.y })).concat(sim.enemies.map(e => ({ kind: 'e', e, y: e.y - (e.state === 'dying' ? 0.5 : 0) }))).concat(sim.allies.map(a => ({ kind: 'a', a, y: a.y - (a.state === 'dying' ? 0.5 : 0) })));
     list.sort((a, b) => a.y - b.y);
     const target = (!p.swing) ? sim.findTarget(w) : sim.enemies.find(e => e.id === p.swing.target);
 
     for (const it of list) {
       if (it.kind === 'p') {
-        drawFigure(Object.assign({ role: 'p', x: p.x, y: p.y, z: p.z || 0, face: p.face, tier: look.tier, pHead: look.head, pBody: look.body, pLiv: look.liv, pMetal: look.metal, broken: false, two: w.twoHanded, wkind: w.kind || 'sword', shield: false,
-          swing: p.swing, moving: p.moving, walkT: p.walkT, t: sim.t, flash: p.flash, flashMax: 0.2, hurt: p.hurt, hurtMax: 0.6, st: playerState(p),
-          style: p.swing && p.swing.kind && p.swing.kind !== 'light' ? (roleStyle[p.swing.kind] || ({ heavy: 'chop', dash: w.twoHanded ? 'lunge' : 'cut', counter: 'cut', jump: 'chop' })[p.swing.kind]) : look.style }, M3.grabAtt(sim, w.twoHanded)));
+        const q = it.q, mine = q === p, lk = mine ? look : lookOf(q), qw = mine ? w : weaponOf(q);
+        if (q.hp <= 0 && !mine && sim.mode !== 'arena') { continue; }
+        drawFigure(Object.assign({ role: 'p', x: q.x, y: q.y, z: q.z || 0, face: q.face, tier: lk.tier, pHead: lk.head, pBody: lk.body, pLiv: lk.liv, pMetal: lk.metal, broken: false, two: qw.twoHanded, wkind: qw.kind || 'sword', shield: false,
+          swing: q.swing, moving: q.moving, walkT: q.walkT, t: sim.t, flash: q.flash, flashMax: 0.2, hurt: q.hurt, hurtMax: 0.6, st: playerState(q),
+          style: q.swing && q.swing.kind && q.swing.kind !== 'light' ? ((mine ? roleStyle : (q.roleStyles || {}))[q.swing.kind] || ({ heavy: 'chop', dash: qw.twoHanded ? 'lunge' : 'cut', counter: 'cut', jump: 'chop' })[q.swing.kind]) : (mine ? look.style : (q.swing && q.swing.style) || 'cut') }, M3.grabAtt(sim, qw.twoHanded)));
       } else if (it.kind === 'a') {                                  // a hireling: a fighter on your side
         const a = it.a, aw = CFG.weapons[a.weapon], two = CFG.weaponClasses[aw.cls].twoHanded, L = a.look || M3.enemyLook(a.tier, a.lookSeed);
         const swing = a.atk ? { t: a.atk.t, dur: 1.0, dur0: 1.0, hitAt: 0.45, extra: 0 } : null;
@@ -364,7 +370,11 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     ctx.globalAlpha = 1;
 
     // player hp + swing
-    label('YOU', p.x, p.y - 88, '#f4ecd8', 10);
+    for (const q of sim.players) if (q !== p && (q.hp > 0 || sim.mode === 'arena')) {
+      label(q.name || 'Ally', q.x, q.y - 88, '#9fd3ff', 10);
+      ctx.fillStyle = '#14101c'; ctx.fillRect(q.x - 15, q.y - 84, 30, 5); ctx.fillStyle = '#6fd07a'; ctx.fillRect(q.x - 14, q.y - 83, Math.round(28 * Math.max(0, q.hp) / q.maxHp), 3);
+    }
+        label('YOU', p.x, p.y - 88, '#f4ecd8', 10);
     ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 15, p.y - 84, 30, 5); ctx.fillStyle = '#6fd07a'; ctx.fillRect(p.x - 14, p.y - 83, Math.round(28 * p.hp / p.maxHp), 3);
     ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 15, p.y - 79, 30, 4); ctx.fillStyle = p.stunT > 0 ? '#ff7a6a' : '#e8c24a'; ctx.fillRect(p.x - 14, p.y - 78, Math.round(28 * p.stamina / p.staminaMax), 2);
     if (p.blocking && p.blockT <= CFG.stamina.parryWin) { ctx.strokeStyle = '#ffe27a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(Math.round(p.x), Math.round(p.y), 24, 7, 0, 0, 7); ctx.stroke(); }
@@ -470,16 +480,40 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     for (const id in sim.moves) if (!net.sentMoves.has(id)) { send({ t: 'move', id, data: sim.moves[id] }); net.sentMoves.add(id); }   // player and enemy blade paths
     send({ t: 'set', weapon: p.weapon, dex: p.dex, move: p.move });
   }
+  /* ---------- party: one browser hosts the run, the others send input and draw what the host sends (game/party.js, server/party-room.js) ---------- */
+  let party = null;
+  const roomName = () => ($('netroom').value.trim() || 'test').replace(/[^\w-]/g, '').slice(0, 40);
+  function bakeBuild(m, i) {                                     // a remote member's chain and attack moves, baked here because only this page knows the 3D rig
+    if (m.p) return; const b = m.build, aw = CFG.weapons[b.weapon]; if (!aw) return;
+    const two = CFG.weaponClasses[aw.cls].twoHanded, wk = aw.kind || 'sword', rs = resolveStyles(b.styles, BASE_STYLES.concat(libStyles), two ? 2 : 1);
+    const bk = st => { const k = M3.moveKey(st, two), id = k + '|' + wk; if (!live.moves[id]) { const mv = M3.bakeMove(k, { two, wkind: wk }); if (mv) cmd({ t: 'move', id, data: mv }); } return live.moves[id] ? id : null; };
+    cmd({ t: 'set', p: i, chainStyles: rs.chain.map(id => ({ style: id, move: bk(id) })), kindMoves: { heavy: bk(rs.roles.heavy || 'chop'), dash: bk(rs.roles.dash || (two ? 'lunge' : 'cut')), counter: bk(rs.roles.counter || 'cut'), jump: bk(rs.roles.jump || 'chop') }, move: bk('cut') });
+  }
+  function partyEnd(why) {
+    if (!party) return; const was = party; party = null; live.textOut = null;
+    if (was.g && was.prev) { runui.setRun(was.prev); runui.run.enterCamp(); }
+    else if (was.h) for (const m of runui.run.members.slice()) runui.run.removeMember(m.pid);
+    $('netgo').textContent = 'Connect'; $('netmsg').textContent = why || 'Offline: this page runs the fight itself.';
+  }
   function netConnect() {
-    if (net) { net.ws.close(); return; }
-    const base = $('netbase').value.trim().replace(/\/+$/, ''), room = ($('netroom').value.trim() || 'test').replace(/[^\w-]/g, '').slice(0, 40);
-    let ws; try { ws = new WebSocket(base.replace(/^http/, 'ws') + '/room/' + room); } catch (e) { $('netmsg').textContent = 'Bad server address.'; return; }
-    net = { ws, role: null, sentMoves: new Set(), lastIn: '' }; $('netgo').textContent = 'Disconnect'; $('netmsg').textContent = 'Connecting...';
-    ws.onmessage = ev => { const m = JSON.parse(ev.data);
-      if (m.t === 'hello') { net.role = m.role; sim.enemies = []; sim.texts = []; sim.fx = []; $('netmsg').textContent = 'Room ' + room + ': you are the ' + m.role + '.'; netSync(); }
-      else if (m.t === 'state') applySnapshot(sim, m);
-      else if (m.t === 'error') $('netmsg').textContent = 'Server: ' + m.msg; };
-    ws.onclose = () => { net = null; $('netgo').textContent = 'Connect'; $('netmsg').textContent = 'Offline: this page runs the fight itself.'; };
+    if (party) { party.ws.close(); return; }
+    const base = $('netbase').value.trim().replace(/\/+$/, ''), room = roomName();
+    let ws; try { ws = new WebSocket(base.replace(/^http/, 'ws') + '/party/' + room); } catch (e) { $('netmsg').textContent = 'Bad server address.'; return; }
+    const out = m => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); };
+    party = { ws, id: null, h: null, g: null, prev: null, lastIn: '', inAt: 0 }; $('netgo').textContent = 'Disconnect'; $('netmsg').textContent = 'Connecting...';
+    ws.onmessage = ev => {
+      let m; try { m = JSON.parse(ev.data); } catch (e) { return; } const P = party; if (!P) return;
+      if (m.t === 'hello') {
+        P.id = m.id;
+        if (m.host) { runui.run.hooks.build = bakeBuild; P.h = new PartyHost({ sim: live, run: runui.run, send: (to, x) => out(Object.assign({ to }, x)), selfId: m.id }); $('netmsg').textContent = 'Room ' + room + ': you are hosting. Others join the same room.'; }
+        else { P.prev = runui.run; P.g = new GuestRun(live, runui.profile, out, { result: () => runui.afterResult() }); P.g.me.pid = m.id; runui.setRun(P.g); out({ t: 'join', build: buildOf(runui.profile) }); $('netmsg').textContent = 'Room ' + room + ': you joined the host\'s camp.'; }
+      } else if (m.t === 'peer-join' && P.h) P.h.onJoin(m.id);
+      else if (m.t === 'peer-leave' && P.h) P.h.onLeave(m.id);
+      else if (P.h && m.from) P.h.onMsg(m.from, m);
+      else if (P.g && m.t === 'snap') { applySnap(live, m, P.id); P.g.onSnap(m, P.id); }
+      else if (P.g && m.t === 'result') P.g.onResult(m.res);
+    };
+    ws.onclose = () => partyEnd(party && party.g ? 'The host left. Back in your own camp.' : null);
     ws.onerror = () => { $('netmsg').textContent = 'Could not reach the server.'; };
   }
   $('netgo').addEventListener('click', netConnect);
@@ -534,10 +568,12 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   function frame(now) {
     const real = Math.min(0.05, (now - last) / 1000); last = now;
     fpsN++; if (now - fpsT >= 1000) { fpsTxt = Math.round(fpsN * 1000 / (now - fpsT)) + ' fps · ' + (1 + sim.enemies.length) + ' fighters drawn'; fpsN = 0; fpsT = now; }   // measure the live 3D cost on your own machine
-    if (net) {                                                   // online: send input when it changes; the room steps the fight
-      const inp = curInput(), k = inp.x + ',' + inp.y + ',' + inp.act + ',' + inp.g + ',' + inp.fin + ',' + inp.heavy + ',' + inp.block + ',' + inp.dash + ',' + inp.fire + ',' + inp.jump;
-      if (k !== net.lastIn) { net.lastIn = k; send(Object.assign({ t: 'input' }, inp)); }
+    if (party && party.g) {                                      // guest: the host steps the fight; send input when it changes (and now and then) and draw the snapshots
+      const inp = curInput(), k = JSON.stringify(inp);
+      if (party.ws.readyState === 1 && (k !== party.lastIn || now - party.inAt > 200)) { party.lastIn = k; party.inAt = now; party.ws.send(JSON.stringify({ t: 'in', i: inp })); }
       for (const t of sim.texts) t.life -= real; sim.texts = sim.texts.filter(t => t.life > 0);
+      for (const f of sim.fx) f.life -= real; sim.fx = sim.fx.filter(f => f.life > 0);
+      if (runui && runui.active) runui.update(real);
     } else if (pb) {                                             // a replay or kill cam is playing
       pb.acc += real * pb.speed;
       while (pb.acc >= STEP && pb.sim.stepN < pb.end) { pbStep(); pb.acc -= STEP; }
@@ -549,7 +585,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
         let inp = want;
         if (dsteps > 0) { delayQ.push({ s: live.stepN + dsteps, inp: want }); inp = live.input; while (delayQ.length && delayQ[0].s <= live.stepN) inp = delayQ.shift().inp; } else delayQ.length = 0;
         if (!sameInput(inp, live.input)) cmd(Object.assign({ t: 'input' }, inp));
-        live.step(STEP); acc -= STEP; if (runui && runui.active) runui.update(STEP);
+        live.step(STEP); acc -= STEP; if (runui && runui.active) runui.update(STEP); if (party && party.h) party.h.afterStep();
         if (rec && live.stepN % 300 === 0) { snaps.push({ step: live.stepN, state: live.saveState(), cfg: clone(live.cfg), moves: Object.assign({}, live.moves), at: rec.cmds.length }); if (snaps.length > 8) snaps.shift(); }
       }
     }
@@ -613,13 +649,13 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     cmd({ t: 'say', text: 'Manual combat: mouse aims and attacks, Q blocks, Shift dashes, E fires, G grabs.' });
     cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] });
     const clearKeys = () => { for (const k in keys) keys[k] = k === 'fin' ? '' : false; };
-    runui = initRunUI({ $, live, FONT, readLook, styles: () => BASE_STYLES.concat(libStyles), hands: () => live.weaponInfo().twoHanded ? 2 : 1, stopRec: () => { rec = null; snaps = []; }, clearKeys, focusStage: () => cv.focus(),
+    runui = initRunUI({ $, live, FONT, readLook, lookOptions: () => Object.fromEntries([['head', 'lkhead'], ['body', 'lkbody'], ['liv', 'lkliv'], ['metal', 'lkmetal']].map(([k, id]) => [k, [...$(id).options].map(o => ({ v: o.value, l: o.textContent }))])), styles: () => BASE_STYLES.concat(libStyles), hands: () => live.weaponInfo().twoHanded ? 2 : 1, stopRec: () => { rec = null; snaps = []; }, clearKeys, focusStage: () => cv.focus(),
       afterLeave: () => { cmd({ t: 'set', chainStyles: null }); startRec(); cmd({ t: 'manual', on: true }); cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] }); applySettings(); } });
     // Discord Activity: when this page runs inside Discord, sign in, use the instance as the room, and keep the Rich Presence line current
     initDiscord({ clientId: DISCORD_CLIENT_ID, onError: m => sim.say('info', 'Discord: ' + m) }).then(d => {
       if (!d) return; window.PW.discord = d;
       $('netroom').value = d.roomName; $('netbase').value = d.wsBase;
-      sim.say('info', 'Discord: signed in as ' + d.name + '.');
+      sim.say('info', 'Discord: signed in as ' + d.name + '.'); if (!party) netConnect();
       setInterval(() => { const r = runui.run; d.setPresence(r.phase === 'camp' ? 'In camp' : r.phase === 'dead' ? 'Fell in the field' : 'Wave ' + r.wave, runui.profile.name + ' · Lv ' + runui.profile.level, performance.now() / 1000); }, 2000);
     });
     const setMode = m => {

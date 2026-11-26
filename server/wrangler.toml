@@ -7,9 +7,17 @@ compatibility_date = "2026-11-01"
 name = "ROOMS"
 class_name = "FightRoom"
 
+[[durable_objects.bindings]]
+name = "PARTY"
+class_name = "PartyRoom"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["FightRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["PartyRoom"]
 
 # serves ../dist (the single-file pages) from the Worker; free static assets, no paid features
 [assets]
