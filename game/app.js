@@ -7,6 +7,8 @@ import { CFG, Sim, applyCmd, SIM_VERSION, fitsWindow, minDexForWindow, moveTau, 
 import BUILTIN_ANIMS from './anims.json';
 import { applySnapshot } from '../server/protocol.js';
 import { initRunUI } from './runui.js';
+import { initDiscord } from './discord.js';
+const DISCORD_CLIENT_ID = typeof __DISCORD_CLIENT_ID__ === 'string' ? __DISCORD_CLIENT_ID__ : '';
 const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: 'Chop', hands: 0 }, { id: 'attack2', name: 'Horizontal sweep', hands: 0 }, { id: 'lunge', name: 'Lunge', hands: 2 }];
 {
   const $ = id => document.getElementById(id);
@@ -89,7 +91,16 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     ctx.restore();
   }
 
+  /* the HUD layer: text and windows drawn at the screen's own resolution, so they stay sharp while the 3D fighters stay pixel art */
+  const hudCv = $('hud'), hx = hudCv.getContext('2d'); let hudOn = true;
+  function hudBegin() {
+    const r = hudCv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, w = Math.max(640, Math.min(2560, Math.round(r.width * dpr)));
+    if (hudCv.width !== w) { hudCv.width = w; hudCv.height = Math.round(w * 9 / 16); }
+    hx.setTransform(1, 0, 0, 1, 0, 0); hx.clearRect(0, 0, hudCv.width, hudCv.height); const k = hudCv.width / CFG.W; hx.setTransform(k, 0, 0, k, 0, 0);
+    hx.lineJoin = 'round'; hx.globalAlpha = 1;
+  }
   function label(text, x, y, col, size) {
+    if (hudOn) { hx.globalAlpha = ctx.globalAlpha; hx.font = (size || 10) + 'px ' + FONT; hx.textAlign = 'center'; hx.lineWidth = 3; hx.strokeStyle = '#14101c'; hx.strokeText(text, x, y); hx.fillStyle = col; hx.fillText(text, x, y); hx.globalAlpha = 1; return; }
     ctx.font = (size || 10) + 'px ' + FONT; ctx.textAlign = 'center';
     ctx.lineWidth = 3; ctx.strokeStyle = '#14101c'; ctx.strokeText(text, Math.round(x), Math.round(y));
     ctx.fillStyle = col; ctx.fillText(text, Math.round(x), Math.round(y));
@@ -263,11 +274,11 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     return null;
   }
   function render() {
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = false; hudBegin(); hudOn = !(pb && pb.zoom);
     ctx.save();
     if (pb && pb.zoom) { const W = cv.width, H = cv.height, z = 2, zx = Math.max(W / z / 2, Math.min(W - W / z / 2, pb.zoom.x)), zy = Math.max(H / z / 2, Math.min(H - H / z / 2, pb.zoom.y)); ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-zx, -zy); }
     if (sim.shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * 5), Math.round((Math.random() - 0.5) * 3));
-    ctx.drawImage(bg, 0, 0);
+    ctx.drawImage(runui && runui.inCamp() ? runui.campBg : bg, 0, 0);
     if (runui && runui.active) runui.drawBack(ctx);
     const p = sim.player, w = sim.weaponInfo();
     const dbg = $('dbg').checked;
@@ -377,7 +388,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       ctx.fillStyle = '#ffffff'; ctx.fillRect(p.x - 19 + Math.round(38 * s.hitAt / s.dur), p.y - 101, 1, 6);
     }
     ctx.restore();
-    if (runui && runui.active) runui.drawFront(ctx);
+    if (runui && runui.active) { runui.drawLabels(hx); runui.drawFront(hx); }
     if (pb) { ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(8, 8, 74, 14); label(pb.label + (pb.speed < 1 ? ' ' + pb.speed + 'x' : ''), 45, 19, '#ffd27a', 9); }
   }
 
@@ -604,6 +615,13 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     const clearKeys = () => { for (const k in keys) keys[k] = k === 'fin' ? '' : false; };
     runui = initRunUI({ $, live, FONT, readLook, styles: () => BASE_STYLES.concat(libStyles), hands: () => live.weaponInfo().twoHanded ? 2 : 1, stopRec: () => { rec = null; snaps = []; }, clearKeys, focusStage: () => cv.focus(),
       afterLeave: () => { cmd({ t: 'set', chainStyles: null }); startRec(); cmd({ t: 'manual', on: true }); cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] }); applySettings(); } });
+    // Discord Activity: when this page runs inside Discord, sign in, use the instance as the room, and keep the Rich Presence line current
+    initDiscord({ clientId: DISCORD_CLIENT_ID, onError: m => sim.say('info', 'Discord: ' + m) }).then(d => {
+      if (!d) return; window.PW.discord = d;
+      $('netroom').value = d.roomName; $('netbase').value = d.wsBase;
+      sim.say('info', 'Discord: signed in as ' + d.name + '.');
+      setInterval(() => { const r = runui.run; d.setPresence(r.phase === 'camp' ? 'In camp' : r.phase === 'dead' ? 'Fell in the field' : 'Wave ' + r.wave, runui.profile.name + ' · Lv ' + runui.profile.level, performance.now() / 1000); }, 2000);
+    });
     const setMode = m => {
       document.body.classList.toggle('runmode', m === 'run'); $('mRun').setAttribute('aria-pressed', m === 'run'); $('mTest').setAttribute('aria-pressed', m !== 'run');
       if (m === 'run') runui.enter(); else if (runui.active) runui.leave();

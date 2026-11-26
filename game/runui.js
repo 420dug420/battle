@@ -5,14 +5,15 @@
    ============================================================ */
 import { CFG, applyCmd } from './sim.js';
 import * as R from './run.js';
+import { makeCampBg, drawCampLive, drawStation } from './camp.js';
 
 const KEY = 'pw.run.profile';
 const STATIONS = [                                        // where things are in camp (sim x); the dummy stands at 120
-  { id: 'stats', x: 215, name: 'Trainer', hint: 'spend attribute points' },
-  { id: 'shop', x: 300, name: 'Smith', hint: 'weapons, armor, upgrades, skills' },
-  { id: 'style', x: 385, name: 'Style', hint: 'attack styles, combo chain, skills' },
-  { id: 'hire', x: 470, name: 'Hire board', hint: 'hire fighters' },
-  { id: 'cart', x: 572, name: 'Cart', hint: 'pick a map and depart' },
+  { id: 'stats', x: 200, name: 'Trainer', hint: 'spend attribute points' },
+  { id: 'shop', x: 275, name: 'Smith', hint: 'weapons, armor, upgrades, skills' },
+  { id: 'style', x: 400, name: 'Style', hint: 'attack styles, combo chain, skills' },
+  { id: 'hire', x: 478, name: 'Hire board', hint: 'hire fighters' },
+  { id: 'cart', x: 570, name: 'Cart', hint: 'pick a map and depart' },
 ];
 const NEAR = 40;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -200,30 +201,18 @@ export function initRunUI(env) {
   }
   const hpCol = f => f > 0.5 ? '#7be07b' : f > 0.25 ? '#f0d14a' : '#f06a5a';
 
-  ui.drawBack = c => {                                               // camp props behind the fighters
-    if (!ui.active || run.phase !== 'camp') return;
-    c.save();
-    const base = 262;
-    // a campfire and tents in the back, then each station
-    c.fillStyle = '#3a2a2f'; [[40, 58], [160, 62], [430, 56], [520, 60]].forEach(([x, w]) => { c.beginPath(); c.moveTo(x, base - 6); c.lineTo(x + w / 2, base - 52); c.lineTo(x + w, base - 6); c.closePath(); c.fill(); });
-    c.fillStyle = '#5a3a3a'; [[40, 58], [430, 56]].forEach(([x, w]) => { c.beginPath(); c.moveTo(x + w / 2, base - 52); c.lineTo(x + w / 2 - 6, base - 6); c.lineTo(x + w / 2 + 6, base - 6); c.closePath(); c.fill(); });
-    const t = live.t, fl = 4 + Math.sin(t * 9) * 1.5;
-    c.fillStyle = '#4a3a30'; c.fillRect(322, base - 5, 22, 4); c.fillStyle = '#f08a3a'; c.beginPath(); c.moveTo(326, base - 5); c.lineTo(333, base - 14 - fl); c.lineTo(340, base - 5); c.fill(); c.fillStyle = '#ffd86a'; c.beginPath(); c.moveTo(329, base - 5); c.lineTo(333, base - 10 - fl * 0.5); c.lineTo(337, base - 5); c.fill();
-    const prop = (s) => {
-      const x = s.x, nearIt = Math.abs(x - live.player.x) <= NEAR;
-      c.save(); c.translate(x, base);
-      if (s.id === 'stats') { c.fillStyle = '#6a4b3a'; c.fillRect(-14, -30, 28, 30); c.fillStyle = '#8a6a4a'; c.fillRect(-16, -34, 32, 6); c.fillStyle = '#e8d8b0'; c.fillRect(-9, -24, 18, 12); }            // a banner stand with a board
-      else if (s.id === 'shop') { c.fillStyle = '#5a4a42'; c.fillRect(-18, -22, 36, 22); c.fillStyle = '#c24a3a'; c.fillRect(-20, -32, 40, 10); c.fillStyle = '#9aa4b0'; c.fillRect(-10, -30, 3, 12); c.fillRect(2, -29, 8, 3); }  // a stall with an awning
-      else if (s.id === 'style') { c.fillStyle = '#4a5a8a'; c.fillRect(-12, -26, 24, 26); c.fillStyle = '#e8d8b0'; c.fillRect(-7, -22, 14, 10); c.fillStyle = '#c2413b'; c.fillRect(-2, -36, 4, 12); }                              // a rack
-      else if (s.id === 'hire') { c.fillStyle = '#6a4b3a'; c.fillRect(-16, -30, 32, 24); c.fillStyle = '#e8d8b0'; c.fillRect(-12, -26, 10, 8); c.fillRect(2, -26, 10, 8); c.fillRect(-12, -16, 24, 6); c.fillStyle = '#4a3a30'; c.fillRect(-18, -6, 4, 6); c.fillRect(14, -6, 4, 6); }   // a notice board
-      else { c.fillStyle = '#7a5a3a'; c.fillRect(-26, -22, 52, 14); c.fillStyle = '#5a3a2a'; c.fillRect(-22, -34, 30, 12); c.fillStyle = '#e8e4d8'; c.fillRect(-20, -34, 26, 3);
-        c.fillStyle = '#2a2018'; c.beginPath(); c.arc(-16, -6, 7, 0, 7); c.arc(16, -6, 7, 0, 7); c.fill(); c.fillStyle = '#8a6a45'; c.beginPath(); c.arc(-16, -6, 3, 0, 7); c.arc(16, -6, 3, 0, 7); c.fill(); }   // the cart
-      c.restore();
-      if (nearIt) { c.strokeStyle = 'rgba(255,240,160,.9)'; c.lineWidth = 1.5; c.setLineDash([4, 3]); c.beginPath(); c.ellipse(x, base + 4, 30, 7, 0, 0, 7); c.stroke(); c.setLineDash([]); }
-      c.font = '9px ' + FONT; c.textAlign = 'center'; c.lineWidth = 3; c.strokeStyle = '#14101c'; c.strokeText(s.name, x, base - 40); c.fillStyle = nearIt ? '#ffe27a' : '#e8e0d0'; c.fillText(s.name, x, base - 40);
-    };
-    STATIONS.forEach(prop);
-    c.font = '9px ' + FONT; c.textAlign = 'center'; c.lineWidth = 3; c.strokeStyle = '#14101c'; c.strokeText('Practice dummy', 120, 236); c.fillStyle = '#e8e0d0'; c.fillText('Practice dummy', 120, 236);
+  const camp = makeCampBg(CFG.W, CFG.H); ui.campBg = camp.canvas;
+  ui.inCamp = () => ui.active && run.phase === 'camp';
+  ui.drawBack = c => {                                               // fire, flags and the station props, over the camp background and behind the fighters
+    if (!ui.inCamp()) return;
+    drawCampLive(c, live.t, camp.flags);
+    for (const s of STATIONS) drawStation(c, s.id, s.x, 262, Math.abs(s.x - live.player.x) <= NEAR, live.t);
+  };
+  ui.drawLabels = c => {                                             // station names, at screen resolution
+    if (!ui.inCamp()) return;
+    c.save(); c.textAlign = 'center'; c.lineJoin = 'round'; c.lineWidth = 3; c.strokeStyle = '#14101c';
+    for (const s of STATIONS) { const nearIt = Math.abs(s.x - live.player.x) <= NEAR; c.font = '9px ' + FONT; c.strokeText(s.name, s.x, 262 - 58); c.fillStyle = nearIt ? '#ffe27a' : '#f2ecdc'; c.fillText(s.name, s.x, 262 - 58); }
+    c.font = '9px ' + FONT; c.strokeText('Practice dummy', 120, 232); c.fillStyle = '#f2ecdc'; c.fillText('Practice dummy', 120, 232);
     c.restore();
   };
 

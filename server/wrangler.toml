@@ -10,3 +10,12 @@ class_name = "FightRoom"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["FightRoom"]
+
+# serves ../dist (the single-file pages) from the Worker; free static assets, no paid features
+[assets]
+directory = "../dist"
+binding = "ASSETS"
+run_worker_first = true
+
+[vars]
+DISCORD_CLIENT_ID = ""      # your Discord application id (public). The client secret is NOT stored here: wrangler secret put DISCORD_CLIENT_SECRET
