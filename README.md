@@ -26,6 +26,8 @@ Walk the camp hub (A/D) and press T beside a station: Trainer (attribute points)
 
 Run loop: waves escalate, every 5 waves you choose to leave with the run gold or press on. Dying loses only the gold from that run; gear, levels, skills, hirelings and banked gold stay. Style rank (D to S) rises with varied hits, falls when you repeat a move or get hit, and boosts gold and damage.
 
+Style station: learn attack animations (built-in and from the Animator library) for gold, set your combo chain (left click plays the slots in order; more slots from the Smith), and pick the heavy, dash, counter and jump attacks. Styles must match the weapon (one or two hands).
+
 Attributes (3 points per level, plus slow growth from use): STR damage, DEX swing speed, AGI move/dash speed and stamina regen, CON max HP/stamina, LDR hireling slots and strength, CHR cheaper hires. INT, WIS and SAN have no effect yet. All numbers are placeholders.
 
 Code: game/run.js (rules, pure), game/runui.js (camp, menus, HUD), game/run-tests.mjs. `npm test` runs all suites. Online play does not carry the manual inputs yet.

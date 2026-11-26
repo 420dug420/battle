@@ -103,6 +103,21 @@ const killAll = r => { for (const e of r.sim.enemies) if (e.state === 'alive') r
   ({ es } = setup(true)); assert.strictEqual(es.filter(e => e.clashT > 0).length, 3, 'multi-clash takes all three'); assert(es.every(e => e.freeze > 0 && e.kvx > 0), 'each bounces and freezes');
   console.log('PASS multi-clash');
 }
+// 8b. styles and the combo chain
+{
+  const p = R.newProfile(); const all = [{ id: 'cut', hands: 0 }, { id: 'chop', hands: 0 }, { id: 'attack2', hands: 0 }, { id: 'lunge', hands: 2 }, { id: 'c_a', hands: 1 }, { id: 'c_b', hands: 2 }];
+  assert.deepStrictEqual(R.chainFor(p, all, 1), ['cut', 'chop'], 'a new profile has a two-hit chain');
+  assert(!R.setChain(p, 2, 'cut').ok, 'a third slot is locked'); p.gold = 500; assert(R.buy(p, 'upgrade', 'chain').ok, 'a combo slot can be bought'); assert.strictEqual(R.derive(p).chainSlots, 3);
+  assert(!R.setChain(p, 2, 'attack2').ok, 'cannot slot an unlearned style'); assert(R.learnStyle(p, 'attack2', all).ok && p.gold === 380, 'learning costs gold'); assert(R.setChain(p, 2, 'attack2').ok);
+  assert.deepStrictEqual(R.chainFor(p, all, 1), ['cut', 'chop', 'attack2']); assert(R.learnStyle(p, 'c_b', all).ok); R.setChain(p, 0, 'c_b');
+  assert.deepStrictEqual(R.chainFor(p, all, 1), ['chop', 'attack2'], 'a two-handed style is skipped with a one-handed weapon'); assert.deepStrictEqual(R.chainFor(p, all, 2), ['c_b', 'chop', 'attack2']);
+  assert(R.setRole(p, 'heavy', 'attack2').ok && p.styles.roles.heavy === 'attack2' && !R.setRole(p, 'jump', 'lunge').ok, 'role attacks need a learned style');
+  const q = R.fromJSON(R.toJSON(p)); assert.deepStrictEqual(q.styles, p.styles, 'styles survive a save'); const old = JSON.parse(R.toJSON(R.newProfile())); delete old.styles; old.upgrades = { hp: 1 }; assert(R.fromJSON(JSON.stringify(old)).styles.chain.length === 2 && R.fromJSON(JSON.stringify(old)).upgrades.chain === 0, 'old saves load');
+  // the chain plays in the sim
+  const s = new Sim(CFG, 6); applyCmd(s, { t: 'manual', on: true }); applyCmd(s, { t: 'set', chainStyles: [{ style: 'cut', move: null }, { style: 'chop', move: null }] });
+  const a = s.startSwing('light', s.weaponInfo()); const b0 = a.style; s.player.chain = 1; const b = s.startSwing('light', s.weaponInfo()); assert(b0 === 'cut' && b.style === 'chop', 'light swings follow the chain order');
+  console.log('PASS styles and chain');
+}
 // 9. determinism
 {
   const go = () => { const { sim, r } = mkRun(11); r.depart(); applyCmd(sim, { t: 'set', inv: true }); for (let i = 0; i < 900; i++) { if (i % 20 === 0) killAll(r); tick(r); } const o = sim.saveState(); delete o.events; return JSON.stringify([o, r.wave, r.gold, r.p.xp, r.queue.length]); };

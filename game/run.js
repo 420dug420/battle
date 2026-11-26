@@ -21,7 +21,7 @@ export const ATTR_INFO = {
 };
 
 export const RUNCFG = {
-  base: 5, pointsPerLevel: 3, startGold: 30,
+  base: 5, pointsPerLevel: 3, startGold: 30, chainBase: 2,
   str: { dmg: 0.06 }, agi: { speed: 0.02, regen: 0.04 }, con: { hp: 4, stamina: 5 }, ldr: { perSlot: 3, strength: 0.03 }, chr: { discount: 0.02, maxDiscount: 0.5 },
   maxHirelings: 3,
   xp: { base: 20, growth: 1.35, kill: { fodder: 2, soldier: 4, tank: 9, elite: 25 }, wave: 5 },
@@ -39,11 +39,16 @@ export function newProfile(name) {
     v: 1, name: name || 'Baron', gold: RUNCFG.startGold, xp: 0, level: 1, points: 0,
     attrs: Object.fromEntries(ATTRS.map(a => [a, RUNCFG.base])), grown: { str: 0, dex: 0, agi: 0, con: 0 }, use: { str: 0, dex: 0, agi: 0, con: 0 },
     weapon: 'longsword', armor: 'leather', owned: { weapons: ['longsword'], armor: ['leather'], skills: [] }, skills: [],
-    upgrades: { hp: 0, stamina: 0, damage: 0, slots: 0 }, hirelings: [], nextHid: 1, runs: 0, best: 0,
+    upgrades: { hp: 0, stamina: 0, damage: 0, slots: 0, chain: 0 }, styles: { owned: ['cut', 'chop'], chain: ['cut', 'chop'], roles: { heavy: null, dash: null, counter: null, jump: null } }, hirelings: [], nextHid: 1, runs: 0, best: 0,
   };
 }
 export const toJSON = p => JSON.stringify(p);
-export function fromJSON(txt) { try { const o = JSON.parse(txt); return o && o.v === 1 ? Object.assign(newProfile(), o) : null; } catch (e) { return null; } }
+export function fromJSON(txt) {
+  try {
+    const o = JSON.parse(txt); if (!o || o.v !== 1) return null; const d = newProfile(), p = Object.assign(d, o);
+    p.upgrades = Object.assign({}, newProfile().upgrades, o.upgrades || {}); p.styles = Object.assign({}, newProfile().styles, o.styles || {}); p.styles.roles = Object.assign({}, newProfile().styles.roles, p.styles.roles || {}); return p;
+  } catch (e) { return null; }
+}
 
 export const xpNeed = level => Math.round(RUNCFG.xp.base * Math.pow(RUNCFG.xp.growth, level - 1));
 export function addXp(p, n) {                          // returns the number of levels gained
@@ -67,7 +72,7 @@ export function derive(p) {
     hireCap: Math.min(R.maxHirelings, 1 + Math.max(0, Math.floor((ldr - b) / R.ldr.perSlot))),
     hireStrength: 1 + R.ldr.strength * (ldr - b),
     hireDiscount: Math.min(R.chr.maxDiscount, Math.max(0, R.chr.discount * (chr - b))),
-    skillSlots: 1 + p.upgrades.slots,
+    skillSlots: 1 + p.upgrades.slots, chainSlots: RUNCFG.chainBase + (p.upgrades.chain || 0),
   };
 }
 
@@ -88,7 +93,8 @@ export const SKILLS = {
   multi: { n: 'Multi-clash', d: 'One swing can clash with up to four enemy swings at once.', price: 250 },
 };
 export const UPGRADES = { hp: { n: 'Toughness', d: '+4 max HP per rank.', base: 40, max: 10 }, stamina: { n: 'Endurance', d: '+10 max stamina per rank.', base: 40, max: 10 },
-  damage: { n: 'Whetstone', d: '+5% damage per rank.', base: 60, max: 10 }, slots: { n: 'Skill slot', d: 'Equip one more skill.', base: 150, max: 2 } };
+  damage: { n: 'Whetstone', d: '+5% damage per rank.', base: 60, max: 10 }, slots: { n: 'Skill slot', d: 'Equip one more skill.', base: 150, max: 2 },
+  chain: { n: 'Combo slot', d: 'One more attack in your light-attack chain.', base: 80, max: 4 } };
 export const upgradePrice = (p, k) => Math.round(UPGRADES[k].base * Math.pow(1.6, p.upgrades[k]));
 function pay(p, n) { if (p.gold < n) return { ok: false, why: 'Not enough gold.' }; p.gold -= n; return { ok: true }; }
 export function buy(p, kind, key) {
@@ -100,6 +106,32 @@ export function buy(p, kind, key) {
 }
 export const equipWeapon = (p, k) => p.owned.weapons.includes(k) ? (p.weapon = k, true) : false;
 export const equipArmor = (p, k) => p.owned.armor.includes(k) ? (p.armor = k, true) : false;
+/* ---------- styles: attack animations, the combo chain, and the heavy / dash / counter / jump attacks ---------- */
+export const STYLE_PRICE = { cut: 0, chop: 0, attack2: 40, lunge: 60 }, STYLE_PRICE_CUSTOM = 80;          // PLACEHOLDER
+export const stylePrice = id => id in STYLE_PRICE ? STYLE_PRICE[id] : STYLE_PRICE_CUSTOM;
+export const ROLES = { heavy: 'Heavy attack (right click)', dash: 'Dash attack', counter: 'Counter (after a parry)', jump: 'Jump attack' };
+export const styleFits = (st, hands) => !st.hands || st.hands === hands;
+export function learnStyle(p, id, all) {
+  if (p.styles.owned.includes(id)) return { ok: false, why: 'Already learned.' };
+  if (!all.some(s => s.id === id)) return { ok: false, why: 'Unknown style.' };
+  const r = pay(p, stylePrice(id)); if (r.ok) p.styles.owned.push(id); return r;
+}
+export function setChain(p, i, id) {
+  const n = derive(p).chainSlots; if (i < 0 || i >= n) return { ok: false, why: 'That slot is locked.' };
+  if (id && !p.styles.owned.includes(id)) return { ok: false, why: 'Not learned.' };
+  while (p.styles.chain.length < n) p.styles.chain.push(null);
+  p.styles.chain[i] = id || null; return { ok: true };
+}
+export function setRole(p, role, id) {
+  if (!(role in ROLES)) return { ok: false, why: 'Unknown role.' };
+  if (id && !p.styles.owned.includes(id)) return { ok: false, why: 'Not learned.' };
+  p.styles.roles[role] = id || null; return { ok: true };
+}
+export function chainFor(p, all, hands) {            // equipped chain ids that fit the weapon's hands, in order; never empty
+  const out = [], n = derive(p).chainSlots;
+  for (const id of p.styles.chain.slice(0, n)) { const st = all.find(s => s.id === id); if (st && p.styles.owned.includes(id) && styleFits(st, hands)) out.push(id); }
+  return out.length ? out : ['cut'];
+}
 export function toggleSkill(p, k) {
   if (!p.owned.skills.includes(k)) return { ok: false, why: 'Not learned.' };
   if (p.skills.includes(k)) { p.skills = p.skills.filter(x => x !== k); return { ok: true }; }

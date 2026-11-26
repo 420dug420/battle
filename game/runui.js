@@ -10,7 +10,7 @@ const KEY = 'pw.run.profile';
 const STATIONS = [                                        // where things are in camp (sim x); the dummy stands at 120
   { id: 'stats', x: 215, name: 'Trainer', hint: 'spend attribute points' },
   { id: 'shop', x: 300, name: 'Smith', hint: 'weapons, armor, upgrades, skills' },
-  { id: 'style', x: 385, name: 'Style', hint: 'equip learned skills' },
+  { id: 'style', x: 385, name: 'Style', hint: 'attack styles, combo chain, skills' },
   { id: 'hire', x: 470, name: 'Hire board', hint: 'hire fighters' },
   { id: 'cart', x: 572, name: 'Cart', hint: 'pick a map and depart' },
 ];
@@ -24,7 +24,7 @@ export function initRunUI(env) {
   if (!profile) profile = R.newProfile('Baron');
   const run = new R.Run(live, profile, (Date.now() >>> 0) || 1);
   const save = () => { try { localStorage.setItem(KEY, R.toJSON(profile)); } catch (e) { } };
-  const ui = { active: false, modal: null, run, profile };
+  const ui = { active: false, modal: null, run, profile, R, styles: () => env.styles() };
 
   /* ---------- the overlay: menus are plain HTML over the stage ---------- */
   const host = $('stage').parentElement, ov = document.createElement('div'); ov.id = 'runui'; ov.hidden = true; host.appendChild(ov);
@@ -77,13 +77,24 @@ export function initRunUI(env) {
     return h + msg();
   }
   function stylePanel() {
-    const p = profile, d = R.derive(p); let h = head('Style');
-    h += '<div class="pts">Skill slots: <b>' + p.skills.length + ' / ' + d.skillSlots + '</b> <small>(more from the Smith)</small></div>';
+    const p = profile, d = R.derive(p), all = env.styles(), hands = env.hands(), nm = id => (all.find(x => x.id === id) || { name: id }).name;
+    let h = head('Style', goldLine());
+    const opt = (cur, none) => '<option value="">' + none + '</option>' + all.filter(x => p.styles.owned.includes(x.id)).map(x => '<option value="' + x.id + '"' + (x.id === cur ? ' selected' : '') + (R.styleFits(x, hands) ? '' : ' disabled') + '>' + esc(x.name) + (x.hands ? (x.hands === 2 ? ' (2H)' : ' (1H)') : '') + '</option>').join('');
+    h += '<div class="sec">Combo chain <small>(left click plays these in order)</small></div>';
+    for (let i = 0; i < d.chainSlots; i++) h += '<div class="srow"><span>Hit ' + (i + 1) + '</span><span class="d"></span><select class="rsel" data-f="chain:' + i + '">' + opt(p.styles.chain[i], '(empty)') + '</select></div>';
+    h += '<div class="d">Now: ' + R.chainFor(p, all, hands).map(nm).map(esc).join(' &gt; ') + ' <small>(' + (hands === 2 ? 'two-handed' : 'one-handed') + ' weapon: only matching styles play. More slots from the Smith.)</small></div>';
+    h += '<div class="sec">Other attacks</div>';
+    for (const k of Object.keys(R.ROLES)) h += '<div class="srow"><span>' + R.ROLES[k] + '</span><span class="d"></span><select class="rsel" data-f="role:' + k + '">' + opt(p.styles.roles[k], 'Default') + '</select></div>';
+    h += '<div class="sec">Learn attack styles</div>';
+    for (const st of all) {
+      const own = p.styles.owned.includes(st.id);
+      h += '<div class="srow' + (own ? '' : ' dim') + '"><span>' + esc(st.name) + '</span><span class="d">' + (st.hands ? (st.hands === 2 ? 'Two-handed' : 'One-handed') : 'Any weapon') + '</span>' + (own ? '<button class="rb" disabled>Learned</button>' : '<button class="rb" data-a="style:' + st.id + '">Learn ' + R.stylePrice(st.id) + ' G</button>') + '</div>';
+    }
+    h += '<div class="sec">Skills</div><div class="pts">Skill slots: <b>' + p.skills.length + ' / ' + d.skillSlots + '</b> <small>(more from the Smith)</small></div>';
     for (const k of Object.keys(R.SKILLS)) {
       const s = R.SKILLS[k], own = p.owned.skills.includes(k), on = p.skills.includes(k);
-      h += '<div class="srow' + (own ? '' : ' dim') + '"><span>' + s.n + '</span><span class="d">' + esc(s.d) + '</span>' + (own ? '<button class="rb" data-a="skill:' + k + '">' + (on ? 'Equipped' : 'Equip') + '</button>' : '<span class="d">not learned</span>') + '</div>';
+      h += '<div class="srow' + (own ? '' : ' dim') + '"><span>' + s.n + '</span><span class="d">' + esc(s.d) + '</span>' + (own ? '<button class="rb" data-a="skill:' + k + '">' + (on ? 'Equipped' : 'Equip') + '</button>' : '<span class="d">learn at the Smith</span>') + '</div>';
     }
-    h += '<p class="d">Attack animations come from the Animator library. Traits are not built yet.</p>';
     return h + msg();
   }
   function hirePanel() {
@@ -124,6 +135,10 @@ export function initRunUI(env) {
   }
   const rebuild = () => { env.clearKeys(); run.applyBuild(false); applyCmd(live, { t: 'set', inv: true }); const t = $('ptier'); if (t && [...t.options].some(o => o.value === profile.armor)) t.value = profile.armor; env.readLook(); save(); };
 
+  ov.addEventListener('change', ev => {
+    const f = ev.target.dataset && ev.target.dataset.f; if (!f) return; const [k, x] = f.split(':'); const v = ev.target.value || null;
+    const r = k === 'chain' ? R.setChain(profile, +x, v) : R.setRole(profile, x, v); note = r.ok ? '' : r.why; rebuild(); render();
+  });
   ov.addEventListener('click', ev => {
     const b = ev.target.closest('[data-a]'); if (!b || b.disabled) return;
     const [a, x, y] = b.dataset.a.split(':'); note = '';
@@ -131,6 +146,7 @@ export function initRunUI(env) {
     if (a === 'spend') { R.spendPoint(profile, x); rebuild(); }
     else if (a === 'buy') { const r = R.buy(profile, x, y); note = r.ok ? '' : r.why; if (r.ok) { if (x === 'weapon') R.equipWeapon(profile, y); if (x === 'armor') R.equipArmor(profile, y); rebuild(); } }
     else if (a === 'equip') { x === 'weapon' ? R.equipWeapon(profile, y) : R.equipArmor(profile, y); rebuild(); }
+    else if (a === 'style') { const r = R.learnStyle(profile, x, env.styles()); note = r.ok ? '' : r.why; rebuild(); }
     else if (a === 'skill') { const r = R.toggleSkill(profile, x); note = r.ok ? '' : r.why; rebuild(); }
     else if (a === 'hire') { const r = R.hire(profile, R.recruits(profile, run.seed)[+x]); note = r.ok ? '' : r.why; save(); }
     else if (a === 'dismiss') { R.dismiss(profile, +x); save(); }

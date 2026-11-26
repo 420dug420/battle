@@ -7,6 +7,7 @@ import { CFG, Sim, applyCmd, SIM_VERSION, fitsWindow, minDexForWindow, moveTau, 
 import BUILTIN_ANIMS from './anims.json';
 import { applySnapshot } from '../server/protocol.js';
 import { initRunUI } from './runui.js';
+const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: 'Chop', hands: 0 }, { id: 'attack2', name: 'Horizontal sweep', hands: 0 }, { id: 'lunge', name: 'Lunge', hands: 2 }];
 {
   const $ = id => document.getElementById(id);
   const cv = $('stage');
@@ -163,7 +164,7 @@ import { initRunUI } from './runui.js';
       '<div class="rrow"><span>Two-hit kill on 9 HP, no armor</span><b class="' + (killsIn2 ? 'ok' : 'bad') + '">' + (killsIn2 ? 'yes' : 'no') + '</b></div>';
   }
   const look = { tier: 'leather', head: '', body: '', liv: '', metal: '', style: 'cut' };
-  let roleStyle = {};                                               // custom attacks the Animator marked as heavy, dash or counter
+  let roleStyle = {}, libStyles = [];                                               // custom attacks the Animator marked as heavy, dash or counter
   function readLook() {
     const w = live.weaponInfo(), sel = $('atkstyle'), lg = sel.querySelector('option[value=lunge]');
     if (lg) { lg.disabled = !w.twoHanded; if (!w.twoHanded && sel.value === 'lunge') sel.value = 'chop'; }
@@ -176,6 +177,14 @@ import { initRunUI } from './runui.js';
     const mv = live.moves[id] ? id : null; if (live.player.move !== mv) cmd({ t: 'set', move: mv });
     const bakeStyle = st => { const k = M3.moveKey(st, w.twoHanded), id2 = k + '|' + (w.kind || 'sword'); if (!live.moves[id2]) { const m = M3.bakeMove(k, { two: w.twoHanded, wkind: w.kind || 'sword' }); if (m) cmd({ t: 'move', id: id2, data: m }); } return live.moves[id2] ? id2 : null; };
     const km = { heavy: bakeStyle(roleStyle.heavy || 'chop'), dash: bakeStyle(roleStyle.dash || (w.twoHanded ? 'lunge' : 'cut')), counter: bakeStyle(roleStyle.counter || 'cut'), jump: bakeStyle(roleStyle.jump || 'chop') };   // heavy, dash and counter swings use their own blade paths
+    if (runui && runui.active) {                                   // camp and run: the chain and attacks come from the profile's Style station
+      const R = runui.R, pr = runui.profile, two = w.twoHanded, hands = two ? 2 : 1, wk = w.kind || 'sword';
+      const bk = st => { const k = M3.moveKey(st, two), id2 = k + '|' + wk; if (!live.moves[id2]) { const m = M3.bakeMove(k, { two, wkind: wk }); if (m) cmd({ t: 'move', id: id2, data: m }); } return live.moves[id2] ? id2 : null; };
+      const fits = id => id && pr.styles.owned.includes(id) && R.styleFits(runui.styles().find(x => x.id === id) || { hands: 0 }, hands);
+      const cs = R.chainFor(pr, runui.styles(), hands).map(id => ({ style: id, move: bk(id) }));
+      cmd({ t: 'set', chainStyles: cs });
+      for (const r of ['heavy', 'dash', 'counter', 'jump']) { const id = pr.styles.roles[r]; if (fits(id)) km[r] = bk(id); }
+    }
     if (JSON.stringify(km) !== JSON.stringify(live.player.kindMoves)) cmd({ t: 'set', kindMoves: km });
     netSync();
   }
@@ -547,11 +556,12 @@ import { initRunUI } from './runui.js';
       const arr = BUILTIN_ANIMS.filter(b => !user.some(u => u.id === b.id)).concat(user);
       M3.clearCustom(); for (const k in sim.moves) if (k.slice(0, 2) === 'c_') delete sim.moves[k];
       const sel = $('atkstyle'); sel.querySelectorAll('option[data-custom]').forEach(x => x.remove());
-      const info = []; let first = null; roleStyle = {};
+      const info = []; let first = null; roleStyle = {}; libStyles = [];
       for (const x of arr) {
         if (!x.keys || !x.keys.length) continue;
         const two = x.load ? x.load === '2' : !!x.two, typ = x.type || 'attack';
         if (!M3.registerAnim({ id: x.id || 'legacy', type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit, vm: x.vm })) continue;
+        if (typ === 'attack') libStyles.push({ id: 'c_' + (x.id || 'legacy'), name: x.name || 'Custom', hands: two ? 2 : 1, custom: true });
         if (typ === 'attack' && x.role) { roleStyle[x.role] = 'c_' + (x.id || 'legacy'); info.push((x.name || 'attack') + ' [' + x.role + ' attack]'); continue; }
         if (typ === 'attack') {
           const op = document.createElement('option'); op.value = 'c_' + (x.id || 'legacy'); op.dataset.custom = 1;
@@ -592,8 +602,8 @@ import { initRunUI } from './runui.js';
     cmd({ t: 'say', text: 'Manual combat: mouse aims and attacks, Q blocks, Shift dashes, E fires, G grabs.' });
     cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] });
     const clearKeys = () => { for (const k in keys) keys[k] = k === 'fin' ? '' : false; };
-    runui = initRunUI({ $, live, FONT, readLook, stopRec: () => { rec = null; snaps = []; }, clearKeys, focusStage: () => cv.focus(),
-      afterLeave: () => { startRec(); cmd({ t: 'manual', on: true }); cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] }); applySettings(); } });
+    runui = initRunUI({ $, live, FONT, readLook, styles: () => BASE_STYLES.concat(libStyles), hands: () => live.weaponInfo().twoHanded ? 2 : 1, stopRec: () => { rec = null; snaps = []; }, clearKeys, focusStage: () => cv.focus(),
+      afterLeave: () => { cmd({ t: 'set', chainStyles: null }); startRec(); cmd({ t: 'manual', on: true }); cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] }); applySettings(); } });
     const setMode = m => {
       document.body.classList.toggle('runmode', m === 'run'); $('mRun').setAttribute('aria-pressed', m === 'run'); $('mTest').setAttribute('aria-pressed', m !== 'run');
       if (m === 'run') runui.enter(); else if (runui.active) runui.leave();
