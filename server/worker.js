@@ -8,7 +8,7 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url), m = url.pathname.match(/^\/(?:ws\/)?room\/([\w-]{1,40})$/);
     if (m) return env.ROOMS.get(env.ROOMS.idFromName(m[1])).fetch(req);
-    if (url.pathname === '/api/token' && req.method === 'POST') {
+    if ((url.pathname === "/api/token" || url.pathname === "/token") && req.method === "POST") {
       if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET) return json({ error: 'Discord is not configured on this server.' }, 501);
       let code; try { code = (await req.json()).code; } catch (e) { }
       if (typeof code !== 'string' || !code || code.length > 200) return json({ error: 'Missing code.' }, 400);
