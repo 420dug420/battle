@@ -15925,7 +15925,7 @@ void main(){
     jump: { vz: 300, grav: 1e3, dodgeZ: 10 },
     aim: { throwRange: 170, throwAir: 0.387 },
     // Crowd separation (design): standing enemies keep a little room instead of stacking on one spot. Soft push, capped per second. PLACEHOLDERS.
-    sep: { rx: 16, ry: 8, k: 0.5, max: 120 },
+    sep: { rx: 26, ry: 11, k: 0.6, max: 140, atk: 0.4 },
     proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
     // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
     kinds: {
@@ -15948,7 +15948,7 @@ void main(){
     },
     body: { height: 1.7, radius: 0.2 },
     // PLACEHOLDER: a fighter's hit capsule, metres (side view)
-    enemy: { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1, atkHitAt: 0.45, atkCool: 0.8, reach: 38, move: "cut1|sword" },
+    enemy: { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1, atkHitAt: 0.45, atkCool: 0.8, reach: 38, engage: 1.12, move: "cut1|sword" },
     // move: the baked path its swing uses, if the client provided one
     rallyPerChr: 4e-3,
     // PLACEHOLDER: chance per second, per CHR point, that a fleeing enemy rallies (CHR 5 = 2%/s)
@@ -15994,7 +15994,7 @@ void main(){
     };
     return f;
   }
-  var SIM_VERSION = 7;
+  var SIM_VERSION = 8;
   var NOT_STATE = ["cfg", "rng", "fxRng", "moves", "fx", "texts", "textOut", "feed", "player", "input", "credit"];
   function applyCmd(sim, c) {
     switch (c.t) {
@@ -17259,7 +17259,7 @@ void main(){
         e.y = this.clampY(e.y + Math.sign(dy) * spd * 0.7 * dt);
         e.moving = true;
       }
-      if (Math.abs(dx2) > c.enemy.reach * 0.8) {
+      if (Math.abs(dx2) > c.enemy.reach * c.enemy.engage) {
         e.x = this.clampX(e.x + Math.sign(dx2) * spd * dt);
         e.moving = true;
       } else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0) {
@@ -17279,10 +17279,11 @@ void main(){
       const n = list.length;
       if (n < 2) return;
       const grid = /* @__PURE__ */ new Map(), cell = (x, y) => Math.floor(x / S.rx) * 4096 + Math.floor(y / S.ry);
-      const fixed = new Uint8Array(n), ox2 = new Float64Array(n), oy = new Float64Array(n);
+      const fixed = new Uint8Array(n), soft = new Float64Array(n).fill(1), ox2 = new Float64Array(n), oy = new Float64Array(n);
       for (let i15 = 0; i15 < n; i15++) {
         const e = list[i15];
-        fixed[i15] = e.atk || e.stun > 0 || e.wounded > 0 || e.freeze > 0 || e.kvx ? 1 : 0;
+        fixed[i15] = e.stun > 0 || e.wounded > 0 || e.freeze > 0 || e.kvx ? 1 : 0;
+        soft[i15] = e.atk ? S.atk : 1;
         const k = cell(e.x, e.y);
         let g = grid.get(k);
         if (!g) {
@@ -17310,7 +17311,10 @@ void main(){
               ux2 = nx2 / d;
               uy = ny / d;
             }
-            const m = (1 - d) * S.k, wa2 = fixed[i15] ? 0 : fixed[j] ? 1 : 0.5, wb = 1 - wa2;
+            const m = (1 - d) * S.k;
+            let wa2 = fixed[i15] ? 0 : fixed[j] ? 1 : 0.5, wb = 1 - wa2;
+            wa2 *= soft[i15];
+            wb *= soft[j];
             ox2[i15] -= ux2 * m * S.rx * wa2;
             oy[i15] -= uy * m * S.ry * wa2;
             ox2[j] += ux2 * m * S.rx * wb;
@@ -30765,7 +30769,7 @@ void main(){
       }
       for (const e of sim.enemies) {
         if (e.state !== "alive") continue;
-        const x = Math.round(e.x), y = Math.round(e.y) - 88;
+        const x = Math.round(e.x), y = Math.round(e.y) - 108;
         ctx.fillStyle = "#14101c";
         ctx.fillRect(x - 15, y - 1, 30, 6);
         ctx.fillStyle = "#d65a4a";
@@ -30791,7 +30795,7 @@ void main(){
           ctx.fillRect(x - 14, ty + 7, Math.round(28 * e.wounded / CFG.woundedDur), 1);
         }
         if (e.flee) label("FLEEING", x, ty, "#9fd0ff", 9);
-        if (e.kind && e.kind !== "soldier") label(e.kind.toUpperCase(), x, y + 20, e.kind === "elite" ? "#ff9a6a" : "#cfd8e6", 8);
+        if (e.kind && e.kind !== "soldier") label(e.kind.toUpperCase(), x, y + 16, e.kind === "elite" ? "#ff9a6a" : "#cfd8e6", 8);
         if (e.atk && e.atk.heavy && !e.atk.hit) {
           const u = Math.min(1, e.atk.t / (e.atk.hitAt || 1));
           ctx.strokeStyle = "rgba(255,90,74," + (0.35 + 0.5 * u) + ")";
@@ -30803,7 +30807,7 @@ void main(){
         }
       }
       for (const a of sim.allies) if (a.state === "alive") {
-        const x = Math.round(a.x), y = Math.round(a.y) - 88;
+        const x = Math.round(a.x), y = Math.round(a.y) - 108;
         ctx.fillStyle = "#14101c";
         ctx.fillRect(x - 15, y - 1, 30, 6);
         ctx.fillStyle = "#6fd07a";
@@ -30855,21 +30859,21 @@ void main(){
       }
       ctx.globalAlpha = 1;
       for (const q of sim.players) if (q !== p && (q.hp > 0 || sim.mode === "arena")) {
-        label(q.name || "Ally", q.x, q.y - 88, "#9fd3ff", 10);
+        label(q.name || "Ally", q.x, q.y - 106, "#9fd3ff", 10);
         ctx.fillStyle = "#14101c";
-        ctx.fillRect(q.x - 15, q.y - 84, 30, 5);
+        ctx.fillRect(q.x - 15, q.y - 102, 30, 5);
         ctx.fillStyle = "#6fd07a";
-        ctx.fillRect(q.x - 14, q.y - 83, Math.round(28 * Math.max(0, q.hp) / q.maxHp), 3);
+        ctx.fillRect(q.x - 14, q.y - 101, Math.round(28 * Math.max(0, q.hp) / q.maxHp), 3);
       }
-      label("YOU", p.x, p.y - 88, "#f4ecd8", 10);
+      label("YOU", p.x, p.y - 106, "#f4ecd8", 10);
       ctx.fillStyle = "#14101c";
-      ctx.fillRect(p.x - 15, p.y - 84, 30, 5);
+      ctx.fillRect(p.x - 15, p.y - 102, 30, 5);
       ctx.fillStyle = "#6fd07a";
-      ctx.fillRect(p.x - 14, p.y - 83, Math.round(28 * p.hp / p.maxHp), 3);
+      ctx.fillRect(p.x - 14, p.y - 101, Math.round(28 * p.hp / p.maxHp), 3);
       ctx.fillStyle = "#14101c";
-      ctx.fillRect(p.x - 15, p.y - 79, 30, 4);
+      ctx.fillRect(p.x - 15, p.y - 97, 30, 4);
       ctx.fillStyle = p.stunT > 0 ? "#ff7a6a" : "#e8c24a";
-      ctx.fillRect(p.x - 14, p.y - 78, Math.round(28 * p.stamina / p.staminaMax), 2);
+      ctx.fillRect(p.x - 14, p.y - 96, Math.round(28 * p.stamina / p.staminaMax), 2);
       if (p.blocking && p.blockT <= CFG.stamina.parryWin) {
         ctx.strokeStyle = "#ffe27a";
         ctx.lineWidth = 2;
@@ -30877,7 +30881,7 @@ void main(){
         ctx.ellipse(Math.round(p.x), Math.round(p.y), 24, 7, 0, 0, 7);
         ctx.stroke();
       }
-      if (p.stunT > 0) label("GUARD BROKEN", p.x, p.y - 94, "#ff9a6a", 9);
+      if (p.stunT > 0) label("GUARD BROKEN", p.x, p.y - 112, "#ff9a6a", 9);
       if (dbg && p.swing && p.swing.move && sim.moves[p.swing.move]) {
         const m = sim.moves[p.swing.move], s = p.swing, tau = moveTau(m, s, s.t), g = segAt(m, tau), P3 = CFG.pxPerM, live2 = tau >= m.hit.f0 && tau <= m.hit.f1;
         ctx.strokeStyle = live2 ? "#ff5a4a" : "rgba(255,255,255,.5)";
@@ -30904,11 +30908,11 @@ void main(){
       if (dbg && p.swing) {
         const s = p.swing;
         ctx.fillStyle = "#14101c";
-        ctx.fillRect(p.x - 20, p.y - 100, 40, 4);
+        ctx.fillRect(p.x - 20, p.y - 118, 40, 4);
         ctx.fillStyle = "#f0c35a";
-        ctx.fillRect(p.x - 19, p.y - 99, Math.round(38 * Math.min(1, s.t / s.dur)), 2);
+        ctx.fillRect(p.x - 19, p.y - 117, Math.round(38 * Math.min(1, s.t / s.dur)), 2);
         ctx.fillStyle = "#ffffff";
-        ctx.fillRect(p.x - 19 + Math.round(38 * s.hitAt / s.dur), p.y - 101, 1, 6);
+        ctx.fillRect(p.x - 19 + Math.round(38 * s.hitAt / s.dur), p.y - 119, 1, 6);
       }
       ctx.restore();
       if (runui && runui.active) {

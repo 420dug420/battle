@@ -15803,7 +15803,7 @@ void main(){
     jump: { vz: 300, grav: 1e3, dodgeZ: 10 },
     aim: { throwRange: 170, throwAir: 0.387 },
     // Crowd separation (design): standing enemies keep a little room instead of stacking on one spot. Soft push, capped per second. PLACEHOLDERS.
-    sep: { rx: 16, ry: 8, k: 0.5, max: 120 },
+    sep: { rx: 26, ry: 11, k: 0.6, max: 140, atk: 0.4 },
     proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
     // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
     kinds: {
@@ -15826,7 +15826,7 @@ void main(){
     },
     body: { height: 1.7, radius: 0.2 },
     // PLACEHOLDER: a fighter's hit capsule, metres (side view)
-    enemy: { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1, atkHitAt: 0.45, atkCool: 0.8, reach: 38, move: "cut1|sword" },
+    enemy: { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1, atkHitAt: 0.45, atkCool: 0.8, reach: 38, engage: 1.12, move: "cut1|sword" },
     // move: the baked path its swing uses, if the client provided one
     rallyPerChr: 4e-3,
     // PLACEHOLDER: chance per second, per CHR point, that a fleeing enemy rallies (CHR 5 = 2%/s)
@@ -17128,7 +17128,7 @@ void main(){
         e.y = this.clampY(e.y + Math.sign(dy) * spd * 0.7 * dt);
         e.moving = true;
       }
-      if (Math.abs(dx2) > c.enemy.reach * 0.8) {
+      if (Math.abs(dx2) > c.enemy.reach * c.enemy.engage) {
         e.x = this.clampX(e.x + Math.sign(dx2) * spd * dt);
         e.moving = true;
       } else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0) {
@@ -17148,10 +17148,11 @@ void main(){
       const n = list.length;
       if (n < 2) return;
       const grid = /* @__PURE__ */ new Map(), cell = (x, y) => Math.floor(x / S.rx) * 4096 + Math.floor(y / S.ry);
-      const fixed = new Uint8Array(n), ox2 = new Float64Array(n), oy = new Float64Array(n);
+      const fixed = new Uint8Array(n), soft = new Float64Array(n).fill(1), ox2 = new Float64Array(n), oy = new Float64Array(n);
       for (let i15 = 0; i15 < n; i15++) {
         const e = list[i15];
-        fixed[i15] = e.atk || e.stun > 0 || e.wounded > 0 || e.freeze > 0 || e.kvx ? 1 : 0;
+        fixed[i15] = e.stun > 0 || e.wounded > 0 || e.freeze > 0 || e.kvx ? 1 : 0;
+        soft[i15] = e.atk ? S.atk : 1;
         const k = cell(e.x, e.y);
         let g = grid.get(k);
         if (!g) {
@@ -17179,7 +17180,10 @@ void main(){
               ux2 = nx2 / d;
               uy = ny / d;
             }
-            const m = (1 - d) * S.k, wa2 = fixed[i15] ? 0 : fixed[j] ? 1 : 0.5, wb = 1 - wa2;
+            const m = (1 - d) * S.k;
+            let wa2 = fixed[i15] ? 0 : fixed[j] ? 1 : 0.5, wb = 1 - wa2;
+            wa2 *= soft[i15];
+            wb *= soft[j];
             ox2[i15] -= ux2 * m * S.rx * wa2;
             oy[i15] -= uy * m * S.ry * wa2;
             ox2[j] += ux2 * m * S.rx * wb;

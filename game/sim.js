@@ -63,7 +63,7 @@ export const CFG = {
   jump: { vz: 300, grav: 1000, dodgeZ: 10 },
   aim: { throwRange: 170, throwAir: 0.387 },
   // Crowd separation (design): standing enemies keep a little room instead of stacking on one spot. Soft push, capped per second. PLACEHOLDERS.
-  sep: { rx: 16, ry: 8, k: 0.5, max: 120 },
+  sep: { rx: 26, ry: 11, k: 0.6, max: 140, atk: 0.4 },
   proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
   // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
   kinds: { fodder: { hp: 5, tier: 'leather', clash: false }, soldier: { clash: true }, tank: { hp: 14, tier: 'plate', clash: true },
@@ -75,7 +75,7 @@ export const CFG = {
     slam:   { dur: 0.60, hitAt: 0.38, mult: 4,   after: 0.35, downed: 1.4 },
     strike: { dur: 0.35, hitAt: 0.15, mult: 1.5, after: 0.0 } },
   body: { height: 1.7, radius: 0.2 },     // PLACEHOLDER: a fighter's hit capsule, metres (side view)
-  enemy:  { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1.0, atkHitAt: 0.45, atkCool: 0.8, reach: 38, move: 'cut1|sword' },   // move: the baked path its swing uses, if the client provided one
+  enemy:  { hp: 9, san: 5, chr: 5, speed: 46, atkDmg: 2, atkDur: 1.0, atkHitAt: 0.45, atkCool: 0.8, reach: 38, engage: 1.12, move: 'cut1|sword' },   // move: the baked path its swing uses, if the client provided one
   rallyPerChr: 0.004,                     // PLACEHOLDER: chance per second, per CHR point, that a fleeing enemy rallies (CHR 5 = 2%/s)
   player: { hp: 30, speed: 90 },
 };
@@ -108,7 +108,7 @@ export function makeRng(seed) {
 }
 
 /* ---------- replays: rules version, saved state, and the one way anything outside changes a fight ---------- */
-export const SIM_VERSION = 7;                                       // bump when a rule changes, so old replays are flagged
+export const SIM_VERSION = 8;                                       // bump when a rule changes, so old replays are flagged
 const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut', 'feed', 'player', 'input', 'credit'];   // feed: what happened this frame, for a run layer to read (xp, gold, style rank)
 // every outside change (input, spawns, settings) goes through here, live and in replays, so a replay repeats the fight exactly
 export function applyCmd(sim, c) {
@@ -783,7 +783,7 @@ export class Sim {
     }
     e.atkCd -= dt;
     if (Math.abs(dy) > c.laneTol * 0.5) { e.y = this.clampY(e.y + Math.sign(dy) * spd * 0.7 * dt); e.moving = true; }
-    if (Math.abs(dx) > c.enemy.reach * 0.8) { e.x = this.clampX(e.x + Math.sign(dx) * spd * dt); e.moving = true; }
+    if (Math.abs(dx) > c.enemy.reach * c.enemy.engage) { e.x = this.clampX(e.x + Math.sign(dx) * spd * dt); e.moving = true; }
     else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0) {
       e.atkN = (e.atkN || 0) + 1; const H = c.enemyHeavy, heavy = !!e.heavyEvery && e.atkN % e.heavyEvery === 0;
       e.atk = heavy ? { t: 0, hit: false, heavy: true, dur: c.enemy.atkDur * H.durMult, hitAt: c.enemy.atkHitAt * H.hitMult } : { t: 0, hit: false, dur: c.enemy.atkDur, hitAt: c.enemy.atkHitAt };
@@ -798,9 +798,9 @@ export class Sim {
     const list = []; for (const e of this.enemies) if (e.state === 'alive' && !e.held && !e.fly && !e.flee) list.push(e);
     const n = list.length; if (n < 2) return;
     const grid = new Map(), cell = (x, y) => Math.floor(x / S.rx) * 4096 + Math.floor(y / S.ry);
-    const fixed = new Uint8Array(n), ox = new Float64Array(n), oy = new Float64Array(n);
+    const fixed = new Uint8Array(n), soft = new Float64Array(n).fill(1), ox = new Float64Array(n), oy = new Float64Array(n);
     for (let i = 0; i < n; i++) {
-      const e = list[i]; fixed[i] = (e.atk || e.stun > 0 || e.wounded > 0 || e.freeze > 0 || e.kvx) ? 1 : 0;
+      const e = list[i]; fixed[i] = (e.stun > 0 || e.wounded > 0 || e.freeze > 0 || e.kvx) ? 1 : 0; soft[i] = e.atk ? S.atk : 1;      // a swinging enemy gives way a little, so attackers don't stay stacked
       const k = cell(e.x, e.y); let g = grid.get(k); if (!g) { g = []; grid.set(k, g); } g.push(i);
     }
     for (let i = 0; i < n; i++) {
@@ -813,7 +813,7 @@ export class Sim {
           if (d >= 1) continue;
           let ux, uy;
           if (d < 1e-6) { ux = (a.id & 1) ? 1 : -1; uy = (a.id & 2) ? 0.5 : -0.5; } else { ux = nx / d; uy = ny / d; }
-          const m = (1 - d) * S.k, wa = fixed[i] ? 0 : fixed[j] ? 1 : 0.5, wb = 1 - wa;
+          const m = (1 - d) * S.k; let wa = fixed[i] ? 0 : fixed[j] ? 1 : 0.5, wb = 1 - wa; wa *= soft[i]; wb *= soft[j];
           ox[i] -= ux * m * S.rx * wa; oy[i] -= uy * m * S.ry * wa; ox[j] += ux * m * S.rx * wb; oy[j] += uy * m * S.ry * wb;
         }
       }

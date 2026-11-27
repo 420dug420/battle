@@ -338,7 +338,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     // bars + tags
     for (const e of sim.enemies) {
       if (e.state !== 'alive') continue;
-      const x = Math.round(e.x), y = Math.round(e.y) - 88;
+      const x = Math.round(e.x), y = Math.round(e.y) - 108;
       ctx.fillStyle = '#14101c'; ctx.fillRect(x - 15, y - 1, 30, 6);
       ctx.fillStyle = '#d65a4a'; ctx.fillRect(x - 14, y, Math.round(28 * e.hp / e.maxHp), 4);
       if (e.durMax > 0) {
@@ -353,11 +353,11 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
         ctx.fillStyle = '#14101c'; ctx.fillRect(x - 15, ty + 6, 30, 3); ctx.fillStyle = '#ffd27a'; ctx.fillRect(x - 14, ty + 7, Math.round(28 * e.wounded / CFG.woundedDur), 1);
       }
       if (e.flee) label('FLEEING', x, ty, '#9fd0ff', 9);
-      if (e.kind && e.kind !== 'soldier') label(e.kind.toUpperCase(), x, y + 20, e.kind === 'elite' ? '#ff9a6a' : '#cfd8e6', 8);
+      if (e.kind && e.kind !== 'soldier') label(e.kind.toUpperCase(), x, y + 16, e.kind === 'elite' ? '#ff9a6a' : '#cfd8e6', 8);
       if (e.atk && e.atk.heavy && !e.atk.hit) { const u = Math.min(1, e.atk.t / (e.atk.hitAt || 1)); ctx.strokeStyle = 'rgba(255,90,74,' + (0.35 + 0.5 * u) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(Math.round(e.x), Math.round(e.y), 26, 8, 0, 0, 7); ctx.stroke(); label('HEAVY: PARRY IT', x, y - 24, '#ff7a6a', 9); }
     }
 
-    for (const a of sim.allies) if (a.state === 'alive') { const x = Math.round(a.x), y = Math.round(a.y) - 88; ctx.fillStyle = '#14101c'; ctx.fillRect(x - 15, y - 1, 30, 6); ctx.fillStyle = '#6fd07a'; ctx.fillRect(x - 14, y, Math.round(28 * a.hp / a.maxHp), 4); label(a.name.split(' ')[0], x, y - 4, '#cfe8cf', 9); }
+    for (const a of sim.allies) if (a.state === 'alive') { const x = Math.round(a.x), y = Math.round(a.y) - 108; ctx.fillStyle = '#14101c'; ctx.fillRect(x - 15, y - 1, 30, 6); ctx.fillStyle = '#6fd07a'; ctx.fillRect(x - 14, y, Math.round(28 * a.hp / a.maxHp), 4); label(a.name.split(' ')[0], x, y - 4, '#cfe8cf', 9); }
     // shots, the clash shockwave ring, the cursor
     ctx.strokeStyle = '#ffe9a8'; ctx.lineWidth = 2;
     for (const q of sim.proj || []) { const m = Math.sqrt(q.vx * q.vx + q.vy * q.vy) || 1; ctx.beginPath(); ctx.moveTo(Math.round(q.x), Math.round(q.y - 46)); ctx.lineTo(Math.round(q.x - q.vx / m * 9), Math.round(q.y - 46 - q.vy / m * 9)); ctx.stroke(); }
@@ -371,14 +371,14 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
 
     // player hp + swing
     for (const q of sim.players) if (q !== p && (q.hp > 0 || sim.mode === 'arena')) {
-      label(q.name || 'Ally', q.x, q.y - 88, '#9fd3ff', 10);
-      ctx.fillStyle = '#14101c'; ctx.fillRect(q.x - 15, q.y - 84, 30, 5); ctx.fillStyle = '#6fd07a'; ctx.fillRect(q.x - 14, q.y - 83, Math.round(28 * Math.max(0, q.hp) / q.maxHp), 3);
+      label(q.name || 'Ally', q.x, q.y - 106, '#9fd3ff', 10);
+      ctx.fillStyle = '#14101c'; ctx.fillRect(q.x - 15, q.y - 102, 30, 5); ctx.fillStyle = '#6fd07a'; ctx.fillRect(q.x - 14, q.y - 101, Math.round(28 * Math.max(0, q.hp) / q.maxHp), 3);
     }
-        label('YOU', p.x, p.y - 88, '#f4ecd8', 10);
-    ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 15, p.y - 84, 30, 5); ctx.fillStyle = '#6fd07a'; ctx.fillRect(p.x - 14, p.y - 83, Math.round(28 * p.hp / p.maxHp), 3);
-    ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 15, p.y - 79, 30, 4); ctx.fillStyle = p.stunT > 0 ? '#ff7a6a' : '#e8c24a'; ctx.fillRect(p.x - 14, p.y - 78, Math.round(28 * p.stamina / p.staminaMax), 2);
+        label('YOU', p.x, p.y - 106, '#f4ecd8', 10);
+    ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 15, p.y - 102, 30, 5); ctx.fillStyle = '#6fd07a'; ctx.fillRect(p.x - 14, p.y - 101, Math.round(28 * p.hp / p.maxHp), 3);
+    ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 15, p.y - 97, 30, 4); ctx.fillStyle = p.stunT > 0 ? '#ff7a6a' : '#e8c24a'; ctx.fillRect(p.x - 14, p.y - 96, Math.round(28 * p.stamina / p.staminaMax), 2);
     if (p.blocking && p.blockT <= CFG.stamina.parryWin) { ctx.strokeStyle = '#ffe27a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(Math.round(p.x), Math.round(p.y), 24, 7, 0, 0, 7); ctx.stroke(); }
-    if (p.stunT > 0) label('GUARD BROKEN', p.x, p.y - 94, '#ff9a6a', 9);
+    if (p.stunT > 0) label('GUARD BROKEN', p.x, p.y - 112, '#ff9a6a', 9);
     if (dbg && p.swing && p.swing.move && sim.moves[p.swing.move]) {
       const m = sim.moves[p.swing.move], s = p.swing, tau = moveTau(m, s, s.t), g = segAt(m, tau), P = CFG.pxPerM, live = tau >= m.hit.f0 && tau <= m.hit.f1;
       ctx.strokeStyle = live ? '#ff5a4a' : 'rgba(255,255,255,.5)'; ctx.lineWidth = 2; ctx.beginPath();
@@ -393,9 +393,9 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       for (const e of sim.enemies) if (e.state === 'alive') ctx.strokeRect(Math.round(e.x - CFG.body.radius * P) + .5, Math.round(e.y - CFG.body.height * P) + .5, Math.round(CFG.body.radius * 2 * P), Math.round(CFG.body.height * P));
     }
     if (dbg && p.swing) {
-      const s = p.swing; ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 20, p.y - 100, 40, 4);
-      ctx.fillStyle = '#f0c35a'; ctx.fillRect(p.x - 19, p.y - 99, Math.round(38 * Math.min(1, s.t / s.dur)), 2);
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(p.x - 19 + Math.round(38 * s.hitAt / s.dur), p.y - 101, 1, 6);
+      const s = p.swing; ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 20, p.y - 118, 40, 4);
+      ctx.fillStyle = '#f0c35a'; ctx.fillRect(p.x - 19, p.y - 117, Math.round(38 * Math.min(1, s.t / s.dur)), 2);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(p.x - 19 + Math.round(38 * s.hitAt / s.dur), p.y - 119, 1, 6);
     }
     ctx.restore();
     if (runui && runui.active) { runui.drawLabels(hx); runui.drawFront(hx); }
