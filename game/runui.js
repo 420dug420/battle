@@ -74,7 +74,7 @@ export function initRunUI(env) {
     }
     h += '<div class="sec">Upgrades (permanent)</div>';
     for (const k of Object.keys(R.UPGRADES)) {
-      const u = R.UPGRADES[k], n = p.upgrades[k];
+      const u = R.UPGRADES[k], n = p.upgrades[k]; if (u.hidden) continue;
       h += '<div class="srow"><span>' + u.n + ' <small>rank ' + n + '/' + u.max + '</small></span><span class="d">' + u.d + '</span><button class="rb" data-a="buy:upgrade:' + k + '"' + (n >= u.max ? ' disabled>Max' : '>' + R.upgradePrice(p, k) + ' G') + '</button></div>';
     }
     h += '<div class="sec">Skills</div>';
@@ -90,7 +90,10 @@ export function initRunUI(env) {
     const opt = (cur, none) => '<option value="">' + none + '</option>' + all.filter(x => p.styles.owned.includes(x.id)).map(x => '<option value="' + x.id + '"' + (x.id === cur ? ' selected' : '') + (R.styleFits(x, hands) ? '' : ' disabled') + '>' + esc(x.name) + (x.hands ? (x.hands === 2 ? ' (2H)' : ' (1H)') : '') + '</option>').join('');
     h += '<div class="sec">Combo chain <small>(left click plays these in order)</small></div>';
     for (let i = 0; i < d.chainSlots; i++) h += '<div class="srow"><span>Hit ' + (i + 1) + '</span><span class="d"></span><select class="rsel" data-f="chain:' + i + '">' + opt(p.styles.chain[i], '(empty)') + '</select></div>';
-    h += '<div class="d">Now: ' + R.chainFor(p, all, hands).map(nm).map(esc).join(' &gt; ') + ' <small>(' + (hands === 2 ? 'two-handed' : 'one-handed') + ' weapon: only matching styles play. More slots from the Smith.)</small></div>';
+    const nu = R.nextChainUnlock(p);
+    if (nu) { const ok = p.level >= nu.level; h += '<div class="srow"><span>Hit ' + (d.chainSlots + 1) + ' <small>locked</small></span><span class="d">' + (ok ? 'Unlock for ' + nu.price + ' G' : 'Needs level ' + nu.level + ' (you are ' + p.level + '), then ' + nu.price + ' G') + '</span><button class="rb" data-a="buy:chainslot:x"' + (ok && p.gold >= nu.price ? '>Unlock ' + nu.price + ' G' : ' disabled>' + (ok ? 'Need ' + nu.price + ' G' : 'Level ' + nu.level)) + '</button></div>'; }
+    else h += '<div class="d">All 5 combo slots open.</div>';
+    h += '<div class="d">Now: ' + R.chainFor(p, all, hands).map(nm).map(esc).join(' &gt; ') + ' <small>(' + (hands === 2 ? 'two-handed' : 'one-handed') + ' weapon: only matching styles play. Slots 3, 4 and 5 open at levels 5, 12 and 20, for gold.)</small></div>';
     h += '<div class="sec">Other attacks</div>';
     for (const k of Object.keys(R.ROLES)) h += '<div class="srow"><span>' + R.ROLES[k] + '</span><span class="d"></span><select class="rsel" data-f="role:' + k + '">' + opt(p.styles.roles[k], 'Default') + '</select></div>';
     h += '<div class="sec">Learn attack styles</div>';

@@ -18968,6 +18968,7 @@ void main(){
     ARMOR_PRICE: () => ARMOR_PRICE,
     ATTRS: () => ATTRS,
     ATTR_INFO: () => ATTR_INFO,
+    CHAIN_UNLOCKS: () => CHAIN_UNLOCKS,
     MAPS: () => MAPS,
     ROLES: () => ROLES,
     RUNCFG: () => RUNCFG,
@@ -18995,6 +18996,7 @@ void main(){
     hirelingXp: () => hirelingXp,
     learnStyle: () => learnStyle,
     newProfile: () => newProfile,
+    nextChainUnlock: () => nextChainUnlock,
     recruits: () => recruits,
     resolveStyles: () => resolveStyles,
     setChain: () => setChain,
@@ -19085,6 +19087,7 @@ void main(){
       const d = newProfile(), p = Object.assign(d, o);
       if (o.created == null) p.created = true;
       if (!p.owned.shields) p.owned.shields = [];
+      p.upgrades.chain = Math.min(CHAIN_UNLOCKS.length, p.upgrades.chain || 0);
       if (p.shield === void 0) p.shield = null;
       p.upgrades = Object.assign({}, newProfile().upgrades, o.upgrades || {});
       p.styles = Object.assign({}, newProfile().styles, o.styles || {});
@@ -19127,7 +19130,7 @@ void main(){
       hireStrength: 1 + R2.ldr.strength * (ldr - b),
       hireDiscount: Math.min(R2.chr.maxDiscount, Math.max(0, R2.chr.discount * (chr - b))),
       skillSlots: 1 + p.upgrades.slots,
-      chainSlots: RUNCFG.chainBase + (p.upgrades.chain || 0)
+      chainSlots: RUNCFG.chainBase + Math.min(CHAIN_UNLOCKS.length, p.upgrades.chain || 0)
     };
   }
   function trainFromUse(p, kind) {
@@ -19160,8 +19163,10 @@ void main(){
     stamina: { n: "Endurance", d: "+10 max stamina per rank.", base: 40, max: 10 },
     damage: { n: "Whetstone", d: "+5% damage per rank.", base: 60, max: 10 },
     slots: { n: "Skill slot", d: "Equip one more skill.", base: 150, max: 2 },
-    chain: { n: "Combo slot", d: "One more attack in your light-attack chain.", base: 80, max: 4 }
+    chain: { n: "Combo slot", d: "One more attack in your light-attack chain.", base: 0, max: 3, hidden: true }
   };
+  var CHAIN_UNLOCKS = [{ level: 5, price: 600 }, { level: 12, price: 1500 }, { level: 20, price: 3500 }];
+  var nextChainUnlock = (p) => CHAIN_UNLOCKS[Math.min(CHAIN_UNLOCKS.length, p.upgrades.chain || 0)] || null;
   var upgradePrice = (p, k) => Math.round(UPGRADES[k].base * Math.pow(1.6, p.upgrades[k]));
   function pay(p, n) {
     if (p.gold < n) return { ok: false, why: "Not enough gold." };
@@ -19194,7 +19199,16 @@ void main(){
       if (r.ok) p.owned.skills.push(key);
       return r;
     }
+    if (kind === "chainslot") {
+      const u = nextChainUnlock(p);
+      if (!u) return { ok: false, why: "All 5 combo slots are open." };
+      if (p.level < u.level) return { ok: false, why: "Reach level " + u.level + " first." };
+      const r = pay(p, u.price);
+      if (r.ok) p.upgrades.chain = (p.upgrades.chain || 0) + 1;
+      return r;
+    }
     if (kind === "upgrade") {
+      if (UPGRADES[key] && UPGRADES[key].hidden) return { ok: false, why: "Not sold here." };
       if (p.upgrades[key] >= UPGRADES[key].max) return { ok: false, why: "Maxed." };
       const r = pay(p, upgradePrice(p, key));
       if (r.ok) p.upgrades[key]++;
@@ -20548,6 +20562,7 @@ void main(){
       h += '<div class="sec">Upgrades (permanent)</div>';
       for (const k of Object.keys(UPGRADES)) {
         const u = UPGRADES[k], n = p.upgrades[k];
+        if (u.hidden) continue;
         h += '<div class="srow"><span>' + u.n + " <small>rank " + n + "/" + u.max + '</small></span><span class="d">' + u.d + '</span><button class="rb" data-a="buy:upgrade:' + k + '"' + (n >= u.max ? " disabled>Max" : ">" + upgradePrice(p, k) + " G") + "</button></div>";
       }
       h += '<div class="sec">Skills</div>';
@@ -20563,7 +20578,12 @@ void main(){
       const opt = (cur, none) => '<option value="">' + none + "</option>" + all.filter((x) => p.styles.owned.includes(x.id)).map((x) => '<option value="' + x.id + '"' + (x.id === cur ? " selected" : "") + (styleFits(x, hands) ? "" : " disabled") + ">" + esc(x.name) + (x.hands ? x.hands === 2 ? " (2H)" : " (1H)" : "") + "</option>").join("");
       h += '<div class="sec">Combo chain <small>(left click plays these in order)</small></div>';
       for (let i15 = 0; i15 < d.chainSlots; i15++) h += '<div class="srow"><span>Hit ' + (i15 + 1) + '</span><span class="d"></span><select class="rsel" data-f="chain:' + i15 + '">' + opt(p.styles.chain[i15], "(empty)") + "</select></div>";
-      h += '<div class="d">Now: ' + chainFor(p, all, hands).map(nm2).map(esc).join(" &gt; ") + " <small>(" + (hands === 2 ? "two-handed" : "one-handed") + " weapon: only matching styles play. More slots from the Smith.)</small></div>";
+      const nu2 = nextChainUnlock(p);
+      if (nu2) {
+        const ok = p.level >= nu2.level;
+        h += '<div class="srow"><span>Hit ' + (d.chainSlots + 1) + ' <small>locked</small></span><span class="d">' + (ok ? "Unlock for " + nu2.price + " G" : "Needs level " + nu2.level + " (you are " + p.level + "), then " + nu2.price + " G") + '</span><button class="rb" data-a="buy:chainslot:x"' + (ok && p.gold >= nu2.price ? ">Unlock " + nu2.price + " G" : " disabled>" + (ok ? "Need " + nu2.price + " G" : "Level " + nu2.level)) + "</button></div>";
+      } else h += '<div class="d">All 5 combo slots open.</div>';
+      h += '<div class="d">Now: ' + chainFor(p, all, hands).map(nm2).map(esc).join(" &gt; ") + " <small>(" + (hands === 2 ? "two-handed" : "one-handed") + " weapon: only matching styles play. Slots 3, 4 and 5 open at levels 5, 12 and 20, for gold.)</small></div>";
       h += '<div class="sec">Other attacks</div>';
       for (const k of Object.keys(ROLES)) h += '<div class="srow"><span>' + ROLES[k] + '</span><span class="d"></span><select class="rsel" data-f="role:' + k + '">' + opt(p.styles.roles[k], "Default") + "</select></div>";
       h += '<div class="sec">Learn attack styles</div>';
