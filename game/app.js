@@ -7,7 +7,7 @@ import { CFG, Sim, applyCmd, SIM_VERSION, fitsWindow, minDexForWindow, moveTau, 
 import BUILTIN_ANIMS from './anims.json';
 import { initRunUI } from './runui.js';
 import { initDiscord } from './discord.js';
-import { makeFieldBg } from './camp.js';
+import { makeFieldsBg, makeBattleBg } from './backdrops.js';
 import { makeCloud } from './cloud.js';
 import { PartyHost, GuestRun, applySnap } from './party.js';
 import { buildOf, resolveStyles } from './run.js';
@@ -41,31 +41,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   const FONT = '"Pixelify Sans", monospace';
 
   /* ---------- background (built once) ---------- */
-  const bg = document.createElement('canvas'); bg.width = CFG.W; bg.height = CFG.H;
-  (function buildBg() {
-    const g = bg.getContext('2d');
-    const R = (c, x, y, w, h) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
-    [[0, 60, '#1d1830'], [60, 100, '#2b2140'], [100, 135, '#43294a'], [135, 165, '#5e3350'], [165, 196, '#7e4350']].forEach(b => R(b[2], 0, b[0], 640, b[1] - b[0]));
-    g.fillStyle = '#a45a50'; g.beginPath(); g.arc(500, 160, 34, 0, 7); g.fill();
-    g.fillStyle = '#f0b66b'; g.beginPath(); g.arc(500, 160, 26, 0, 7); g.fill();
-    g.fillStyle = '#2a1f3a'; g.beginPath();
-    [[0, 170], [60, 155], [130, 165], [210, 150], [300, 162], [390, 152], [470, 165], [550, 150], [640, 162], [640, 196], [0, 196]].forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.fill();
-    R('#1a1426', 45, 150, 50, 46); R('#1a1426', 52, 134, 36, 20);
-    g.strokeStyle = '#1a1426'; g.lineWidth = 3; g.beginPath(); g.arc(103, 173, 16, 0, 7); g.stroke();
-    R('#1a1426', 545, 131, 32, 65); for (let i = 0; i < 4; i++) R('#1a1426', 545 + i * 9, 125, 6, 7);
-    R('#f0b66b', 557, 150, 7, 13);
-    R('#4a3d4f', 0, 178, 640, 18);
-    for (let i = 0; i < 640; i += 32) R('#4a3d4f', i + 5, 171, 19, 8);
-    for (let i = 0; i < 640; i += 28) R('#392e3e', i, 178, 1, 18);
-    R('#6a5a70', 0, 178, 640, 1);
-    R('#2a2235', 17, 146, 3, 50); g.fillStyle = '#c2413b'; g.beginPath(); g.moveTo(20, 148); g.lineTo(46, 148); g.lineTo(40, 158); g.lineTo(46, 168); g.lineTo(20, 168); g.fill();
-    R('#2a2235', 620, 146, 3, 50); g.fillStyle = '#7a63b8'; g.beginPath(); g.moveTo(620, 148); g.lineTo(594, 148); g.lineTo(600, 158); g.lineTo(594, 168); g.lineTo(620, 168); g.fill();
-    R('#5a4a42', 0, 196, 640, 164); R('#4f4039', 0, 196, 640, 22);
-    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    [202, 209, 217, 227, 238, 250, 265, 283, 302, 322, 344].forEach(y => { g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(0, y, 640, 1); });
-    for (let i = 0; i < 90; i++) { const y = 200 + rnd() * 150, k = 0.6 + (y - 200) / 150 * 0.9; g.fillStyle = rnd() < 0.55 ? 'rgba(0,0,0,.10)' : 'rgba(255,255,255,.08)'; g.fillRect(Math.round(rnd() * 630), Math.round(y), Math.round(9 * k), Math.round(3 * k)); }
-    R('#3d322f', 0, 336, 640, 24);
-  })();
+  const bg = makeFieldsBg(CFG.W, CFG.H);                         // the Training Fields backdrop (game/backdrops.js)
 
 
   // 3D frame -> two small 2D canvases: the figure, and a black silhouette for the 1px outline.
@@ -99,12 +75,15 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
      costs a read back from the graphics card, which was most of the frame time in busy fights. Swings, hits, grabs and deaths stay full rate. */
   const FC = new Map(), FC_DT = 1 / 12;
   const sigOf = f => [f.role, f.tier, f.pHead || '', f.pBody || '', f.pLiv || '', f.pMetal || '', f.broken ? 1 : 0, f.two ? 1 : 0, f.wkind || '', f.shield ? 1 : 0, f.moving ? 1 : 0].join('|');
+  const PW_STAT = { fresh: 0, drawn: 0 }; window.PW_STAT = PW_STAT;
   function drawFigure(f) {
+    PW_STAT.drawn++;
     const id = f.cacheId, calm = id != null && !f.swing && !f.st && !(f.flash > 0) && !(f.hurt > 0) && !f.dead && !f.gx && !f.gv && !f.woundedPose && !(f.z > 0);
     let ent = id != null ? FC.get(id) : null; const sig = calm ? sigOf(f) : '';
     const fresh = !(calm && ent && ent.sig === sig && sim.t - ent.t < FC_DT && sim.t >= ent.t);
     let dx, dy, A, B;
     if (fresh) {
+      PW_STAT.fresh++;
       const rig = M3.pose(f.role, f); if (!rig) return;
       const cv3 = M3.render(rig); dx = -Math.round(M3.ox); dy = -Math.round(M3.oy);
       prep3D(cv3, f.flash > 0); A = oc; B = sil;
@@ -363,7 +342,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     if (sim.shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * 5), Math.round((Math.random() - 0.5) * 3));
     const V = sim.view;
     if (V) { ctx.translate(0, V.oy); ctx.scale(V.z, V.z); const k = hudCv.width / CFG.W; hx.setTransform(k * V.z, 0, 0, k * V.z, 0, k * V.oy); }   // a zoomed-out map: the world shrinks, the HUD doesn't
-    if (V && !(runui && runui.inCamp())) { const key = V.z + '|' + V.oy; if (!fieldBg || fieldBg.key !== key) { fieldBg = makeFieldBg(Math.ceil(CFG.W / V.z), Math.ceil(CFG.H / V.z) + 2, -V.oy / V.z); fieldBg.key = key; } ctx.drawImage(fieldBg, 0, Math.floor(-V.oy / V.z)); }
+    if (V && !(runui && runui.inCamp())) { const key = V.z + '|' + V.oy; if (!fieldBg || fieldBg.key !== key) { fieldBg = makeBattleBg(Math.ceil(CFG.W / V.z), Math.ceil(CFG.H / V.z) + 2, -V.oy / V.z); fieldBg.key = key; } ctx.drawImage(fieldBg, 0, Math.floor(-V.oy / V.z)); }
     else ctx.drawImage(runui && runui.inCamp() ? runui.campBg : bg, 0, 0);
     if (runui && runui.active) runui.drawBack(ctx);
     const p = sim.player, w = sim.weaponInfo();

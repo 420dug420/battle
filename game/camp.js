@@ -253,19 +253,3 @@ export function drawStation(c, id, x, base, near, t) {
 }
 
 /* ---------- the battlefield: a wide, trampled plain under a grey sky, smoke from the fighting beyond ---------- */
-export function makeFieldBg(W, H, top) {                       // W x H world px; top: world y of the canvas's first row (negative when zoomed out)
-  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const c = cv.getContext('2d'), rnd = rng(41), Y = y => Math.round(y - top);
-  R(c, '#6a7480', 0, 0, W, H);
-  const HZ = Y(214);
-  [['#4e5866', 0], ['#5a6472', 0.25], ['#687280', 0.5], ['#7a8490', 0.72], ['#8c949c', 0.9]].forEach(([col, u], i, a) => R(c, col, 0, Math.round(HZ * u), W, Math.round(HZ * ((a[i + 1] ? a[i + 1][1] : 1) - u)) + 1));
-  for (let i = 0; i < 9; i++) { const x = rnd() * W, y = rnd() * HZ * 0.6, w = 60 + rnd() * 120; ell(c, Math.round(x), Math.round(y), Math.round(w), Math.round(6 + rnd() * 6), 'rgba(160,168,176,0.35)'); }
-  for (let x = 0; x < W; x += 2) { const h = 22 + Math.sin(x / 90) * 10 + Math.sin(x / 31 + 2) * 4; R(c, '#56604e', x, HZ - h, 2, h + 2); }
-  for (let x = 0; x < W; x += 2) { const h = 10 + Math.sin(x / 57 + 1) * 5 + Math.sin(x / 17) * 2; R(c, '#4a5442', x, HZ - h, 2, h + 2); }
-  for (let k = 0; k < 4; k++) { const sx = 90 + k * 190 + rnd() * 60; for (let i = 0; i < 16; i++) { const u = i / 16; disc(c, Math.round(sx + Math.sin(i * 0.7 + k) * 8 + u * 30), Math.round(HZ - 8 - u * 120), Math.round(5 + u * 14), i % 2 ? 'rgba(70,72,78,0.35)' : 'rgba(90,92,98,0.3)'); } }   // smoke over distant fighting
-  for (let x = 20; x < W; x += 9 + Math.floor(rnd() * 6)) { const y = HZ - 3; R(c, '#2e3430', x, y - 3, 1, 4); if (rnd() < 0.25) { R(c, '#3a3428', x, y - 9, 1, 7); R(c, rnd() < 0.5 ? '#7a2a2a' : '#2a3a6a', x + 1, y - 9, 3, 2); } }   // tiny far lines of troops and banners
-  [['#4a5a38', HZ], ['#4e5e3a', HZ + 12], ['#526038', HZ + 30], ['#56643a', HZ + 60], ['#5a663c', HZ + 100]].forEach(([col, y], i, a) => R(c, col, 0, y, W, (a[i + 1] ? a[i + 1][1] : H) - y));
-  for (let i = 0; i < 900; i++) { const y = HZ + 4 + rnd() * (H - HZ), x = Math.floor(rnd() * W), k = 1 + Math.floor((y - HZ) / 70); R(c, ['#3e4c2e', '#6a7444', '#5a4a30', '#4a3c28'][Math.floor(rnd() * 4)], x, y, k + 1, 1); }
-  for (let i = 0; i < 26; i++) { const x = rnd() * W, y = Y(244) + rnd() * (Y(330) - Y(244)), w = 18 + rnd() * 40; ell(c, Math.round(x), Math.round(y), Math.round(w), Math.round(3 + rnd() * 3), 'rgba(70,52,34,0.55)'); }   // churned mud
-  for (let i = 0; i < 14; i++) { const x = Math.round(rnd() * W), y = Math.round(Y(240) + rnd() * (Y(336) - Y(240))); if (rnd() < 0.5) { R(c, '#5a4630', x, y - 1, 16, 1); R(c, '#8a9098', x + 16, y - 2, 4, 2); } else { ell(c, x, y, 5, 3, OUT); ell(c, x, y, 4, 2, rnd() < 0.5 ? '#6a2a24' : '#2a3a5a'); } }   // dropped spears and shields
-  return cv;
-}
