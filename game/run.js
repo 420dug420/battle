@@ -169,8 +169,7 @@ export const allySpec = (h, p) => { const d = derive(p), s = d.hireStrength * (1
 
 /* ---------- waves ---------- */
 export function wavePlan(n) {                          // the kinds of the n-th wave, in the order they arrive
-  const ramp = [0.33, 0.5, 0.7, 0.85][n - 1] || 1;                 // the first waves are a tutorial: wave 1 is 3 fodder
-  const total = Math.round((6 + 3 * n) * ramp), elites = n >= 5 ? Math.floor(n / 5) : 0, tanks = n >= 3 ? Math.floor(n / 3) : 0, soldiers = n >= 2 ? Math.floor(total * 0.25) : 0;
+  const total = n <= 5 ? n : 3 * n - 10, elites = n >= 10 ? Math.floor(n / 5) - 1 : 0, tanks = n >= 6 ? Math.floor(n / 3) - 1 : 0, soldiers = n >= 3 ? Math.floor(total * 0.25) : 0;      // waves 1 to 5 are 1 to 5 fighters: a tutorial
   const list = [];
   for (let i = 0; i < total; i++) list.push('fodder');
   for (let i = 0; i < soldiers; i++) list[Math.floor((i + 0.5) * total / (soldiers + 1))] = 'soldier';

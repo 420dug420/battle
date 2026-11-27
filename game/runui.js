@@ -133,18 +133,18 @@ export function initRunUI(env) {
     h += '<div class="sec">Armor</div>';
     for (const k of p.owned.armor) { const t = CFG.tiers[k];
       h += '<div class="srow"><span>' + esc(t.label) + '</span><span class="d">' + Math.round(t.pct * 100) + '% off, durability ' + t.dur + '</span><button class="rb" data-a="equip:armor:' + k + '"' + (p.armor === k ? ' disabled>Worn' : '>Wear') + '</button></div>'; }
-    const lk = p.look || {}; h += '<div class="sec">Look</div>' + lookSelect('head', 'Head', lk.head) + lookSelect('body', 'Body', lk.body) + lookSelect('liv', 'Livery', lk.liv) + lookSelect('metal', 'Metal', lk.metal);
+    const lk = p.look || {}; h += '<div class="sec">Look</div>' + lookSelect('head', 'Head', lk.head, p.owned.armor) + lookSelect('body', 'Body', lk.body, p.owned.armor) + lookSelect('liv', 'Livery', lk.liv, p.owned.armor) + lookSelect('metal', 'Metal', lk.metal, p.owned.armor);
     return h + '<p class="d">Buy more at the Smith. A change takes effect in camp and goes with you on the next run.</p>' + msg();
   }
-  const lookSelect = (k, lab, cur) => { const o = env.lookOptions ? env.lookOptions() : {}; return '<div class="srow"><span>' + lab + '</span><select class="rsel" data-c="' + k + '">' + (o[k] || [{ v: '', l: 'From armor' }]).map(x => '<option value="' + esc(x.v) + '"' + ((cur || '') === x.v ? ' selected' : '') + '>' + esc(x.l) + '</option>').join('') + '</select><span></span></div>'; };
+  const lookSelect = (k, lab, cur, tiers) => { const o = env.lookOptions ? env.lookOptions(tiers) : {}; return '<div class="srow"><span>' + lab + '</span><select class="rsel" data-c="' + k + '">' + (o[k] || [{ v: '', l: 'From armor' }]).map(x => '<option value="' + esc(x.v) + '"' + ((cur || '') === x.v ? ' selected' : '') + '>' + esc(x.l) + '</option>').join('') + '</select><span></span></div>'; };
   let draft = null;
   function createPanel() {
     draft = draft || { name: profile.name === 'Baron' ? '' : profile.name, head: '', body: '', liv: '', metal: '' };
-    const sel = (k, lab) => lookSelect(k, lab, draft[k]);
+    const sel = (k, lab) => lookSelect(k, lab, draft[k], ['leather']);
     return '<div class="rhead"><span>Create your fighter</span></div>' +
       '<div class="srow"><span>Name</span><input class="rsel" data-c="name" maxlength="16" value="' + esc(draft.name) + '" placeholder="Your name"><span></span></div>' +
       sel('head', 'Head') + sel('body', 'Body') + sel('liv', 'Livery') + sel('metal', 'Metal') +
-      '<p class="d">Your fighter is shown in camp as you change it. You can change the look later on the Equipment screen (I).</p>' + msg() +
+      '<p class="d">You start in tier 1 (leather) gear, so only its looks are offered. Better looks come with better armor. You can change the look later on the Equipment screen (I).</p>' + msg() +
       '<div class="btnrow"><button class="rb go" data-a="create">Begin</button></div>';
   }
   function votePanel() {

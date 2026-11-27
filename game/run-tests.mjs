@@ -50,9 +50,10 @@ const killAll = r => { for (const e of r.sim.enemies) if (e.state === 'alive') r
 }
 // 4. waves
 {
-  const a = R.wavePlan(1), b = R.wavePlan(6); assert(b.length > a.length, 'bigger waves'); assert(a.every(k => k === 'fodder' || k === 'soldier'), 'wave 1 is swarm fodder');
-  assert(R.wavePlan(3).includes('tank') && !R.wavePlan(2).includes('tank'), 'tanks from wave 3'); assert(!R.wavePlan(4).includes('elite') && R.wavePlan(5).includes('elite'), 'elites from wave 5');
-  assert.strictEqual(R.wavePlan(10).filter(k => k === 'elite').length, 2); assert.strictEqual(R.wavePlan(5)[R.wavePlan(5).length - 1], 'elite', 'elites arrive last');
+  const a = R.wavePlan(1), b = R.wavePlan(6); assert(b.length > a.length, 'bigger waves'); assert(a.every(k => k === 'fodder'), 'wave 1 is fodder');
+  for (let n = 1; n <= 5; n++) assert.strictEqual(R.wavePlan(n).length, n, 'waves 1 to 5 are 1 to 5 fighters');
+  assert(!R.wavePlan(5).includes('tank') && !R.wavePlan(5).includes('elite'), 'no tanks or elites in the tutorial'); assert(R.wavePlan(6).includes('tank'), 'tanks from wave 6'); assert(!R.wavePlan(9).includes('elite') && R.wavePlan(10).includes('elite'), 'elites from wave 10');
+  assert.strictEqual(R.wavePlan(10).filter(k => k === 'elite').length, 1); assert.strictEqual(R.wavePlan(10)[R.wavePlan(10).length - 1], 'elite', 'elites arrive last');
   console.log('PASS waves: growth and mix');
 }
 // 5. a run: waves, rewards, the exit vote, camp again
