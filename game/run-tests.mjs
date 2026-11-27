@@ -13,7 +13,7 @@ const killAll = r => { for (const e of r.sim.enemies) if (e.state === 'alive') r
   const p = R.newProfile(); assert.strictEqual(p.level, 1);
   const up = R.addXp(p, R.xpNeed(1) + 1); assert.strictEqual(up, 1); assert.strictEqual(p.level, 2); assert.strictEqual(p.points, R.RUNCFG.pointsPerLevel, 'a level gives attribute points');
   assert(R.xpNeed(5) > R.xpNeed(2), 'later levels cost more');
-  assert(R.spendPoint(p, 'str') && p.attrs.str === 6 && p.points === 2); p.points = 0; assert(!R.spendPoint(p, 'str'), 'no points, no spend');
+  assert(R.spendPoint(p, 'str') && p.attrs.str === 6 && p.points === R.RUNCFG.pointsPerLevel - 1); p.points = 0; assert(!R.spendPoint(p, 'str'), 'no points, no spend');
   console.log('PASS leveling: xp, points, spend');
 }
 // 2. attributes change what the fighter can do

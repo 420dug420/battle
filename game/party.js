@@ -93,7 +93,7 @@ export class PartyHost {
     const run = this.run, sim = this.sim;
     switch (m.t) {
       case 'join': case 'build': if (m.build && typeof m.build === 'object') { const b = clean(m.build); if (run.byPid(from)) run.setBuild(from, b); else run.addMember(from, b, null); } break;
-      case 'in': { const i = sim.players.findIndex(q => q.pid === from); if (i >= 0 && m.i && typeof m.i === 'object') { const c = m.i, n = v => Math.max(-1, Math.min(1, +v || 0)), a = v => v == null ? null : (isFinite(+v) ? +v : null); applyCmd(sim, { t: 'input', p: i, x: n(c.x), y: n(c.y), act: c.act, g: c.g, fin: typeof c.fin === 'string' ? c.fin.slice(0, 20) : '', heavy: c.heavy, block: c.block, dash: c.dash, fire: c.fire, jump: c.jump, ax: a(c.ax), ay: a(c.ay) }); } break; }
+      case 'in': { const i = sim.players.findIndex(q => q.pid === from); if (i >= 0 && m.i && typeof m.i === 'object') { const c = m.i, n = v => Math.max(-1, Math.min(1, +v || 0)), a = v => v == null ? null : (isFinite(+v) ? +v : null); applyCmd(sim, { t: 'input', p: i, x: n(c.x), y: n(c.y), act: c.act, g: c.g, fin: typeof c.fin === 'string' ? c.fin.slice(0, 20) : '', heavy: c.heavy, block: c.block, dash: c.dash, fire: false, jump: c.jump, ax: a(c.ax), ay: a(c.ay) }); } break; }
       case 'ready': run.readyUp(from, typeof m.map === 'string' ? m.map.slice(0, 20) : 'fields'); break;
       case 'unready': run.unready(from); break;
       case 'vote': run.castVote(from, !!m.leave); break;

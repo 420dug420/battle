@@ -21,11 +21,11 @@ export const ATTR_INFO = {
 };
 
 export const RUNCFG = {
-  base: 5, pointsPerLevel: 3, startGold: 30, chainBase: 2,
+  base: 5, pointsPerLevel: 1, startGold: 30, chainBase: 2,
   str: { dmg: 0.06 }, agi: { speed: 0.02, regen: 0.04 }, con: { hp: 4, stamina: 5 }, ldr: { perSlot: 3, strength: 0.03 }, chr: { discount: 0.02, maxDiscount: 0.5 },
   maxHirelings: 3,
   xp: { base: 20, growth: 1.35, kill: { fodder: 2, soldier: 4, tank: 9, elite: 25 }, wave: 5 },
-  gold: { kill: { fodder: 1, soldier: 2, tank: 5, elite: 14 }, wave: 5 },
+  gold: { kill: { fodder: 1, soldier: 2, tank: 5, elite: 14 }, wave: 3, early: 1, earlyUntil: 5 },     // wave bonus is gold x wave number; the first 5 waves pay 1 x wave
   exitEvery: 5, deepBonus: 0.25,                       // leaving at wave 5, 10, 15 ... pays 1 + 0.25 per stage after the first
   waveHp: 0.06, between: 2.5, spawnGap: 0.45, maxAlive: 8, maxAlivePerWave: 1, healBetween: 0.25,
   use: { threshold: 60, cap: 5 },                      // each 60 uses of an attribute's kind of action grows it by 1, up to +5 (the hybrid growth)
@@ -257,7 +257,7 @@ export class Run {
     if (this.hooks.build) this.hooks.build(m, i);                          // the page bakes the chain and attack moves it knows
   }
   enterCamp() {
-    const sim = this.sim; this.phase = 'camp'; sim.mode = 'arena'; sim.manual = true;
+    const sim = this.sim; this.phase = 'camp'; this.wave = 0; this.banner = null; this.queue = []; this.timer = 0; this.voteAt = 0; sim.mode = 'arena'; sim.manual = true;     // back in camp, nothing of the last run carries over: the next one starts at wave 1
     sim.clearEnemies(); sim.clearAllies(); sim.proj = [];
     this.members.forEach((m, k) => { const q = this.pl(m); q.x = 330 + k * 26; q.y = 282; q.swing = null; q.air = false; q.z = 0; q.grab = null; m.ready = false; m.vote = null; m.acked = false; m.result = null; this.applyBuild(false, m); });
     this.spawnDummy();
@@ -363,7 +363,7 @@ export class Run {
   clearWave() {
     const R = RUNCFG, sim = this.sim; this.say('Wave ' + this.wave + ' cleared.'); this.banner = { text: 'WAVE CLEARED', at: sim.t };
     for (const m of this.members) {
-      m.gold += Math.round(R.gold.wave * this.wave * this.goldMult(m)); this.giveXp(m, R.xp.wave * this.wave);
+      m.gold += Math.round((this.wave <= R.gold.earlyUntil ? R.gold.early : R.gold.wave) * this.wave * this.goldMult(m)); this.giveXp(m, R.xp.wave * this.wave);
       if (m.p) { for (const h of m.p.hirelings) if (hirelingXp(h, 1)) this.say(h.name + ' reached level ' + h.level + '.'); } else m.hireXp++;
       const q = this.pl(m), i = this.idx(m);
       if (q.hp <= 0) {                                                             // a downed fighter is back on their feet; one carried off the field walks back in
