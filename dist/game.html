@@ -15881,8 +15881,14 @@ void main(){
       fodder: { hp: 5, tier: "leather", clash: false },
       soldier: { clash: true },
       tank: { hp: 14, tier: "plate", clash: true },
-      elite: { hp: 30, tier: "mail", clash: true, heavyEvery: 3 }
+      elite: { hp: 30, tier: "mail", clash: true, heavyEvery: 3 },
+      knight: { hp: 70, tier: "plate", clash: true, heavyEvery: 2, dmg: 1.6, boss: true, name: "Armored knight" },
+      // battlefield, wave 5
+      general: { hp: 160, tier: "plate", clash: true, heavyEvery: 2, dmg: 2, boss: true, name: "General" }
     },
+    // battlefield, wave 10
+    form: { engage: 64, stop: 92, speed: 0.42, gapX: 24 },
+    // battle lines: hold ranks until a fighter is this close; the front halts this far from the nearest fighter
     enemyHeavy: { durMult: 1.5, hitMult: 1.6, dmgMult: 2.5 },
     // Grab: hold G beside a staggered or wounded enemy. Then throw, slam, or strike (short hold-and-strike). Damage = weapon damage x mult, armor PERCENT ignored, durability still wears by the same amount. PLACEHOLDERS.
     grab: {
@@ -16096,6 +16102,8 @@ void main(){
       this.texts = [];
       this.lvlFx = [];
       this.routed = 0;
+      this.bounds = { left: this.cfg.arena.left, right: this.cfg.arena.right };
+      this.formX = null;
       this.log = [];
       this.logVer = 0;
       this.lastHit = null;
@@ -16178,7 +16186,7 @@ void main(){
       const p = this.mkPlayer(this.players.length, pid);
       p.name = name || "";
       const b = this.players[0];
-      p.x = Math.max(this.cfg.arena.left + 10, b.x - 30 * this.players.length);
+      p.x = Math.max(this.bounds.left + 10, b.x - 30 * this.players.length);
       p.y = this.clampY(b.y + (this.players.length % 2 ? 20 : -20));
       p.face = b.face;
       p.inv = b.inv;
@@ -16252,7 +16260,7 @@ void main(){
       const offs = [0, -26, 26, -52, 52];
       const e = {
         id: this.nextId++,
-        x: Math.min(c.arena.right - 20, 380 + i15 * 46),
+        x: Math.min(this.bounds.right - 20, 380 + i15 * 46),
         y: this.clampY(p.y + offs[i15 % 5]),
         face: -1,
         hp: K.hp || c.enemy.hp,
@@ -16282,6 +16290,9 @@ void main(){
         kind: opts.kind || "soldier",
         clash: K.clash !== false,
         heavyEvery: K.heavyEvery || 0,
+        dmgK: K.dmg || 1,
+        boss: !!K.boss,
+        form: null,
         atkN: 0,
         kvx: 0,
         freeze: 0,
@@ -16299,7 +16310,7 @@ void main(){
         id: this.nextId++,
         hid: o.hid || null,
         name: o.name || "Hireling",
-        x: Math.max(c.arena.left + 10, p.x - 34 - i15 * 30),
+        x: Math.max(this.bounds.left + 10, p.x - 34 - i15 * 30),
         y: this.clampY(p.y + offs[i15 % 5]),
         face: 1,
         hp: o.hp || 18,
@@ -16354,7 +16365,7 @@ void main(){
       return Math.max(this.cfg.band.top, Math.min(this.cfg.band.bottom, y));
     }
     clampX(x) {
-      return Math.max(this.cfg.arena.left, Math.min(this.cfg.arena.right, x));
+      return Math.max(this.bounds.left, Math.min(this.bounds.right, x));
     }
     effSan(e) {
       return e.san * (e.broken ? this.cfg.abreak.sanMult : 1);
@@ -16400,6 +16411,7 @@ void main(){
         if (pl2.pend) this.pendStep(pl2);
       }
       this.crowdPlan();
+      this.formStep(dt);
       this.useP(this.players[0]);
       this.credit = null;
       for (const e of this.enemies) {
@@ -16684,7 +16696,7 @@ void main(){
         q.x += q.vx * dt;
         q.y = this.clampY(q.y + q.vy * dt);
         q.life -= dt;
-        if (q.x < c.arena.left || q.x > c.arena.right) q.life = 0;
+        if (q.x < this.bounds.left || q.x > this.bounds.right) q.life = 0;
         if (q.life <= 0) continue;
         for (const e of this.enemies) {
           if (e.state !== "alive" || e.held || e.fly) continue;
@@ -17134,7 +17146,7 @@ void main(){
         e.vz = e.jug.vz;
         e.jug = null;
       }
-      if (e.kind === "tank" || e.kind === "elite") this.leaderFell(e);
+      if (e.kind === "tank" || e.kind === "elite" || e.boss) this.leaderFell(e);
       this.events.push({ kind: dramatic ? "dramatic" : "kill", step: this.stepN, x: e.x, y: e.y, id: e.id });
       if (this.events.length > 20) this.events.shift();
       const dir = Math.sign(e.x - p.x) || 1;
@@ -17234,7 +17246,7 @@ void main(){
         e.x = nx2;
         e.face = dir;
         e.walkT += dt;
-        if (nx2 === (dir > 0 ? c.arena.right : c.arena.left)) {
+        if (nx2 === (dir > 0 ? this.bounds.right : this.bounds.left)) {
           e.state = "routed";
           this.routed = (this.routed || 0) + 1;
           this.say("flee", "Enemy routed off the field (" + this.routed + " so far).");
@@ -17268,6 +17280,20 @@ void main(){
         return;
       }
       e.atkCd -= dt;
+      if (e.form && this.formX != null && Math.abs(dx2) > c.form.engage && !e.stun && !e.wounded) {
+        const F = c.form, tx2 = this.formX + e.form.col * F.gapX, ty = e.form.y, gx = tx2 - e.x, gy = ty - e.y;
+        if (Math.abs(gx) > 2) {
+          e.x = this.clampX(e.x + Math.sign(gx) * Math.min(Math.abs(gx), spd * dt));
+          e.moving = true;
+        }
+        if (Math.abs(gy) > 2) {
+          e.y = this.clampY(e.y + Math.sign(gy) * Math.min(Math.abs(gy), spd * 0.7 * dt));
+          e.moving = true;
+        }
+        e.face = dx2 >= 0 ? 1 : -1;
+        if (e.moving) e.walkT += dt;
+        return;
+      }
       if (e.hes > 0) {
         e.hes -= dt;
         e.x = this.clampX(e.x - Math.sign(dx2) * spd * 0.6 * dt);
@@ -17299,7 +17325,7 @@ void main(){
       if (Math.abs(dx2) > c.enemy.reach * c.enemy.engage) {
         e.x = this.clampX(e.x + Math.sign(dx2) * spd * dt);
         e.moving = true;
-      } else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0 && p.awe > 0 && e.kind !== "elite" && this.rng() < p.awe * c.awe.hesitate) {
+      } else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0 && p.awe > 0 && e.kind !== "elite" && !e.boss && this.rng() < p.awe * c.awe.hesitate) {
         e.hes = c.awe.back;
         e.atkCd = 0.4;
         this.text(e.x, e.y - 120, "...", "#cfd8e6", 9);
@@ -17401,7 +17427,7 @@ void main(){
         if (e.state !== "alive" || e.ai !== "advance" || e.flee || e.held || e.fly || e.jug) continue;
         const p = this.pickTarget(e);
         if (!p) continue;
-        if (e.kind === "elite") continue;
+        if (e.kind === "elite" || e.boss) continue;
         let L = by.get(p);
         if (!L) by.set(p, L = []);
         L.push([e, (e.atk ? -1e6 : 0) + (p.x - e.x) ** 2 + 4 * (p.y - e.y) ** 2]);
@@ -17413,6 +17439,18 @@ void main(){
           e.slot = Math.max(0, i15 - K.attackers);
         });
       }
+    }
+    formStep(dt) {
+      if (this.formX == null) return;
+      const L = this.enemies.filter((e) => e.state === "alive" && e.form);
+      if (!L.length) {
+        this.formX = null;
+        return;
+      }
+      const F = this.cfg.form, foes = this.players.filter((q) => q.hp > 0).concat(this.allies.filter((a) => a.state !== "dead" && a.hp > 0));
+      if (!foes.length) return;
+      const near = Math.max(...foes.map((q) => q.x)), stopAt = near + F.stop, spd = this.cfg.enemy.speed * F.speed;
+      if (this.formX > stopAt) this.formX = Math.max(stopAt, this.formX - spd * dt);
     }
     separatePlayers(dt) {
       const S = this.cfg.psep, L = this.players.filter((q) => q.hp > 0 && !q.grab && !q.carried && !q.rescued);
@@ -17477,7 +17515,7 @@ void main(){
       const M = this.cfg.morale;
       for (const e of this.enemies) {
         if (e === L || e.state !== "alive" || e.flee || e.kind !== "fodder" || Math.abs(e.x - L.x) > M.radius) continue;
-        const q = this.pickTarget(e), chance = Math.max(0, Math.min(0.95, M.base - this.effSan(e) * M.perSan + (q && q.awe ? q.awe * M.awe : 0)));
+        const q = this.pickTarget(e), chance = Math.max(0, Math.min(0.95, M.base + (L.kind === "general" ? 0.3 : 0) - this.effSan(e) * M.perSan + (q && q.awe ? q.awe * M.awe : 0)));
         if (this.rng() < chance) {
           e.flee = true;
           e.atk = null;
@@ -17526,7 +17564,7 @@ void main(){
       q.x = this.clampX(pl2.x - pl2.face * 14);
       q.y = pl2.y;
       q.face = pl2.face;
-      if (pl2.x <= c.arena.left + R.edge || pl2.x >= c.arena.right - R.edge) {
+      if (pl2.x <= this.bounds.left + R.edge || pl2.x >= this.bounds.right - R.edge) {
         q.rescued = true;
         q.carried = false;
         pl2.carry = null;
@@ -17600,7 +17638,7 @@ void main(){
       p.blocking = false;
       p.blockLock = !!this.input.block;
       if (!p.inv) {
-        const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));
+        const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (e.dmgK || 1) * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));
         this.text(p.x, p.y - 96, "-" + r.dmg, "#ff7a6a", 10);
         this.feed.push({ t: "hurt", dmg: r.dmg, pid: p.pid });
         if (r.broke) {

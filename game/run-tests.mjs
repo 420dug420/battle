@@ -160,4 +160,15 @@ const killAll = r => { for (const e of r.sim.enemies) if (e.state === 'alive') r
   const goRun = () => { const { sim, r } = mkRun(11); go(r); applyCmd(sim, { t: 'set', inv: true }); for (let i = 0; i < 900; i++) { if (i % 20 === 0) killAll(r); tick(r); } const o = sim.saveState(); delete o.events; return JSON.stringify([o, r.wave, r.gold, r.p.xp, r.queue.length]); };
   assert.strictEqual(goRun(), goRun(), 'the same seed gives the same run'); console.log('PASS run determinism');
 }
+// battlefield: a wider field and camera pulled back, battle lines from the far side, a knight at 5, the general at 10
+{
+  const s = new Sim(CFG, 8), r = new R.Run(s, R.newProfile('B'), 9, 'h');
+  s.players[0].x = R.RUNCFG.cart.x; r.readyUp('h', 'battlefield'); r.update(0.01);
+  assert(r.phase === 'wave' && s.bounds.right > CFG.arena.right && s.view && s.view.z < 1, 'battlefield widens the field and zooms out');
+  assert(s.enemies.length >= 8 && s.enemies.every(e => e.x > 500 && e.form), 'the line forms on the far side');
+  const f0 = s.formX; for (let i = 0; i < 120; i++) { s.players[0].hp = 999; s.step(1 / 60); r.update(1 / 60); } assert(s.formX < f0, 'the line advances');
+  assert(R.battlePlan(5).extra.includes('knight') && R.battlePlan(10).extra.includes('general') && !R.battlePlan(4).extra.includes('knight'), 'knight at 5, general at 10');
+  r.die(); r.ack('h'); r.returnToCamp(); assert(s.bounds.right === CFG.arena.right && !s.view, 'camp is back to normal');
+  console.log('PASS battlefield: wide field, battle line, bosses');
+}
 console.log('ALL RUN TESTS PASSED');

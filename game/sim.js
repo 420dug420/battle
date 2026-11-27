@@ -74,7 +74,10 @@ export const CFG = {
   proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
   // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
   kinds: { fodder: { hp: 5, tier: 'leather', clash: false }, soldier: { clash: true }, tank: { hp: 14, tier: 'plate', clash: true },
-           elite: { hp: 30, tier: 'mail', clash: true, heavyEvery: 3 } },
+           elite: { hp: 30, tier: 'mail', clash: true, heavyEvery: 3 },
+           knight: { hp: 70, tier: 'plate', clash: true, heavyEvery: 2, dmg: 1.6, boss: true, name: 'Armored knight' },        // battlefield, wave 5
+           general: { hp: 160, tier: 'plate', clash: true, heavyEvery: 2, dmg: 2, boss: true, name: 'General' } },             // battlefield, wave 10
+  form: { engage: 64, stop: 92, speed: 0.42, gapX: 24 },        // battle lines: hold ranks until a fighter is this close; the front halts this far from the nearest fighter
   enemyHeavy: { durMult: 1.5, hitMult: 1.6, dmgMult: 2.5 },
   // Grab: hold G beside a staggered or wounded enemy. Then throw, slam, or strike (short hold-and-strike). Damage = weapon damage x mult, armor PERCENT ignored, durability still wears by the same amount. PLACEHOLDERS.
   grab: { reach: 36, grip: 22, reachDur: 0.22, holdMax: 2.0, maxStrikes: 2,
@@ -201,6 +204,7 @@ export class Sim {
     this.players = [this.mkPlayer(0, null)]; this.player = this.players[0]; this.credit = null;
     this.mode = this.mode || 'arena'; this.outcome = null; this.spawned = 0; this.allies = []; this.fallen = [];   // mode 'battle': a downed player loses the fight instead of being restored
     this.enemies = []; this.fx = []; this.texts = []; this.lvlFx = []; this.routed = 0;
+    this.bounds = { left: this.cfg.arena.left, right: this.cfg.arena.right }; this.formX = null;   // the field's edges (a map can widen it) and the enemy battle line's front
     this.log = []; this.logVer = 0; this.lastHit = null;
     this.moves = this.moves || {};                                // baked weapon paths by move id; a move without one uses the reach rule
     this.lastClash = null;
@@ -221,7 +225,7 @@ export class Sim {
   }
   addPlayer(pid, name) {                                              // another human joins: a fresh fighter beside the others
     if (this.players.some(q => q.pid === pid)) return this.players.find(q => q.pid === pid);
-    const p = this.mkPlayer(this.players.length, pid); p.name = name || ''; const b = this.players[0]; p.x = Math.max(this.cfg.arena.left + 10, b.x - 30 * this.players.length); p.y = this.clampY(b.y + (this.players.length % 2 ? 20 : -20)); p.face = b.face; p.inv = b.inv; this.players.push(p); return p;
+    const p = this.mkPlayer(this.players.length, pid); p.name = name || ''; const b = this.players[0]; p.x = Math.max(this.bounds.left + 10, b.x - 30 * this.players.length); p.y = this.clampY(b.y + (this.players.length % 2 ? 20 : -20)); p.face = b.face; p.inv = b.inv; this.players.push(p); return p;
   }
   removePlayer(pid) { const i = this.players.findIndex(q => q.pid === pid); if (i > 0) { this.players.splice(i, 1); this.players.forEach((q, k) => q.i = k); } }
   get input() { return this.player.input; }
@@ -258,7 +262,7 @@ export class Sim {
     const i = opts.index || 0;
     const offs = [0, -26, 26, -52, 52];
     const e = {
-      id: this.nextId++, x: Math.min(c.arena.right - 20, 380 + i * 46),
+      id: this.nextId++, x: Math.min(this.bounds.right - 20, 380 + i * 46),
       y: this.clampY(p.y + offs[i % 5]), face: -1,
       hp: K.hp || c.enemy.hp, maxHp: K.hp || c.enemy.hp, san: opts.san != null ? opts.san : c.enemy.san, chr: opts.chr != null ? opts.chr : c.enemy.chr,
       tier, armorPct: c.tiers[tier].pct,
@@ -267,7 +271,7 @@ export class Sim {
       broken: false, wounded: 0, state: 'alive', flee: false,
       ai: opts.ai === 'advance' ? 'advance' : 'stand',
       atk: null, atkCd: 0.6, deathT: 0, dramatic: false, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0, hurt: 0,
-      kind: opts.kind || 'soldier', clash: K.clash !== false, heavyEvery: K.heavyEvery || 0, atkN: 0, kvx: 0, freeze: 0, clashT: 0,
+      kind: opts.kind || 'soldier', clash: K.clash !== false, heavyEvery: K.heavyEvery || 0, dmgK: K.dmg || 1, boss: !!K.boss, form: null, atkN: 0, kvx: 0, freeze: 0, clashT: 0,
     };
     e.lookSeed = hash32(this.seed, e.id);                        // picks this enemy's parts and colours from its rank's pools (client side)
     this.enemies.push(e); this.spawned++;
@@ -277,7 +281,7 @@ export class Sim {
   spawnAlly(o) {
     const c = this.cfg, p = this.player, t = c.tiers[o.tier] ? o.tier : 'leather', w = o.weapon && c.weapons[o.weapon] ? o.weapon : 'longsword', i = o.index || 0, offs = [26, -26, 52, -52, 0];
     const a = {
-      id: this.nextId++, hid: o.hid || null, name: o.name || 'Hireling', x: Math.max(c.arena.left + 10, p.x - 34 - i * 30), y: this.clampY(p.y + offs[i % 5]), face: 1,
+      id: this.nextId++, hid: o.hid || null, name: o.name || 'Hireling', x: Math.max(this.bounds.left + 10, p.x - 34 - i * 30), y: this.clampY(p.y + offs[i % 5]), face: 1,
       hp: o.hp || 18, maxHp: o.hp || 18, tier: t, armorPct: o.armorPct != null ? o.armorPct : c.tiers[t].pct,
       dur: o.dur != null ? o.dur : c.tiers[t].dur, durMax: o.dur != null ? o.dur : c.tiers[t].dur, broken: false,
       weapon: w, dex: o.dex || 5, dmgMult: o.dmgMult || 1, state: 'alive', atk: null, atkCd: 0.5, deathT: 0, vx: 0, vz: 0, z: 0, walkT: 0, moving: false, flash: 0, hurt: 0, kvx: 0,
@@ -297,7 +301,7 @@ export class Sim {
   }
 
   clampY(y) { return Math.max(this.cfg.band.top, Math.min(this.cfg.band.bottom, y)); }
-  clampX(x) { return Math.max(this.cfg.arena.left, Math.min(this.cfg.arena.right, x)); }
+  clampX(x) { return Math.max(this.bounds.left, Math.min(this.bounds.right, x)); }
   effSan(e) { return e.san * (e.broken ? this.cfg.abreak.sanMult : 1); }
 
   /* ---------- main step ---------- */
@@ -320,7 +324,7 @@ export class Sim {
       if (pl.carry) { const R = this.cfg.rescue; pl.x = x0 + (pl.x - x0) * R.slow; pl.y = y0 + (pl.y - y0) * R.slow; this.carryFollow(pl); }
       if (pl.pend) this.pendStep(pl);
     }
-    this.crowdPlan();
+    this.crowdPlan(); this.formStep(dt);
     this.useP(this.players[0]); this.credit = null;
     for (const e of this.enemies) { if (e.freeze > 0) { e.freeze -= dt; e.moving = false; if (e.clashT > 0) e.clashT -= dt; continue; } this.updateEnemy(e, dt); }
     this.separate(dt); this.separatePlayers(dt);
@@ -481,7 +485,7 @@ export class Sim {
     const c = this.cfg;
     for (const q of this.proj) {
       q.x += q.vx * dt; q.y = this.clampY(q.y + q.vy * dt); q.life -= dt;
-      if (q.x < c.arena.left || q.x > c.arena.right) q.life = 0;
+      if (q.x < this.bounds.left || q.x > this.bounds.right) q.life = 0;
       if (q.life <= 0) continue;
       for (const e of this.enemies) {
         if (e.state !== 'alive' || e.held || e.fly) continue;
@@ -724,7 +728,7 @@ export class Sim {
     const p = this.player;
     this.feed.push({ t: 'kill', kind: e.kind || 'soldier', tier: e.tier, x: e.x, y: e.y, pid: this.credit }); if (this.feed.length > 300) this.feed.shift();
     e.state = 'dying'; e.deathT = 0; e.dramatic = dramatic; e.wounded = 0; e.atk = null; e.flee = false; if (e.jug) { e.vz = e.jug.vz; e.jug = null; }
-    if (e.kind === 'tank' || e.kind === 'elite') this.leaderFell(e);
+    if (e.kind === 'tank' || e.kind === 'elite' || e.boss) this.leaderFell(e);
     this.events.push({ kind: dramatic ? 'dramatic' : 'kill', step: this.stepN, x: e.x, y: e.y, id: e.id }); if (this.events.length > 20) this.events.shift();   // kill cams
     const dir = Math.sign(e.x - p.x) || 1;
     if (dramatic) {
@@ -783,7 +787,7 @@ export class Sim {
       const dir = Math.sign(e.x - p.x) || 1;
       const nx = this.clampX(e.x + dir * spd * 1.1 * dt);
       e.moving = nx !== e.x; e.x = nx; e.face = dir; e.walkT += dt;
-      if (nx === (dir > 0 ? c.arena.right : c.arena.left)) {           // reached the edge: off the field, counted as routed
+      if (nx === (dir > 0 ? this.bounds.right : this.bounds.left)) {           // reached the edge: off the field, counted as routed
         e.state = 'routed'; this.routed = (this.routed || 0) + 1;
         this.say('flee', 'Enemy routed off the field (' + this.routed + ' so far).');
       }
@@ -809,6 +813,12 @@ export class Sim {
       return;
     }
     e.atkCd -= dt;
+    if (e.form && this.formX != null && Math.abs(dx) > c.form.engage && !e.stun && !e.wounded) {   // a battle line: keep rank and file while the front closes in
+      const F = c.form, tx = this.formX + e.form.col * F.gapX, ty = e.form.y, gx = tx - e.x, gy = ty - e.y;
+      if (Math.abs(gx) > 2) { e.x = this.clampX(e.x + Math.sign(gx) * Math.min(Math.abs(gx), spd * dt)); e.moving = true; }
+      if (Math.abs(gy) > 2) { e.y = this.clampY(e.y + Math.sign(gy) * Math.min(Math.abs(gy), spd * 0.7 * dt)); e.moving = true; }
+      e.face = dx >= 0 ? 1 : -1; if (e.moving) e.walkT += dt; return;
+    }
     if (e.hes > 0) {                                                 // balking at a fighter with a high style rank: a step back
       e.hes -= dt; e.x = this.clampX(e.x - Math.sign(dx) * spd * 0.6 * dt); e.moving = true; e.face = dx >= 0 ? 1 : -1; if (e.moving) e.walkT += dt; return;
     }
@@ -823,7 +833,7 @@ export class Sim {
     }
     if (Math.abs(dy) > c.laneTol * 0.5) { e.y = this.clampY(e.y + Math.sign(dy) * spd * 0.7 * dt); e.moving = true; }
     if (Math.abs(dx) > c.enemy.reach * c.enemy.engage) { e.x = this.clampX(e.x + Math.sign(dx) * spd * dt); e.moving = true; }
-    else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0 && p.awe > 0 && e.kind !== 'elite' && this.rng() < p.awe * c.awe.hesitate) { e.hes = c.awe.back; e.atkCd = 0.4; this.text(e.x, e.y - 120, '...', '#cfd8e6', 9); }
+    else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0 && p.awe > 0 && e.kind !== 'elite' && !e.boss && this.rng() < p.awe * c.awe.hesitate) { e.hes = c.awe.back; e.atkCd = 0.4; this.text(e.x, e.y - 120, '...', '#cfd8e6', 9); }
     else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0) {
       e.atkN = (e.atkN || 0) + 1; const H = c.enemyHeavy, heavy = !!e.heavyEvery && e.atkN % e.heavyEvery === 0;
       e.atk = heavy ? { t: 0, hit: false, heavy: true, dur: c.enemy.atkDur * H.durMult, hitAt: c.enemy.atkHitAt * H.hitMult } : { t: 0, hit: false, dur: c.enemy.atkDur, hitAt: c.enemy.atkHitAt };
@@ -883,10 +893,16 @@ export class Sim {
     for (const e of this.enemies) {
       e.tok = true; if (e.state !== 'alive' || e.ai !== 'advance' || e.flee || e.held || e.fly || e.jug) continue;
       const p = this.pickTarget(e); if (!p) continue;
-      if (e.kind === 'elite') continue;                              // elites never wait their turn
+      if (e.kind === 'elite' || e.boss) continue;                    // elites, knights and generals never wait their turn
       let L = by.get(p); if (!L) by.set(p, L = []); L.push([e, (e.atk ? -1e6 : 0) + (p.x - e.x) ** 2 + 4 * (p.y - e.y) ** 2]);
     }
     for (const L of by.values()) { L.sort((a, b) => a[1] - b[1] || a[0].id - b[0].id); L.forEach(([e], i) => { e.tok = i < K.attackers; e.slot = Math.max(0, i - K.attackers); }); }
+  }
+  formStep(dt) {                                                     // the battle line's front walks toward the nearest fighter and halts short of it
+    if (this.formX == null) return; const L = this.enemies.filter(e => e.state === 'alive' && e.form); if (!L.length) { this.formX = null; return; }
+    const F = this.cfg.form, foes = this.players.filter(q => q.hp > 0).concat(this.allies.filter(a => a.state !== 'dead' && a.hp > 0)); if (!foes.length) return;
+    const near = Math.max(...foes.map(q => q.x)), stopAt = near + F.stop, spd = this.cfg.enemy.speed * F.speed;
+    if (this.formX > stopAt) this.formX = Math.max(stopAt, this.formX - spd * dt);
   }
   separatePlayers(dt) {
     const S = this.cfg.psep, L = this.players.filter(q => q.hp > 0 && !q.grab && !q.carried && !q.rescued); if (L.length < 2) return;
@@ -917,7 +933,7 @@ export class Sim {
     const M = this.cfg.morale;
     for (const e of this.enemies) {
       if (e === L || e.state !== 'alive' || e.flee || e.kind !== 'fodder' || Math.abs(e.x - L.x) > M.radius) continue;
-      const q = this.pickTarget(e), chance = Math.max(0, Math.min(0.95, M.base - this.effSan(e) * M.perSan + (q && q.awe ? q.awe * M.awe : 0)));
+      const q = this.pickTarget(e), chance = Math.max(0, Math.min(0.95, M.base + (L.kind === 'general' ? 0.3 : 0) - this.effSan(e) * M.perSan + (q && q.awe ? q.awe * M.awe : 0)));
       if (this.rng() < chance) { e.flee = true; e.atk = null; this.text(e.x, e.y - 120, 'BREAKS!', '#9fd0ff', 10); }
     }
     this.say('flee', 'A leader fell: nearby fodder may break.');
@@ -942,7 +958,7 @@ export class Sim {
   carryFollow(pl) {
     const R = this.cfg.rescue, c = this.cfg, q = this.players.find(o => o.pid === pl.carry); if (!q) { pl.carry = null; return; }
     q.x = this.clampX(pl.x - pl.face * 14); q.y = pl.y; q.face = pl.face;
-    if (pl.x <= c.arena.left + R.edge || pl.x >= c.arena.right - R.edge) {
+    if (pl.x <= this.bounds.left + R.edge || pl.x >= this.bounds.right - R.edge) {
       q.rescued = true; q.carried = false; pl.carry = null;
       this.text(pl.x, pl.y - 110, (q.name || 'Ally') + ' RESCUED', '#9fd3ff', 10); this.say('info', (q.name || 'Ally') + ' was carried off the field: back next wave.');
     }
@@ -972,7 +988,7 @@ export class Sim {
     if (p.grace > 0 && heavyIn == null && !p.pend) { p.pend = { eId: e.id, x: e.x, heavy, at: this.t + Math.min(0.15, p.grace) }; return; }   // a guest sees the swing late: give their block that long to arrive
     p.flash = 0.2; p.hurt = 0.6; p.blocking = false; p.blockLock = !!this.input.block;
     if (!p.inv) {
-      const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));
+      const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (e.dmgK || 1) * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));
       this.text(p.x, p.y - 96, '-' + r.dmg, '#ff7a6a', 10); this.feed.push({ t: 'hurt', dmg: r.dmg, pid: p.pid });
       if (r.broke) { this.say('break', 'Your armor broke.'); this.text(p.x, p.y - 110, 'ARMOR BROKEN', '#ff9a6a', 9); }
       if (p.hp <= 0) { if (this.mode === 'battle' || this.mode === 'run') p.hp = 0; else { this.say('info', 'Player downed; restored.'); p.hp = p.maxHp; } }

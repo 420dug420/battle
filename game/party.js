@@ -8,14 +8,14 @@ import { applyCmd } from './sim.js';
 
 const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
 const pickR = (o, keys, r) => { const out = {}; for (const k of keys) { let v = o[k]; if (typeof v === 'number' && r) v = r(v); if (v === 0 || v === false || v == null || v === '') continue; out[k] = v; } return out; };   // falsy values are left out; the guest puts them back
-const BOOL = new Set(['carried', 'rescued', 'broken', 'flee', 'moving', 'dramatic', 'down', 'held', 'dummy', 'blocking', 'air', 'inv', 'hit', 'whiff', 'heavy', 'fr']);
+const BOOL = new Set(['boss', 'carried', 'rescued', 'broken', 'flee', 'moving', 'dramatic', 'down', 'held', 'dummy', 'blocking', 'air', 'inv', 'hit', 'whiff', 'heavy', 'fr']);
 const OBJ = new Set(['shield', 'bash', 'jug', 'swing', 'grab', 'dash', 'atk', 'fly', 'look', 'roleStyles', 'kindMoves']);
 // rebuild a record from the host's compact one: only known keys (nothing like __proto__ gets through), with defaults for what was left out
 const unpack = (n, keys, extra) => { const o = {}; for (const k of keys.concat(extra || [])) { const v = n[k]; o[k] = v !== undefined ? (v && typeof v === 'object' && !Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : v) : BOOL.has(k) ? false : OBJ.has(k) ? null : (k === 'name' || k === 'pid' || k === 'state' || k === 'tier' || k === 'kind' || k === 'weapon' || k === 'armorKey' || k === 'chain' || k === 'move') ? (k === 'state' ? 'alive' : null) : 0; } return o; };
 const P_KEYS = ['shield', 'bash', 'carry', 'carried', 'rescued', 'pid', 'name', 'look', 'armorKey', 'roleStyles', 'weapon', 'x', 'y', 'z', 'face', 'hp', 'maxHp', 'stamina', 'staminaMax', 'moving', 'walkT', 'flash', 'hurt', 'blocking', 'blockT', 'stunT', 'clashT', 'clashMax', 'parryT', 'shotT', 'air', 'jumpT', 'chain', 'move', 'inv', 'dex'];
 const SW_KEYS = ['t', 'dur', 'dur0', 'hitAt', 'extra', 'move', 'target', 'hit', 'kind', 'style', 'whiff', 'mult'];
 const GR_KEYS = ['eId', 'phase', 't', 'dur', 'hit', 'strikes', 'holdT'];
-const E_KEYS = ['jug', 'id', 'x', 'y', 'z', 'face', 'state', 'hp', 'maxHp', 'dur', 'durMax', 'broken', 'wounded', 'flee', 'tier', 'kind', 'lookSeed', 'moving', 'walkT', 'flash', 'hurt', 'deathT', 'dramatic', 'stun', 'down', 'held', 'clashT', 'clashMax', 'dummy'];
+const E_KEYS = ['boss', 'jug', 'id', 'x', 'y', 'z', 'face', 'state', 'hp', 'maxHp', 'dur', 'durMax', 'broken', 'wounded', 'flee', 'tier', 'kind', 'lookSeed', 'moving', 'walkT', 'flash', 'hurt', 'deathT', 'dramatic', 'stun', 'down', 'held', 'clashT', 'clashMax', 'dummy'];
 const JUG = j => j ? { n: j.n } : null;
 const A_KEYS = ['id', 'name', 'x', 'y', 'z', 'face', 'hp', 'maxHp', 'tier', 'weapon', 'state', 'deathT', 'moving', 'walkT', 'flash', 'hurt', 'broken', 'lookSeed', 'owner'];
 
@@ -29,12 +29,14 @@ export function packSnap(sim, run, tick, texts) {
     enemies: sim.enemies.map(e => Object.assign(pickR(e, E_KEYS, r1), { jug: JUG(e.jug), atk: e.atk ? pickR(e.atk, ['t', 'dur', 'hitAt', 'heavy', 'hit'], r2) : null, fly: e.fly ? { vx: r1(e.fly.vx || 0), vz: r1(e.fly.vz || 0), fr: !!e.fly.fr } : null })),
     allies: sim.allies.map(a => Object.assign(pickR(a, A_KEYS, r1), { atk: a.atk ? { t: r2(a.atk.t) } : null })),
     proj: sim.proj.map(q => ({ x: r1(q.x), y: r1(q.y), vx: r1(q.vx), vy: r1(q.vy) })),
+    bounds: sim.bounds, view: sim.view || null, formX: sim.formX == null ? null : r1(sim.formX),
     texts: texts || [], lvl: (sim.lvlFx || []).map(L => ({ pid: L.pid, t: r2(L.t), max: L.max })),
     run: { phase: run.phase, wave: run.wave, left: run.queue.length + run.alive(), banner: run.banner, msgs: run.msgs.slice(-3), voteIn: run.phase === 'vote' ? Math.max(0, r1(run.voteAt - sim.t)) : 0, runN: run.runN || 0,
       members: run.members.map(m => ({ pid: m.pid, name: m.name, level: m.build.level, gold: m.gold, rank: r1(m.rank.score), tier: run.tierOf(m), ready: m.ready, vote: m.vote, down: m.down, acked: m.acked, atCart: run.atCart(m), pay: run.leavePayOf(m) })) },
   };
 }
 export function applySnap(sim, m, myPid) {
+  if (m.bounds) sim.bounds = { left: +m.bounds.left || 24, right: Math.min(2000, +m.bounds.right || 616) }; sim.view = m.view && +m.view.z > 0.3 && +m.view.z <= 1 ? { z: +m.view.z, oy: +m.view.oy || 0 } : null;
   sim.t = +m.time || 0; sim.shake = +m.shake || 0; sim.mode = m.mode === 'battle' || m.mode === 'run' ? m.mode : 'arena';
   const old = new Map(sim.players.map(q => [q.pid, q]));
   sim.players = (m.players || []).slice(0, 5).map(n => {

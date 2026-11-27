@@ -7,6 +7,7 @@ import { CFG, Sim, applyCmd, SIM_VERSION, fitsWindow, minDexForWindow, moveTau, 
 import BUILTIN_ANIMS from './anims.json';
 import { initRunUI } from './runui.js';
 import { initDiscord } from './discord.js';
+import { makeFieldBg } from './camp.js';
 import { makeCloud } from './cloud.js';
 import { PartyHost, GuestRun, applySnap } from './party.js';
 import { buildOf, resolveStyles } from './run.js';
@@ -188,7 +189,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     setKey(a, true); e.preventDefault();
   });
   window.addEventListener('keyup', e => { const a = actOf(e.code); if (a) setKey(a, false); });
-  const toSim = ev => { const r = cv.getBoundingClientRect(); aim.x = Math.round((ev.clientX - r.left) / r.width * CFG.W); aim.y = Math.round((ev.clientY - r.top) / r.height * CFG.H); };
+  const toSim = ev => { const r = cv.getBoundingClientRect(), V = sim.view; let x = (ev.clientX - r.left) / r.width * CFG.W, y = (ev.clientY - r.top) / r.height * CFG.H; if (V) { x /= V.z; y = (y - V.oy) / V.z; } aim.x = Math.round(x); aim.y = Math.round(y); };
   cv.addEventListener('pointermove', toSim);
   cv.addEventListener('pointerdown', ev => { toSim(ev); cv.focus(); if (ev.button === 2) keys.heavy = true; else if (ev.button === 0) keys.act = true; else if (ev.button === 1) keys.mg = true; ev.preventDefault(); });
   window.addEventListener('pointerup', ev => { if (ev.button === 2) keys.heavy = false; else if (ev.button === 0) keys.act = false; else if (ev.button === 1) keys.mg = false; });
@@ -352,12 +353,16 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     } catch (e) { url = null; }
     PORTRAITS.set(key, url); return url;
   }
+  let fieldBg = null;
   function render() {
     ctx.imageSmoothingEnabled = false; hudBegin(); hudOn = !(pb && pb.zoom);
     ctx.save();
     if (pb && pb.zoom) { const W = cv.width, H = cv.height, z = 2, zx = Math.max(W / z / 2, Math.min(W - W / z / 2, pb.zoom.x)), zy = Math.max(H / z / 2, Math.min(H - H / z / 2, pb.zoom.y)); ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-zx, -zy); }
     if (sim.shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * 5), Math.round((Math.random() - 0.5) * 3));
-    ctx.drawImage(runui && runui.inCamp() ? runui.campBg : bg, 0, 0);
+    const V = sim.view;
+    if (V) { ctx.translate(0, V.oy); ctx.scale(V.z, V.z); const k = hudCv.width / CFG.W; hx.setTransform(k * V.z, 0, 0, k * V.z, 0, k * V.oy); }   // a zoomed-out map: the world shrinks, the HUD doesn't
+    if (V && !(runui && runui.inCamp())) { const key = V.z + '|' + V.oy; if (!fieldBg || fieldBg.key !== key) { fieldBg = makeFieldBg(Math.ceil(CFG.W / V.z), Math.ceil(CFG.H / V.z) + 2, -V.oy / V.z); fieldBg.key = key; } ctx.drawImage(fieldBg, 0, Math.floor(-V.oy / V.z)); }
+    else ctx.drawImage(runui && runui.inCamp() ? runui.campBg : bg, 0, 0);
     if (runui && runui.active) runui.drawBack(ctx);
     const p = sim.player, w = sim.weaponInfo();
     const dbg = $('dbg').checked;
@@ -417,6 +422,8 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     // bars + tags
     for (const e of sim.enemies) {
       if (e.state !== 'alive') continue;
+      const quiet = e.form && e.hp >= e.maxHp && !e.boss && !e.broken && !(e.wounded > 0);       // a fresh soldier still in the battle line: no bar, so the ranks stay readable
+      if (quiet) continue;
       const x = Math.round(e.x), y = Math.round(e.y - (e.z || 0)) - 128;
       ctx.fillStyle = '#14101c'; ctx.fillRect(x - 15, y - 1, 30, 6);
       ctx.fillStyle = '#d65a4a'; ctx.fillRect(x - 14, y, Math.round(28 * e.hp / e.maxHp), 4);
@@ -432,7 +439,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
         ctx.fillStyle = '#14101c'; ctx.fillRect(x - 15, ty + 6, 30, 3); ctx.fillStyle = '#ffd27a'; ctx.fillRect(x - 14, ty + 7, Math.round(28 * e.wounded / CFG.woundedDur), 1);
       }
       if (e.flee) label('FLEEING', x, ty, '#9fd0ff', 9);
-      if (e.kind && e.kind !== 'soldier') label(e.kind.toUpperCase(), x, y + 16, e.kind === 'elite' ? '#ff9a6a' : '#cfd8e6', 8);
+      if (e.kind && e.kind !== 'soldier' && e.kind !== 'fodder') label(((CFG.kinds[e.kind] || {}).name || e.kind).toUpperCase(), x, y + 16, e.kind === 'elite' || e.boss ? '#ff9a6a' : '#cfd8e6', e.boss ? 10 : 8);
       if (e.atk && e.atk.heavy && !e.atk.hit) { const u = Math.min(1, e.atk.t / (e.atk.hitAt || 1)); ctx.strokeStyle = 'rgba(255,90,74,' + (0.35 + 0.5 * u) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(Math.round(e.x), Math.round(e.y), 26, 8, 0, 0, 7); ctx.stroke(); label('HEAVY: PARRY IT', x, y - 24, '#ff7a6a', 9); }
     }
 
@@ -493,6 +500,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       ctx.fillStyle = '#ffffff'; ctx.fillRect(p.x - 19 + Math.round(38 * s.hitAt / s.dur), p.y - 139, 1, 6);
     }
     ctx.restore();
+    { const k = hudCv.width / CFG.W; hx.setTransform(k, 0, 0, k, 0, 0); }        // back to screen space for the HUD
     if (runui && runui.active) { runui.drawLabels(hx); runui.drawFront(hx); }
     if (pb) { ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(8, 8, 74, 14); label(pb.label + (pb.speed < 1 ? ' ' + pb.speed + 'x' : ''), 45, 19, '#ffd27a', 9); }
   }

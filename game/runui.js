@@ -359,6 +359,10 @@ export function initRunUI(env) {
 
   ui.drawFront = c => {
     if (!ui.active) return;
+    { const B = live.enemies.find(e => e.state === 'alive' && e.boss && !e.dummy);                 // a knight or the general on the field: a bar across the top
+      if (B && run.phase !== 'camp') { const nm = ((CFG.kinds[B.kind] || {}).name || B.kind).toUpperCase(), x = 200, y = 64, w = 240;
+        c.save(); c.textAlign = 'center'; c.font = '10px ' + FONT; c.lineWidth = 3; c.strokeStyle = '#14101c'; c.strokeText(nm, 320, y - 4); c.fillStyle = '#ffb08a'; c.fillText(nm, 320, y - 4);
+        c.fillStyle = '#14101c'; c.fillRect(x - 1, y - 1, w + 2, 8); c.fillStyle = '#5a1a1a'; c.fillRect(x, y, w, 6); c.fillStyle = '#e04a3a'; c.fillRect(x, y, Math.round(w * Math.max(0, B.hp) / B.maxHp), 6); c.restore(); } }
     const p = live.player, W = CFG.W, H = CFG.H;
     c.save();
     if (run.phase === 'camp') {

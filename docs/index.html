@@ -16032,8 +16032,14 @@ void main(){
       fodder: { hp: 5, tier: "leather", clash: false },
       soldier: { clash: true },
       tank: { hp: 14, tier: "plate", clash: true },
-      elite: { hp: 30, tier: "mail", clash: true, heavyEvery: 3 }
+      elite: { hp: 30, tier: "mail", clash: true, heavyEvery: 3 },
+      knight: { hp: 70, tier: "plate", clash: true, heavyEvery: 2, dmg: 1.6, boss: true, name: "Armored knight" },
+      // battlefield, wave 5
+      general: { hp: 160, tier: "plate", clash: true, heavyEvery: 2, dmg: 2, boss: true, name: "General" }
     },
+    // battlefield, wave 10
+    form: { engage: 64, stop: 92, speed: 0.42, gapX: 24 },
+    // battle lines: hold ranks until a fighter is this close; the front halts this far from the nearest fighter
     enemyHeavy: { durMult: 1.5, hitMult: 1.6, dmgMult: 2.5 },
     // Grab: hold G beside a staggered or wounded enemy. Then throw, slam, or strike (short hold-and-strike). Damage = weapon damage x mult, armor PERCENT ignored, durability still wears by the same amount. PLACEHOLDERS.
     grab: {
@@ -16256,6 +16262,8 @@ void main(){
       this.texts = [];
       this.lvlFx = [];
       this.routed = 0;
+      this.bounds = { left: this.cfg.arena.left, right: this.cfg.arena.right };
+      this.formX = null;
       this.log = [];
       this.logVer = 0;
       this.lastHit = null;
@@ -16338,7 +16346,7 @@ void main(){
       const p = this.mkPlayer(this.players.length, pid);
       p.name = name || "";
       const b = this.players[0];
-      p.x = Math.max(this.cfg.arena.left + 10, b.x - 30 * this.players.length);
+      p.x = Math.max(this.bounds.left + 10, b.x - 30 * this.players.length);
       p.y = this.clampY(b.y + (this.players.length % 2 ? 20 : -20));
       p.face = b.face;
       p.inv = b.inv;
@@ -16412,7 +16420,7 @@ void main(){
       const offs = [0, -26, 26, -52, 52];
       const e = {
         id: this.nextId++,
-        x: Math.min(c.arena.right - 20, 380 + i15 * 46),
+        x: Math.min(this.bounds.right - 20, 380 + i15 * 46),
         y: this.clampY(p.y + offs[i15 % 5]),
         face: -1,
         hp: K.hp || c.enemy.hp,
@@ -16442,6 +16450,9 @@ void main(){
         kind: opts.kind || "soldier",
         clash: K.clash !== false,
         heavyEvery: K.heavyEvery || 0,
+        dmgK: K.dmg || 1,
+        boss: !!K.boss,
+        form: null,
         atkN: 0,
         kvx: 0,
         freeze: 0,
@@ -16459,7 +16470,7 @@ void main(){
         id: this.nextId++,
         hid: o.hid || null,
         name: o.name || "Hireling",
-        x: Math.max(c.arena.left + 10, p.x - 34 - i15 * 30),
+        x: Math.max(this.bounds.left + 10, p.x - 34 - i15 * 30),
         y: this.clampY(p.y + offs[i15 % 5]),
         face: 1,
         hp: o.hp || 18,
@@ -16514,7 +16525,7 @@ void main(){
       return Math.max(this.cfg.band.top, Math.min(this.cfg.band.bottom, y));
     }
     clampX(x) {
-      return Math.max(this.cfg.arena.left, Math.min(this.cfg.arena.right, x));
+      return Math.max(this.bounds.left, Math.min(this.bounds.right, x));
     }
     effSan(e) {
       return e.san * (e.broken ? this.cfg.abreak.sanMult : 1);
@@ -16560,6 +16571,7 @@ void main(){
         if (pl2.pend) this.pendStep(pl2);
       }
       this.crowdPlan();
+      this.formStep(dt);
       this.useP(this.players[0]);
       this.credit = null;
       for (const e of this.enemies) {
@@ -16844,7 +16856,7 @@ void main(){
         q.x += q.vx * dt;
         q.y = this.clampY(q.y + q.vy * dt);
         q.life -= dt;
-        if (q.x < c.arena.left || q.x > c.arena.right) q.life = 0;
+        if (q.x < this.bounds.left || q.x > this.bounds.right) q.life = 0;
         if (q.life <= 0) continue;
         for (const e of this.enemies) {
           if (e.state !== "alive" || e.held || e.fly) continue;
@@ -17294,7 +17306,7 @@ void main(){
         e.vz = e.jug.vz;
         e.jug = null;
       }
-      if (e.kind === "tank" || e.kind === "elite") this.leaderFell(e);
+      if (e.kind === "tank" || e.kind === "elite" || e.boss) this.leaderFell(e);
       this.events.push({ kind: dramatic ? "dramatic" : "kill", step: this.stepN, x: e.x, y: e.y, id: e.id });
       if (this.events.length > 20) this.events.shift();
       const dir = Math.sign(e.x - p.x) || 1;
@@ -17394,7 +17406,7 @@ void main(){
         e.x = nx2;
         e.face = dir;
         e.walkT += dt;
-        if (nx2 === (dir > 0 ? c.arena.right : c.arena.left)) {
+        if (nx2 === (dir > 0 ? this.bounds.right : this.bounds.left)) {
           e.state = "routed";
           this.routed = (this.routed || 0) + 1;
           this.say("flee", "Enemy routed off the field (" + this.routed + " so far).");
@@ -17428,6 +17440,20 @@ void main(){
         return;
       }
       e.atkCd -= dt;
+      if (e.form && this.formX != null && Math.abs(dx2) > c.form.engage && !e.stun && !e.wounded) {
+        const F = c.form, tx2 = this.formX + e.form.col * F.gapX, ty = e.form.y, gx = tx2 - e.x, gy = ty - e.y;
+        if (Math.abs(gx) > 2) {
+          e.x = this.clampX(e.x + Math.sign(gx) * Math.min(Math.abs(gx), spd * dt));
+          e.moving = true;
+        }
+        if (Math.abs(gy) > 2) {
+          e.y = this.clampY(e.y + Math.sign(gy) * Math.min(Math.abs(gy), spd * 0.7 * dt));
+          e.moving = true;
+        }
+        e.face = dx2 >= 0 ? 1 : -1;
+        if (e.moving) e.walkT += dt;
+        return;
+      }
       if (e.hes > 0) {
         e.hes -= dt;
         e.x = this.clampX(e.x - Math.sign(dx2) * spd * 0.6 * dt);
@@ -17459,7 +17485,7 @@ void main(){
       if (Math.abs(dx2) > c.enemy.reach * c.enemy.engage) {
         e.x = this.clampX(e.x + Math.sign(dx2) * spd * dt);
         e.moving = true;
-      } else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0 && p.awe > 0 && e.kind !== "elite" && this.rng() < p.awe * c.awe.hesitate) {
+      } else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0 && p.awe > 0 && e.kind !== "elite" && !e.boss && this.rng() < p.awe * c.awe.hesitate) {
         e.hes = c.awe.back;
         e.atkCd = 0.4;
         this.text(e.x, e.y - 120, "...", "#cfd8e6", 9);
@@ -17561,7 +17587,7 @@ void main(){
         if (e.state !== "alive" || e.ai !== "advance" || e.flee || e.held || e.fly || e.jug) continue;
         const p = this.pickTarget(e);
         if (!p) continue;
-        if (e.kind === "elite") continue;
+        if (e.kind === "elite" || e.boss) continue;
         let L = by.get(p);
         if (!L) by.set(p, L = []);
         L.push([e, (e.atk ? -1e6 : 0) + (p.x - e.x) ** 2 + 4 * (p.y - e.y) ** 2]);
@@ -17573,6 +17599,18 @@ void main(){
           e.slot = Math.max(0, i15 - K.attackers);
         });
       }
+    }
+    formStep(dt) {
+      if (this.formX == null) return;
+      const L = this.enemies.filter((e) => e.state === "alive" && e.form);
+      if (!L.length) {
+        this.formX = null;
+        return;
+      }
+      const F = this.cfg.form, foes = this.players.filter((q) => q.hp > 0).concat(this.allies.filter((a) => a.state !== "dead" && a.hp > 0));
+      if (!foes.length) return;
+      const near = Math.max(...foes.map((q) => q.x)), stopAt = near + F.stop, spd = this.cfg.enemy.speed * F.speed;
+      if (this.formX > stopAt) this.formX = Math.max(stopAt, this.formX - spd * dt);
     }
     separatePlayers(dt) {
       const S = this.cfg.psep, L = this.players.filter((q) => q.hp > 0 && !q.grab && !q.carried && !q.rescued);
@@ -17637,7 +17675,7 @@ void main(){
       const M = this.cfg.morale;
       for (const e of this.enemies) {
         if (e === L || e.state !== "alive" || e.flee || e.kind !== "fodder" || Math.abs(e.x - L.x) > M.radius) continue;
-        const q = this.pickTarget(e), chance = Math.max(0, Math.min(0.95, M.base - this.effSan(e) * M.perSan + (q && q.awe ? q.awe * M.awe : 0)));
+        const q = this.pickTarget(e), chance = Math.max(0, Math.min(0.95, M.base + (L.kind === "general" ? 0.3 : 0) - this.effSan(e) * M.perSan + (q && q.awe ? q.awe * M.awe : 0)));
         if (this.rng() < chance) {
           e.flee = true;
           e.atk = null;
@@ -17686,7 +17724,7 @@ void main(){
       q.x = this.clampX(pl2.x - pl2.face * 14);
       q.y = pl2.y;
       q.face = pl2.face;
-      if (pl2.x <= c.arena.left + R2.edge || pl2.x >= c.arena.right - R2.edge) {
+      if (pl2.x <= this.bounds.left + R2.edge || pl2.x >= this.bounds.right - R2.edge) {
         q.rescued = true;
         q.carried = false;
         pl2.carry = null;
@@ -17760,7 +17798,7 @@ void main(){
       p.blocking = false;
       p.blockLock = !!this.input.block;
       if (!p.inv) {
-        const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));
+        const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (e.dmgK || 1) * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));
         this.text(p.x, p.y - 96, "-" + r.dmg, "#ff7a6a", 10);
         this.feed.push({ t: "hurt", dmg: r.dmg, pid: p.pid });
         if (r.broke) {
@@ -19013,6 +19051,7 @@ void main(){
     allySpec: () => allySpec,
     applyRemoteResult: () => applyRemoteResult,
     attr: () => attr,
+    battlePlan: () => battlePlan,
     buildOf: () => buildOf,
     buy: () => buy,
     chainFor: () => chainFor,
@@ -19067,8 +19106,8 @@ void main(){
     ldr: { perSlot: 3, strength: 0.03 },
     chr: { discount: 0.02, maxDiscount: 0.5 },
     maxHirelings: 3,
-    xp: { base: 20, growth: 1.35, kill: { fodder: 2, soldier: 4, tank: 9, elite: 25 }, wave: 5 },
-    gold: { kill: { fodder: 1, soldier: 2, tank: 5, elite: 14 }, wave: 3, early: 1, earlyUntil: 5 },
+    xp: { base: 20, growth: 1.35, kill: { fodder: 2, soldier: 4, tank: 9, elite: 25, knight: 45, general: 120 }, wave: 5 },
+    gold: { kill: { fodder: 1, soldier: 2, tank: 5, elite: 14, knight: 30, general: 90 }, wave: 3, early: 1, earlyUntil: 5 },
     // wave bonus is gold x wave number; the first 5 waves pay 1 x wave
     exitEvery: 5,
     deepBonus: 0.25,
@@ -19359,7 +19398,24 @@ void main(){
     for (let i15 = 0; i15 < elites; i15++) list.push("elite");
     return list;
   }
-  var MAPS = { fields: { n: "Training Fields", d: "Open ground outside the camp. A basic map." } };
+  var MAPS = {
+    fields: { n: "Training Fields", d: "Open ground outside the camp. A basic map." },
+    battlefield: {
+      n: "Battlefield",
+      d: "A pitched battle. The enemy comes from the far side in battle lines; an armored knight at wave 5, their general at wave 10. Hard: an attrition fight for you, your hirelings and your friends.",
+      zoom: 0.8,
+      side: 1,
+      line: true
+    }
+  };
+  function battlePlan(n) {
+    const line = Math.min(24, 6 + 2 * n), soldiers = Math.floor(line * Math.min(0.5, 0.15 + n * 0.03)), out = { line: [], extra: [] };
+    for (let i15 = 0; i15 < line; i15++) out.line.push(i15 % Math.max(2, Math.round(line / Math.max(1, soldiers))) === 0 && soldiers ? "soldier" : "fodder");
+    if (n >= 4) for (let i15 = 0; i15 < Math.floor(n / 4); i15++) out.extra.push("tank");
+    if (n % 10 === 0) out.extra.push("elite", "elite", "general");
+    else if (n % 5 === 0) out.extra.push("knight");
+    return out;
+  }
   var stageOf = (wave) => Math.floor(wave / RUNCFG.exitEvery);
   function buildOf(p) {
     const d = derive(p);
@@ -19569,8 +19625,16 @@ void main(){
       m.down = false;
       if (this.hooks.build) this.hooks.build(m, i15);
     }
+    applyMap(inRun) {
+      const sim = this.sim, M = MAPS[this.map] || {}, z2 = inRun ? M.zoom || 1 : 1;
+      sim.bounds = { left: CFG.arena.left, right: Math.round(CFG.W / z2 - (CFG.W - CFG.arena.right)) };
+      sim.formX = null;
+      sim.view = z2 < 1 ? { z: z2, oy: Math.round(CFG.H - (CFG.band.bottom + 34) * z2) } : null;
+    }
     enterCamp() {
       const sim = this.sim;
+      this.phase = "camp";
+      this.applyMap();
       this.phase = "camp";
       this.wave = 0;
       this.banner = null;
@@ -19634,8 +19698,9 @@ void main(){
     // alone, being ready is leaving
     launch(map) {
       const sim = this.sim;
-      this.map = map || "fields";
+      this.map = MAPS[map] ? map : "fields";
       this.wave = 0;
+      this.applyMap(true);
       sim.clearEnemies();
       sim.mode = "run";
       sim.manual = true;
@@ -19687,6 +19752,19 @@ void main(){
       this.queue = wavePlan(n);
       this.spawnT = 0.5;
       this.waveKills = 0;
+      const M = MAPS[this.map] || {};
+      if (M.line) {
+        const B = battlePlan(n), sim = this.sim, rows = 4, F = CFG.form, cols = Math.ceil(B.line.length / rows);
+        sim.formX = sim.bounds.right - 14 - (cols - 1) * F.gapX;
+        B.line.forEach((kind, i15) => {
+          const col = Math.floor(i15 / rows), row = i15 % rows, e = this.spawnAt(kind, sim.formX + col * F.gapX + 30, CFG.band.top + 8 + row * (CFG.band.bottom - CFG.band.top - 16) / (rows - 1));
+          e.form = { col, y: e.y };
+        });
+        this.queue = B.extra.slice();
+        this.spawnT = 3;
+        if (n % 10 === 0) this.banner = { text: "WAVE " + n + ": THE GENERAL", at: sim.t };
+        else if (n % 5 === 0) this.banner = { text: "WAVE " + n + ": ARMORED KNIGHT", at: sim.t };
+      }
       this.say("Wave " + n + ": " + this.queue.length + " enemies.");
     }
     alive() {
@@ -19752,7 +19830,7 @@ void main(){
       if (this.phase === "wave") {
         this.spawnT -= dt;
         const cap = Math.min(R2.maxAlive + this.wave * R2.maxAlivePerWave, 3 + 2 * (this.wave - 1)) + 4 * (this.members.length - 1);
-        if (this.queue.length && this.spawnT <= 0 && this.alive() < cap) {
+        if (this.queue.length && this.spawnT <= 0 && (this.alive() < cap || (MAPS[this.map] || {}).line)) {
           this.spawnOne();
           this.spawnT = R2.spawnGap;
         }
@@ -19766,12 +19844,22 @@ void main(){
         if (sim.t >= this.ackAt) this.enterCamp();
       }
     }
+    spawnAt(kind, x, y) {
+      const sim = this.sim, e = sim.spawn({ kind, ai: "advance" });
+      e.x = sim.clampX(x);
+      e.y = sim.clampY(y);
+      e.face = -1;
+      const k = 1 + R_HP() * (this.wave - 1) + 0.25 * (this.members.length - 1);
+      e.hp = e.maxHp = Math.max(1, Math.round(e.maxHp * k));
+      return e;
+    }
     spawnOne() {
-      const sim = this.sim, kind = this.queue.shift(), side = this.rng() < 0.5 ? -1 : 1;
+      const sim = this.sim, kind = this.queue.shift(), M = MAPS[this.map] || {}, side = M.side || (this.rng() < 0.5 ? -1 : 1);
       const e = sim.spawn({ kind, ai: "advance" });
-      e.x = side > 0 ? CFG.arena.right - 8 : CFG.arena.left + 8;
+      e.x = side > 0 ? sim.bounds.right - 8 : sim.bounds.left + 8;
       e.y = sim.clampY(CFG.band.top + this.rng() * (CFG.band.bottom - CFG.band.top));
       e.face = -side;
+      if (CFG.kinds[kind] && CFG.kinds[kind].boss) sim.text(e.x - 30, e.y - 130, CFG.kinds[kind].name.toUpperCase() + "!", "#ff9a6a", 12);
       const k = 1 + R_HP() * (this.wave - 1) + 0.25 * (this.members.length - 1);
       e.hp = e.maxHp = Math.max(1, Math.round(e.maxHp * k));
       return e;
@@ -20548,6 +20636,62 @@ void main(){
       c.restore();
     }
   }
+  function makeFieldBg(W2, H, top) {
+    const cv = document.createElement("canvas");
+    cv.width = W2;
+    cv.height = H;
+    const c = cv.getContext("2d"), rnd = rng(41), Y = (y) => Math.round(y - top);
+    R(c, "#6a7480", 0, 0, W2, H);
+    const HZ = Y(214);
+    [["#4e5866", 0], ["#5a6472", 0.25], ["#687280", 0.5], ["#7a8490", 0.72], ["#8c949c", 0.9]].forEach(([col, u], i15, a) => R(c, col, 0, Math.round(HZ * u), W2, Math.round(HZ * ((a[i15 + 1] ? a[i15 + 1][1] : 1) - u)) + 1));
+    for (let i15 = 0; i15 < 9; i15++) {
+      const x = rnd() * W2, y = rnd() * HZ * 0.6, w = 60 + rnd() * 120;
+      ell(c, Math.round(x), Math.round(y), Math.round(w), Math.round(6 + rnd() * 6), "rgba(160,168,176,0.35)");
+    }
+    for (let x = 0; x < W2; x += 2) {
+      const h = 22 + Math.sin(x / 90) * 10 + Math.sin(x / 31 + 2) * 4;
+      R(c, "#56604e", x, HZ - h, 2, h + 2);
+    }
+    for (let x = 0; x < W2; x += 2) {
+      const h = 10 + Math.sin(x / 57 + 1) * 5 + Math.sin(x / 17) * 2;
+      R(c, "#4a5442", x, HZ - h, 2, h + 2);
+    }
+    for (let k = 0; k < 4; k++) {
+      const sx2 = 90 + k * 190 + rnd() * 60;
+      for (let i15 = 0; i15 < 16; i15++) {
+        const u = i15 / 16;
+        disc(c, Math.round(sx2 + Math.sin(i15 * 0.7 + k) * 8 + u * 30), Math.round(HZ - 8 - u * 120), Math.round(5 + u * 14), i15 % 2 ? "rgba(70,72,78,0.35)" : "rgba(90,92,98,0.3)");
+      }
+    }
+    for (let x = 20; x < W2; x += 9 + Math.floor(rnd() * 6)) {
+      const y = HZ - 3;
+      R(c, "#2e3430", x, y - 3, 1, 4);
+      if (rnd() < 0.25) {
+        R(c, "#3a3428", x, y - 9, 1, 7);
+        R(c, rnd() < 0.5 ? "#7a2a2a" : "#2a3a6a", x + 1, y - 9, 3, 2);
+      }
+    }
+    [["#4a5a38", HZ], ["#4e5e3a", HZ + 12], ["#526038", HZ + 30], ["#56643a", HZ + 60], ["#5a663c", HZ + 100]].forEach(([col, y], i15, a) => R(c, col, 0, y, W2, (a[i15 + 1] ? a[i15 + 1][1] : H) - y));
+    for (let i15 = 0; i15 < 900; i15++) {
+      const y = HZ + 4 + rnd() * (H - HZ), x = Math.floor(rnd() * W2), k = 1 + Math.floor((y - HZ) / 70);
+      R(c, ["#3e4c2e", "#6a7444", "#5a4a30", "#4a3c28"][Math.floor(rnd() * 4)], x, y, k + 1, 1);
+    }
+    for (let i15 = 0; i15 < 26; i15++) {
+      const x = rnd() * W2, y = Y(244) + rnd() * (Y(330) - Y(244)), w = 18 + rnd() * 40;
+      ell(c, Math.round(x), Math.round(y), Math.round(w), Math.round(3 + rnd() * 3), "rgba(70,52,34,0.55)");
+    }
+    for (let i15 = 0; i15 < 14; i15++) {
+      const x = Math.round(rnd() * W2), y = Math.round(Y(240) + rnd() * (Y(336) - Y(240)));
+      if (rnd() < 0.5) {
+        R(c, "#5a4630", x, y - 1, 16, 1);
+        R(c, "#8a9098", x + 16, y - 2, 4, 2);
+      } else {
+        ell(c, x, y, 5, 3, OUT);
+        ell(c, x, y, 4, 2, rnd() < 0.5 ? "#6a2a24" : "#2a3a5a");
+      }
+    }
+    return cv;
+  }
 
   // game/runui.js
   var KEY = "pw.run.profile";
@@ -21176,6 +21320,27 @@ void main(){
     };
     ui.drawFront = (c) => {
       if (!ui.active) return;
+      {
+        const B = live.enemies.find((e) => e.state === "alive" && e.boss && !e.dummy);
+        if (B && run.phase !== "camp") {
+          const nm2 = ((CFG.kinds[B.kind] || {}).name || B.kind).toUpperCase(), x = 200, y = 64, w = 240;
+          c.save();
+          c.textAlign = "center";
+          c.font = "10px " + FONT;
+          c.lineWidth = 3;
+          c.strokeStyle = "#14101c";
+          c.strokeText(nm2, 320, y - 4);
+          c.fillStyle = "#ffb08a";
+          c.fillText(nm2, 320, y - 4);
+          c.fillStyle = "#14101c";
+          c.fillRect(x - 1, y - 1, w + 2, 8);
+          c.fillStyle = "#5a1a1a";
+          c.fillRect(x, y, w, 6);
+          c.fillStyle = "#e04a3a";
+          c.fillRect(x, y, Math.round(w * Math.max(0, B.hp) / B.maxHp), 6);
+          c.restore();
+        }
+      }
       const p = live.player, W2 = CFG.W, H = CFG.H;
       c.save();
       if (run.phase === "camp") {
@@ -30976,7 +31141,7 @@ void main(){
     }
     return out;
   };
-  var BOOL = /* @__PURE__ */ new Set(["carried", "rescued", "broken", "flee", "moving", "dramatic", "down", "held", "dummy", "blocking", "air", "inv", "hit", "whiff", "heavy", "fr"]);
+  var BOOL = /* @__PURE__ */ new Set(["boss", "carried", "rescued", "broken", "flee", "moving", "dramatic", "down", "held", "dummy", "blocking", "air", "inv", "hit", "whiff", "heavy", "fr"]);
   var OBJ = /* @__PURE__ */ new Set(["shield", "bash", "jug", "swing", "grab", "dash", "atk", "fly", "look", "roleStyles", "kindMoves"]);
   var unpack = (n, keys, extra) => {
     const o = {};
@@ -30989,7 +31154,7 @@ void main(){
   var P_KEYS = ["shield", "bash", "carry", "carried", "rescued", "pid", "name", "look", "armorKey", "roleStyles", "weapon", "x", "y", "z", "face", "hp", "maxHp", "stamina", "staminaMax", "moving", "walkT", "flash", "hurt", "blocking", "blockT", "stunT", "clashT", "clashMax", "parryT", "shotT", "air", "jumpT", "chain", "move", "inv", "dex"];
   var SW_KEYS = ["t", "dur", "dur0", "hitAt", "extra", "move", "target", "hit", "kind", "style", "whiff", "mult"];
   var GR_KEYS = ["eId", "phase", "t", "dur", "hit", "strikes", "holdT"];
-  var E_KEYS = ["jug", "id", "x", "y", "z", "face", "state", "hp", "maxHp", "dur", "durMax", "broken", "wounded", "flee", "tier", "kind", "lookSeed", "moving", "walkT", "flash", "hurt", "deathT", "dramatic", "stun", "down", "held", "clashT", "clashMax", "dummy"];
+  var E_KEYS = ["boss", "jug", "id", "x", "y", "z", "face", "state", "hp", "maxHp", "dur", "durMax", "broken", "wounded", "flee", "tier", "kind", "lookSeed", "moving", "walkT", "flash", "hurt", "deathT", "dramatic", "stun", "down", "held", "clashT", "clashMax", "dummy"];
   var JUG = (j) => j ? { n: j.n } : null;
   var A_KEYS = ["id", "name", "x", "y", "z", "face", "hp", "maxHp", "tier", "weapon", "state", "deathT", "moving", "walkT", "flash", "hurt", "broken", "lookSeed", "owner"];
   function packSnap(sim, run, tick, texts) {
@@ -31008,6 +31173,9 @@ void main(){
       enemies: sim.enemies.map((e) => Object.assign(pickR(e, E_KEYS, r1), { jug: JUG(e.jug), atk: e.atk ? pickR(e.atk, ["t", "dur", "hitAt", "heavy", "hit"], r2) : null, fly: e.fly ? { vx: r1(e.fly.vx || 0), vz: r1(e.fly.vz || 0), fr: !!e.fly.fr } : null })),
       allies: sim.allies.map((a) => Object.assign(pickR(a, A_KEYS, r1), { atk: a.atk ? { t: r2(a.atk.t) } : null })),
       proj: sim.proj.map((q) => ({ x: r1(q.x), y: r1(q.y), vx: r1(q.vx), vy: r1(q.vy) })),
+      bounds: sim.bounds,
+      view: sim.view || null,
+      formX: sim.formX == null ? null : r1(sim.formX),
       texts: texts || [],
       lvl: (sim.lvlFx || []).map((L) => ({ pid: L.pid, t: r2(L.t), max: L.max })),
       run: {
@@ -31023,6 +31191,8 @@ void main(){
     };
   }
   function applySnap(sim, m, myPid) {
+    if (m.bounds) sim.bounds = { left: +m.bounds.left || 24, right: Math.min(2e3, +m.bounds.right || 616) };
+    sim.view = m.view && +m.view.z > 0.3 && +m.view.z <= 1 ? { z: +m.view.z, oy: +m.view.oy || 0 } : null;
     sim.t = +m.time || 0;
     sim.shake = +m.shake || 0;
     sim.mode = m.mode === "battle" || m.mode === "run" ? m.mode : "arena";
@@ -31610,7 +31780,21 @@ void main(){
         ctx.translate(-zx, -zy);
       }
       if (sim.shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * 5), Math.round((Math.random() - 0.5) * 3));
-      ctx.drawImage(runui && runui.inCamp() ? runui.campBg : bg2, 0, 0);
+      const V = sim.view;
+      if (V) {
+        ctx.translate(0, V.oy);
+        ctx.scale(V.z, V.z);
+        const k = hudCv.width / CFG.W;
+        hx2.setTransform(k * V.z, 0, 0, k * V.z, 0, k * V.oy);
+      }
+      if (V && !(runui && runui.inCamp())) {
+        const key = V.z + "|" + V.oy;
+        if (!fieldBg || fieldBg.key !== key) {
+          fieldBg = makeFieldBg(Math.ceil(CFG.W / V.z), Math.ceil(CFG.H / V.z) + 2, -V.oy / V.z);
+          fieldBg.key = key;
+        }
+        ctx.drawImage(fieldBg, 0, Math.floor(-V.oy / V.z));
+      } else ctx.drawImage(runui && runui.inCamp() ? runui.campBg : bg2, 0, 0);
       if (runui && runui.active) runui.drawBack(ctx);
       const p = sim.player, w = sim.weaponInfo();
       const dbg = $("dbg").checked;
@@ -31739,6 +31923,8 @@ void main(){
       }
       for (const e of sim.enemies) {
         if (e.state !== "alive") continue;
+        const quiet = e.form && e.hp >= e.maxHp && !e.boss && !e.broken && !(e.wounded > 0);
+        if (quiet) continue;
         const x = Math.round(e.x), y = Math.round(e.y - (e.z || 0)) - 128;
         ctx.fillStyle = "#14101c";
         ctx.fillRect(x - 15, y - 1, 30, 6);
@@ -31765,7 +31951,7 @@ void main(){
           ctx.fillRect(x - 14, ty + 7, Math.round(28 * e.wounded / CFG.woundedDur), 1);
         }
         if (e.flee) label("FLEEING", x, ty, "#9fd0ff", 9);
-        if (e.kind && e.kind !== "soldier") label(e.kind.toUpperCase(), x, y + 16, e.kind === "elite" ? "#ff9a6a" : "#cfd8e6", 8);
+        if (e.kind && e.kind !== "soldier" && e.kind !== "fodder") label(((CFG.kinds[e.kind] || {}).name || e.kind).toUpperCase(), x, y + 16, e.kind === "elite" || e.boss ? "#ff9a6a" : "#cfd8e6", e.boss ? 10 : 8);
         if (e.atk && e.atk.heavy && !e.atk.hit) {
           const u = Math.min(1, e.atk.t / (e.atk.hitAt || 1));
           ctx.strokeStyle = "rgba(255,90,74," + (0.35 + 0.5 * u) + ")";
@@ -31907,6 +32093,10 @@ void main(){
         ctx.fillRect(p.x - 19 + Math.round(38 * s.hitAt / s.dur), p.y - 139, 1, 6);
       }
       ctx.restore();
+      {
+        const k = hudCv.width / CFG.W;
+        hx2.setTransform(k, 0, 0, k, 0, 0);
+      }
       if (runui && runui.active) {
         runui.drawLabels(hx2);
         runui.drawFront(hx2);
@@ -32535,9 +32725,14 @@ void main(){
       if (a) setKey(a, false);
     });
     const toSim = (ev) => {
-      const r = cv.getBoundingClientRect();
-      aim.x = Math.round((ev.clientX - r.left) / r.width * CFG.W);
-      aim.y = Math.round((ev.clientY - r.top) / r.height * CFG.H);
+      const r = cv.getBoundingClientRect(), V = sim.view;
+      let x = (ev.clientX - r.left) / r.width * CFG.W, y = (ev.clientY - r.top) / r.height * CFG.H;
+      if (V) {
+        x /= V.z;
+        y = (y - V.oy) / V.z;
+      }
+      aim.x = Math.round(x);
+      aim.y = Math.round(y);
     };
     cv.addEventListener("pointermove", toSim);
     cv.addEventListener("pointerdown", (ev) => {
@@ -32620,6 +32815,7 @@ void main(){
       return { twoHanded: c.twoHanded, kind: aw.kind, reach: c.reach };
     };
     const PORTRAITS = /* @__PURE__ */ new Map();
+    let fieldBg = null;
     const LC = $("logo"), lg2 = LC.getContext("2d"), EC = $("elogo");
     const PALETTE = ["#d9b24a", "#e8e4d8", "#a82424", "#23468c", "#2f6b34", "#1c1c20", "#6b3f8f", "#c2602a", "#7fb0d9", "#8a6a45", "#5a5f68", "#f0d6a0"];
     let ltool = "draw", lcol = PALETTE[0], ldown = false, lsave = null;

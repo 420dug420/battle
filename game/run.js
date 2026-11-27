@@ -24,8 +24,8 @@ export const RUNCFG = {
   base: 5, pointsPerLevel: 1, startGold: 30, chainBase: 2,
   str: { dmg: 0.06 }, agi: { speed: 0.02, regen: 0.04 }, con: { hp: 4, stamina: 5 }, ldr: { perSlot: 3, strength: 0.03 }, chr: { discount: 0.02, maxDiscount: 0.5 },
   maxHirelings: 3,
-  xp: { base: 20, growth: 1.35, kill: { fodder: 2, soldier: 4, tank: 9, elite: 25 }, wave: 5 },
-  gold: { kill: { fodder: 1, soldier: 2, tank: 5, elite: 14 }, wave: 3, early: 1, earlyUntil: 5 },     // wave bonus is gold x wave number; the first 5 waves pay 1 x wave
+  xp: { base: 20, growth: 1.35, kill: { fodder: 2, soldier: 4, tank: 9, elite: 25, knight: 45, general: 120 }, wave: 5 },
+  gold: { kill: { fodder: 1, soldier: 2, tank: 5, elite: 14, knight: 30, general: 90 }, wave: 3, early: 1, earlyUntil: 5 },     // wave bonus is gold x wave number; the first 5 waves pay 1 x wave
   exitEvery: 5, deepBonus: 0.25,                       // leaving at wave 5, 10, 15 ... pays 1 + 0.25 per stage after the first
   waveHp: 0.06, between: 2.5, spawnGap: 0.45, maxAlive: 8, maxAlivePerWave: 1, healBetween: 0.25,
   use: { threshold: 60, cap: 5 },                      // each 60 uses of an attribute's kind of action grows it by 1, up to +5 (the hybrid growth)
@@ -197,7 +197,20 @@ export function wavePlan(n) {                          // the kinds of the n-th 
   for (let i = 0; i < elites; i++) list.push('elite');   // elites arrive last
   return list;
 }
-export const MAPS = { fields: { n: 'Training Fields', d: 'Open ground outside the camp. A basic map.' } };
+export const MAPS = {
+  fields: { n: 'Training Fields', d: 'Open ground outside the camp. A basic map.' },
+  battlefield: { n: 'Battlefield', d: 'A pitched battle. The enemy comes from the far side in battle lines; an armored knight at wave 5, their general at wave 10. Hard: an attrition fight for you, your hirelings and your friends.',
+    zoom: 0.8, side: 1, line: true },
+};
+/* battlefield waves: every wave is a battle line of low ranks, deeper each time; knights every 5th wave, the general every 10th */
+export function battlePlan(n) {
+  const line = Math.min(24, 6 + 2 * n), soldiers = Math.floor(line * Math.min(0.5, 0.15 + n * 0.03)), out = { line: [], extra: [] };
+  for (let i = 0; i < line; i++) out.line.push(i % Math.max(2, Math.round(line / Math.max(1, soldiers))) === 0 && soldiers ? 'soldier' : 'fodder');
+  if (n >= 4) for (let i = 0; i < Math.floor(n / 4); i++) out.extra.push('tank');
+  if (n % 10 === 0) out.extra.push('elite', 'elite', 'general');
+  else if (n % 5 === 0) out.extra.push('knight');
+  return out;
+}
 export const stageOf = wave => Math.floor(wave / RUNCFG.exitEvery);
 
 /* ---------- what the host needs to know about a member ---------- */
@@ -276,8 +289,13 @@ export class Run {
     const q = sim.players[i]; q.name = b.name; q.look = b.look || null; q.armorKey = b.armor; q.roleStyles = Object.assign({}, b.styles.roles); m.down = false;
     if (this.hooks.build) this.hooks.build(m, i);                          // the page bakes the chain and attack moves it knows
   }
+  applyMap(inRun) {                                                       // a map can widen the field and pull the camera back
+    const sim = this.sim, M = MAPS[this.map] || {}, z = inRun ? (M.zoom || 1) : 1;
+    sim.bounds = { left: CFG.arena.left, right: Math.round(CFG.W / z - (CFG.W - CFG.arena.right)) }; sim.formX = null;
+    sim.view = z < 1 ? { z, oy: Math.round(CFG.H - (CFG.band.bottom + 34) * z) } : null;
+  }
   enterCamp() {
-    const sim = this.sim; this.phase = 'camp'; this.wave = 0; this.banner = null; this.queue = []; this.timer = 0; this.voteAt = 0; sim.mode = 'arena'; sim.manual = true;     // back in camp, nothing of the last run carries over: the next one starts at wave 1
+    const sim = this.sim; this.phase = 'camp'; this.applyMap(); this.phase = 'camp'; this.wave = 0; this.banner = null; this.queue = []; this.timer = 0; this.voteAt = 0; sim.mode = 'arena'; sim.manual = true;     // back in camp, nothing of the last run carries over: the next one starts at wave 1
     sim.clearEnemies(); sim.clearAllies(); sim.proj = [];
     this.members.forEach((m, k) => { const q = this.pl(m); q.x = 330 + k * 26; q.y = 282; q.swing = null; q.air = false; q.z = 0; q.grab = null; m.ready = false; m.vote = null; m.acked = false; m.result = null; this.applyBuild(false, m); });
     this.spawnDummy();
@@ -299,7 +317,7 @@ export class Run {
   }
   depart(map) { this.readyUp(this.me.pid, map); return this.phase === 'wave'; }          // alone, being ready is leaving
   launch(map) {
-    const sim = this.sim; this.map = map || 'fields'; this.wave = 0;
+    const sim = this.sim; this.map = MAPS[map] ? map : 'fields'; this.wave = 0; this.applyMap(true);
     sim.clearEnemies(); sim.mode = 'run'; sim.manual = true; sim.proj = []; this.result = null;
     this.members.forEach((m, k) => {
       if (m.p) m.p.runs++; m.gold = 0; m.kills = 0; m.xpGain = 0; m.levelUps = 0; m.uses = {}; m.hireXp = 0; m.rank = { score: 0, last: '', idle: 0, tier: 0 }; m.peak = 0; m.result = null; m.vote = null; m.ready = false; m.down = false;
@@ -314,6 +332,14 @@ export class Run {
   }
   startWave(n) {
     this.banner = { text: 'WAVE ' + n, at: this.sim.t }; this.wave = n; this.phase = 'wave'; this.queue = wavePlan(n); this.spawnT = 0.5; this.waveKills = 0;
+    const M = MAPS[this.map] || {};
+    if (M.line) {                                                    // the battle line forms up at the far edge all at once; the heavies follow behind it
+      const B = battlePlan(n), sim = this.sim, rows = 4, F = CFG.form, cols = Math.ceil(B.line.length / rows);
+      sim.formX = sim.bounds.right - 14 - (cols - 1) * F.gapX;
+      B.line.forEach((kind, i) => { const col = Math.floor(i / rows), row = i % rows, e = this.spawnAt(kind, sim.formX + col * F.gapX + 30, CFG.band.top + 8 + row * (CFG.band.bottom - CFG.band.top - 16) / (rows - 1)); e.form = { col, y: e.y }; });
+      this.queue = B.extra.slice(); this.spawnT = 3;
+      if (n % 10 === 0) this.banner = { text: 'WAVE ' + n + ': THE GENERAL', at: sim.t }; else if (n % 5 === 0) this.banner = { text: 'WAVE ' + n + ': ARMORED KNIGHT', at: sim.t };
+    }
     this.say('Wave ' + n + ': ' + this.queue.length + ' enemies.');
   }
   alive() { return this.sim.enemies.filter(e => e.state === 'alive').length; }
@@ -343,7 +369,7 @@ export class Run {
     if (this.phase === 'wave') {
       this.spawnT -= dt;
       const cap = Math.min(R.maxAlive + this.wave * R.maxAlivePerWave, 3 + 2 * (this.wave - 1)) + 4 * (this.members.length - 1);       // 3 at a time on wave 1, building to the full cap by wave 7
-      if (this.queue.length && this.spawnT <= 0 && this.alive() < cap) { this.spawnOne(); this.spawnT = R.spawnGap; }
+      if (this.queue.length && this.spawnT <= 0 && (this.alive() < cap || (MAPS[this.map] || {}).line)) { this.spawnOne(); this.spawnT = R.spawnGap; }
       if (!this.queue.length && this.alive() === 0) this.clearWave();
     } else if (this.phase === 'between') {
       this.timer -= dt; if (this.timer <= 0) this.startWave(this.wave + 1);
@@ -353,10 +379,14 @@ export class Run {
       if (sim.t >= this.ackAt) this.enterCamp();
     }
   }
+  spawnAt(kind, x, y) {
+    const sim = this.sim, e = sim.spawn({ kind, ai: 'advance' }); e.x = sim.clampX(x); e.y = sim.clampY(y); e.face = -1;
+    const k = 1 + R_HP() * (this.wave - 1) + 0.25 * (this.members.length - 1); e.hp = e.maxHp = Math.max(1, Math.round(e.maxHp * k)); return e;
+  }
   spawnOne() {
-    const sim = this.sim, kind = this.queue.shift(), side = this.rng() < 0.5 ? -1 : 1;
+    const sim = this.sim, kind = this.queue.shift(), M = MAPS[this.map] || {}, side = M.side || (this.rng() < 0.5 ? -1 : 1);
     const e = sim.spawn({ kind, ai: 'advance' });
-    e.x = side > 0 ? CFG.arena.right - 8 : CFG.arena.left + 8; e.y = sim.clampY(CFG.band.top + this.rng() * (CFG.band.bottom - CFG.band.top)); e.face = -side;
+    e.x = side > 0 ? sim.bounds.right - 8 : sim.bounds.left + 8; e.y = sim.clampY(CFG.band.top + this.rng() * (CFG.band.bottom - CFG.band.top)); e.face = -side; if (CFG.kinds[kind] && CFG.kinds[kind].boss) sim.text(e.x - 30, e.y - 130, CFG.kinds[kind].name.toUpperCase() + '!', '#ff9a6a', 12);
     const k = 1 + R_HP() * (this.wave - 1) + 0.25 * (this.members.length - 1); e.hp = e.maxHp = Math.max(1, Math.round(e.maxHp * k));
     return e;
   }
