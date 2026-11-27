@@ -30,7 +30,7 @@ input[type=range]{width:100%}.leg{display:inline-block;width:10px;height:10px;bo
 <div class="row" style="margin-top:6px"><select id="newtype" style="width:auto"><option value="attack">Attack</option><option value="idle">Idle loop</option><option value="walk">Walk loop</option><option value="hurt">Damaged</option><option value="dying">Dying</option><option value="falling">Falling</option><option value="grab">Grab (reach + hold)</option><option value="throw">Throw (right click while holding)</option><option value="slam">Slam (V while holding)</option><option value="strike">Hold-and-strike (left click while holding)</option><option value="clash">Clash (both fighters bounce)</option><option value="parry">Parry (perfect block)</option><option value="dash">Dash</option><option value="jump">Jump</option><option value="shoot">Shoot / cast</option><option value="block">Block (held loop)</option><option value="stun">Stunned (loop)</option></select><button id="new" class="go sm">+ New</button><button id="dup" class="sm">Duplicate</button><button id="del" class="sm">Delete</button></div>
 <h2>This animation</h2>
 <label>Name</label><input type="text" id="name">
-<div id="rolebox"><label>Used in the game as</label><select id="role"><option value="light">Light attack (left click)</option><option value="heavy">Heavy attack (right click)</option><option value="dash">Dash attack</option><option value="jump">Jump attack (attack while in the air)</option><option value="counter">Counter (after a parry or riposte)</option></select></div>
+<div id="rolebox"><label>Used in the game as</label><select id="role"><option value="light">Light attack (left click)</option><option value="heavy">Heavy attack (right click)</option><option value="dash">Dash attack</option><option value="jump">Jump attack (attack while in the air)</option><option value="counter">Counter (after a parry or riposte)</option></select><label style="margin-left:10px"><input type="checkbox" id="juggle"> Juggle (launches; hits on an airborne enemy pop it up again)</label></div>
 <label>Loadout (also decides 1H or 2H in the game)</label>
 <select id="load"><option value="1s">One-hand + shield</option><option value="1">One-hand (no shield)</option><option value="2">Two-hand</option></select>
 <div id="loopbox" style="display:none"><label>One loop takes <span id="lv"></span> s</label><input type="range" id="loop" min="2" max="80" value="30"></div>
@@ -149,7 +149,7 @@ function drawHit(a,j,d,Z,W){const hb=hitOf(a);if(!$('hbshow').checked||hb.shape=
   else{oc.beginPath();oc.arc(j.pelvis[0]*Z,j.pelvis[1]*Z,hb.r*PXU*Z,0,7);oc.fill();oc.stroke()}
   oc.restore()}
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]);
-function exportAnim(a){return{id:a.id,name:a.name,type:a.type,load:a.load,contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,hit:a.type==='attack'?clone(hitOf(a)):undefined,role:a.type==='attack'&&a.role?a.role:undefined,vm:isGrab(a)&&a.vm?true:undefined,keys:a.keys.map(k=>{const o={f:k.f};for(const key in DEF0)o[key]=+(+(k[key]==null?DEF0[key]:k[key])).toFixed(3);if(isGrab(a)&&k.vz!=null){o.vz=+(+k.vz).toFixed(3);o.vy=+(+k.vy).toFixed(3);o.vr=+(+k.vr).toFixed(1)}return o})}}
+function exportAnim(a){return{id:a.id,name:a.name,type:a.type,load:a.load,contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,hit:a.type==='attack'?clone(hitOf(a)):undefined,role:a.type==='attack'&&a.role?a.role:undefined,juggle:a.type==='attack'&&a.juggle?true:undefined,vm:isGrab(a)&&a.vm?true:undefined,keys:a.keys.map(k=>{const o={f:k.f};for(const key in DEF0)o[key]=+(+(k[key]==null?DEF0[key]:k[key])).toFixed(3);if(isGrab(a)&&k.vz!=null){o.vz=+(+k.vz).toFixed(3);o.vy=+(+k.vy).toFixed(3);o.vr=+(+k.vr).toFixed(1)}return o})}}
 function exportLib(){return{v:2,anims:lib.anims.map(exportAnim)}}
 function renderTL(a,n){const tl=$('tl');tl.innerHTML='';const w=tl.clientWidth,X=f=>f/(n-1)*(w-12)+6;
   for(const k of a.keys){const d=document.createElement('div');d.className='k'+(k.f===frame?' sel':'');d.style.left=X(k.f)+'px';d.title='frame '+(k.f+1);d.onclick=()=>{setPlay(false);go(k.f)};tl.appendChild(d)}
@@ -157,8 +157,8 @@ function renderTL(a,n){const tl=$('tl');tl.innerHTML='';const w=tl.clientWidth,X
   if(a.type==='attack'){const hb=hitOf(a);if(hb.shape!=='none'){const b=document.createElement('div');b.className='hbbar';b.style.left=X(hb.f0)+'px';b.style.width=Math.max(3,X(hb.f1)-X(hb.f0))+'px';b.title='hitbox active: frames '+(hb.f0+1)+' to '+(hb.f1+1);tl.appendChild(b)}const c=document.createElement('div');c.className='ct';c.style.left=X(a.contact)+'px';c.title='hit lands';tl.appendChild(c)}
   const p=document.createElement('div');p.className='ph';p.style.left=X(frame)+'px';tl.appendChild(p)}
 function renderList(){const L=$('alist');L.innerHTML='';for(const a of lib.anims){const d=document.createElement('div');d.className='ai'+(a.id===lib.sel?' sel':'');
-  d.innerHTML='<span>'+esc(a.name)+'</span><small>'+a.type+(a.role?' ('+a.role+')':'')+' · '+(a.load==='2'?'2H':a.load==='1s'?'1H+shield':'1H')+'</small>';d.onclick=()=>select(a.id);L.appendChild(d)}}
-function select(id){lib.sel=id;const a=cur();setPlay(false);$('name').value=a.name;$('role').value=a.role||'light';$('rolebox').style.display=a.type==='attack'?'':'none';$('load').value=a.load;$('loop').value=Math.round(a.loop*10);$('lv').textContent=a.loop.toFixed(1);frame=a.keys.length?a.keys[0].f:0;renderList();reg();draw()}
+  d.innerHTML='<span>'+esc(a.name)+'</span><small>'+a.type+(a.role?' ('+a.role+')':'')+(a.juggle?' [juggle]':'')+' · '+(a.load==='2'?'2H':a.load==='1s'?'1H+shield':'1H')+'</small>';d.onclick=()=>select(a.id);L.appendChild(d)}}
+function select(id){lib.sel=id;const a=cur();setPlay(false);$('name').value=a.name;$('role').value=a.role||'light';$('juggle').checked=!!a.juggle;$('rolebox').style.display=a.type==='attack'?'':'none';$('load').value=a.load;$('loop').value=Math.round(a.loop*10);$('lv').textContent=a.loop.toFixed(1);frame=a.keys.length?a.keys[0].f:0;renderList();reg();draw()}
 function go(f){frame=Math.max(0,Math.min(NF(cur())-1,f));draw()}
 for(const[id,lab,mn,mx,st,sh,vv]of SL){const r=document.createElement('div');r.className='sl';if(sh)r.dataset.sh=1;if(vv)r.dataset.v=1;r.innerHTML='<span>'+lab+'</span><input type="range" id="s_'+id+'" min="'+mn+'" max="'+mx+'" step="'+st+'"><span id="v_'+id+'"></span>';$('sliders').appendChild(r);
   $('s_'+id).oninput=e=>{drag={slider:id};setParams({[id]:+e.target.value});$('v_'+id).textContent=(+e.target.value).toFixed(st<1?2:0)};$('s_'+id).onchange=()=>{drag=null;draw()}}
@@ -215,6 +215,7 @@ $('dur').oninput=e=>{$('dv').textContent=(e.target.value/10).toFixed(1);draw()};
 $('loop').oninput=e=>{const a=cur();a.loop=e.target.value/10;$('lv').textContent=a.loop.toFixed(1);reg();draw()};
 $('name').oninput=e=>{cur().name=e.target.value;renderList();save();draw()};
 $('role').onchange=e=>{cur().role=e.target.value==='light'?undefined:e.target.value;save();renderList()};
+$('juggle').onchange=e=>{cur().juggle=e.target.checked?true:undefined;save();renderList()};
 $('load').onchange=e=>{cur().load=e.target.value;renderList();reg();draw()};
 $('new').onclick=()=>{const a=mkAnim($('newtype').value,cur()?cur().load:'1s');lib.anims.push(a);select(a.id)};
 $('dup').onclick=()=>{const a=clone(cur());a.id=uid();a.name+=' copy';lib.anims.push(a);select(a.id)};
@@ -229,7 +230,7 @@ async function copyText(t,ok){try{await navigator.clipboard.writeText(t);note(ok
 $('copyall').onclick=()=>copyText(JSON.stringify(exportLib()),'Copied the whole library ('+lib.anims.length+' animations). Paste it to Claude, or into the game test.');
 $('copy1').onclick=()=>copyText(JSON.stringify(exportAnim(cur())),'Copied this animation.');
 function importText(t,merge){try{const o=JSON.parse(t);const arr=o.anims||[o];const out=[];
-  for(const x of arr){if(!x.keys)continue;const a=mkAnim(x.type||'attack',x.load||(x.two?'2':x.shield===false?'1':'1s'),x.name);a.id=x.id||a.id;a.contact=x.contact||36;a.loop=x.loop||a.loop;if(x.hit)a.hit=Object.assign({},x.hit);if(x.vm)a.vm=true;if(x.role)a.role=x.role;a.keys=x.keys.map(k=>Object.assign({},DEF0,k));out.push(a)}
+  for(const x of arr){if(!x.keys)continue;const a=mkAnim(x.type||'attack',x.load||(x.two?'2':x.shield===false?'1':'1s'),x.name);a.id=x.id||a.id;a.contact=x.contact||36;a.loop=x.loop||a.loop;if(x.hit)a.hit=Object.assign({},x.hit);if(x.vm)a.vm=true;if(x.role)a.role=x.role;if(x.juggle)a.juggle=true;a.keys=x.keys.map(k=>Object.assign({},DEF0,k));out.push(a)}
   if(!out.length)throw 0;
   if(merge){for(const a of out){const i=lib.anims.findIndex(z=>z.id===a.id);if(i>=0)lib.anims[i]=a;else lib.anims.push(a)}}else lib.anims=out;
   select(out[0].id);note('Loaded '+out.length+' animation'+(out.length>1?'s':'')+'.')}catch(e){note('That is not a valid animation file.')}}

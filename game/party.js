@@ -8,14 +8,15 @@ import { applyCmd } from './sim.js';
 
 const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
 const pickR = (o, keys, r) => { const out = {}; for (const k of keys) { let v = o[k]; if (typeof v === 'number' && r) v = r(v); if (v === 0 || v === false || v == null || v === '') continue; out[k] = v; } return out; };   // falsy values are left out; the guest puts them back
-const BOOL = new Set(['broken', 'flee', 'moving', 'dramatic', 'down', 'held', 'dummy', 'blocking', 'air', 'inv', 'hit', 'whiff', 'heavy', 'fr']);
-const OBJ = new Set(['swing', 'grab', 'dash', 'atk', 'fly', 'look', 'roleStyles', 'kindMoves']);
+const BOOL = new Set(['carried', 'rescued', 'broken', 'flee', 'moving', 'dramatic', 'down', 'held', 'dummy', 'blocking', 'air', 'inv', 'hit', 'whiff', 'heavy', 'fr']);
+const OBJ = new Set(['jug', 'swing', 'grab', 'dash', 'atk', 'fly', 'look', 'roleStyles', 'kindMoves']);
 // rebuild a record from the host's compact one: only known keys (nothing like __proto__ gets through), with defaults for what was left out
 const unpack = (n, keys, extra) => { const o = {}; for (const k of keys.concat(extra || [])) { const v = n[k]; o[k] = v !== undefined ? (v && typeof v === 'object' && !Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : v) : BOOL.has(k) ? false : OBJ.has(k) ? null : (k === 'name' || k === 'pid' || k === 'state' || k === 'tier' || k === 'kind' || k === 'weapon' || k === 'armorKey' || k === 'chain' || k === 'move') ? (k === 'state' ? 'alive' : null) : 0; } return o; };
-const P_KEYS = ['pid', 'name', 'look', 'armorKey', 'roleStyles', 'weapon', 'x', 'y', 'z', 'face', 'hp', 'maxHp', 'stamina', 'staminaMax', 'moving', 'walkT', 'flash', 'hurt', 'blocking', 'blockT', 'stunT', 'clashT', 'clashMax', 'parryT', 'shotT', 'air', 'jumpT', 'chain', 'move', 'inv', 'dex'];
+const P_KEYS = ['carry', 'carried', 'rescued', 'pid', 'name', 'look', 'armorKey', 'roleStyles', 'weapon', 'x', 'y', 'z', 'face', 'hp', 'maxHp', 'stamina', 'staminaMax', 'moving', 'walkT', 'flash', 'hurt', 'blocking', 'blockT', 'stunT', 'clashT', 'clashMax', 'parryT', 'shotT', 'air', 'jumpT', 'chain', 'move', 'inv', 'dex'];
 const SW_KEYS = ['t', 'dur', 'dur0', 'hitAt', 'extra', 'move', 'target', 'hit', 'kind', 'style', 'whiff', 'mult'];
 const GR_KEYS = ['eId', 'phase', 't', 'dur', 'hit', 'strikes', 'holdT'];
-const E_KEYS = ['id', 'x', 'y', 'z', 'face', 'state', 'hp', 'maxHp', 'dur', 'durMax', 'broken', 'wounded', 'flee', 'tier', 'kind', 'lookSeed', 'moving', 'walkT', 'flash', 'hurt', 'deathT', 'dramatic', 'stun', 'down', 'held', 'clashT', 'clashMax', 'dummy'];
+const E_KEYS = ['jug', 'id', 'x', 'y', 'z', 'face', 'state', 'hp', 'maxHp', 'dur', 'durMax', 'broken', 'wounded', 'flee', 'tier', 'kind', 'lookSeed', 'moving', 'walkT', 'flash', 'hurt', 'deathT', 'dramatic', 'stun', 'down', 'held', 'clashT', 'clashMax', 'dummy'];
+const JUG = j => j ? { n: j.n } : null;
 const A_KEYS = ['id', 'name', 'x', 'y', 'z', 'face', 'hp', 'maxHp', 'tier', 'weapon', 'state', 'deathT', 'moving', 'walkT', 'flash', 'hurt', 'broken', 'lookSeed', 'owner'];
 
 /* ---------- snapshot: what the host sends, and how a guest's mirror sim takes it ---------- */
@@ -25,7 +26,7 @@ export function packSnap(sim, run, tick, texts) {
     players: sim.players.map(q => Object.assign(pickR(q, P_KEYS, r1), {
       swing: q.swing ? pickR(q.swing, SW_KEYS, r2) : null, grab: q.grab ? pickR(q.grab, GR_KEYS, r2) : null,
       dash: q.dash ? { t: r2(q.dash.t), dx: q.dash.dx, dy: q.dash.dy } : null, kindMoves: q.kindMoves && Object.keys(q.kindMoves).length ? q.kindMoves : undefined })),
-    enemies: sim.enemies.map(e => Object.assign(pickR(e, E_KEYS, r1), { atk: e.atk ? pickR(e.atk, ['t', 'dur', 'hitAt', 'heavy', 'hit'], r2) : null, fly: e.fly ? { vx: r1(e.fly.vx || 0), vz: r1(e.fly.vz || 0), fr: !!e.fly.fr } : null })),
+    enemies: sim.enemies.map(e => Object.assign(pickR(e, E_KEYS, r1), { jug: JUG(e.jug), atk: e.atk ? pickR(e.atk, ['t', 'dur', 'hitAt', 'heavy', 'hit'], r2) : null, fly: e.fly ? { vx: r1(e.fly.vx || 0), vz: r1(e.fly.vz || 0), fr: !!e.fly.fr } : null })),
     allies: sim.allies.map(a => Object.assign(pickR(a, A_KEYS, r1), { atk: a.atk ? { t: r2(a.atk.t) } : null })),
     proj: sim.proj.map(q => ({ x: r1(q.x), y: r1(q.y), vx: r1(q.vx), vy: r1(q.vy) })),
     texts: texts || [],
@@ -97,6 +98,7 @@ export class PartyHost {
       case 'unready': run.unready(from); break;
       case 'vote': run.castVote(from, !!m.leave); break;
       case 'ack': run.ack(from); break;
+      case 'pong': { const pe = this.peers.get(from), q = sim.players.find(o => o.pid === from); if (pe && q && typeof m.k === 'number') { const rtt = Math.max(0, Date.now() - m.k); pe.rtt = pe.rtt == null ? rtt : pe.rtt * 0.7 + rtt * 0.3; q.grace = Math.min(0.15, pe.rtt / 2000 + 0.05); } break; }   // guests see swings late by about half the round trip plus one snapshot
     }
   }
   /* call once per sim step after run.update(); sends snapshots at 20 Hz and each guest's result once */
@@ -110,7 +112,7 @@ export class PartyHost {
     }
     if (this.tick % 3) return;
     const texts = sim.textOut.splice(0).map(t => ({ x: r1(t.x), y: r1(t.y), text: t.text, col: t.col, size: t.size }));
-    const snap = packSnap(sim, run, this.tick, texts);
+    const snap = packSnap(sim, run, this.tick, texts); if (this.tick % 120 === 0) snap.ping = Date.now();
     if (this.peers.size) this.send(null, snap);                              // one copy; the relay hands it to every guest
   }
 }

@@ -15927,6 +15927,18 @@ void main(){
     aim: { throwRange: 170, throwAir: 0.387 },
     // Crowd separation (design): standing enemies keep a little room instead of stacking on one spot. Soft push, capped per second. PLACEHOLDERS.
     sep: { rx: 26, ry: 11, k: 0.6, max: 140, atk: 0.4 },
+    psep: { rx: 22, ry: 10, k: 0.35, max: 90 },
+    // party members push apart too
+    crowd: { attackers: 2, wait: 1.9, rows: [0, -16, 16, -30, 30], drift: 9, feint: 0.25 },
+    // only this many swing at one fighter; the rest wait a step back in rows and feint. Elites ignore it
+    juggle: { launch: 300, decay: 0.86, floor: 130, push: 22, downed: 0.45, grav: 620 },
+    // a juggle hit pops an enemy up; each pop lower, never lower than floor, so it stays up while you keep hitting
+    morale: { radius: 130, base: 0.75, perSan: 0.07, awe: 0.2 },
+    // a leader (tank or elite) falls: nearby fodder may break and run
+    awe: { hesitate: 0.45, back: 0.5 },
+    // a high style rank: enemies sometimes balk at swinging and step back
+    rescue: { edge: 16, slow: 0.6, reach: 34 },
+    // drag a downed party member to the edge of the field to rescue them
     proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
     // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
     kinds: {
@@ -16027,7 +16039,7 @@ void main(){
         break;
       case "set": {
         const tp2 = sim.players[c.p | 0] || sim.player;
-        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move", "kindMoves", "skills", "chainStyles", "armorPct", "dur", "durMax", "broken", "hp", "maxHp", "san", "chr", "dmgMult", "spdMult", "regenMult", "staminaMax", "stamina"]) if (k in c) tp2[k] = c[k];
+        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move", "kindMoves", "skills", "chainStyles", "armorPct", "dur", "durMax", "broken", "hp", "maxHp", "san", "chr", "dmgMult", "spdMult", "regenMult", "staminaMax", "stamina", "kindStyles", "juggle", "grace"]) if (k in c) tp2[k] = c[k];
         break;
       }
       case "ally":
@@ -16211,7 +16223,15 @@ void main(){
           spdMult: 1,
           regenMult: 1,
           skills: { riposte: false, shove: false, multi: false },
-          kindMoves: {}
+          kindMoves: {},
+          kindStyles: {},
+          juggle: [],
+          awe: 0,
+          grace: 0,
+          pend: null,
+          carry: null,
+          carried: false,
+          rescued: false
           // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
         };
       })();
@@ -16433,13 +16453,23 @@ void main(){
           if (pl2.grab) this.endGrab(0);
           continue;
         }
+        if (this.carryStep(pl2, dt)) continue;
         this.checkClash();
+        const x02 = pl2.x, y02 = pl2.y;
         if (pl2.freeze > 0) {
           pl2.freeze -= dt;
           pl2.moving = false;
           if (pl2.clashT > 0) pl2.clashT -= dt;
         } else this.updatePlayer(dt);
+        if (pl2.carry) {
+          const R2 = this.cfg.rescue;
+          pl2.x = x02 + (pl2.x - x02) * R2.slow;
+          pl2.y = y02 + (pl2.y - y02) * R2.slow;
+          this.carryFollow(pl2);
+        }
+        if (pl2.pend) this.pendStep(pl2);
       }
+      this.crowdPlan();
       this.useP(this.players[0]);
       this.credit = null;
       for (const e of this.enemies) {
@@ -16452,6 +16482,7 @@ void main(){
         this.updateEnemy(e, dt);
       }
       this.separate(dt);
+      this.separatePlayers(dt);
       for (const a of this.allies) this.updateAlly(a, dt);
       this.updateProj(dt);
       this.enemies = this.enemies.filter((e) => !(e.state === "dying" && e.deathT > 2.6) && e.state !== "routed");
@@ -16498,7 +16529,7 @@ void main(){
       const dur = kind === "light" ? base : base * A.durMult, hitAt = kind === "light" ? base * 0.45 : dur * A.hitFrac;
       const cs2 = kind === "light" && p.chainStyles && p.chainStyles.length ? p.chainStyles[p.chain % p.chainStyles.length] : null;
       const move = p.kindMoves && p.kindMoves[kind] || (cs2 ? cs2.move : p.move || null);
-      p.swing = { t: 0, dur, dur0: dur, hitAt, hit: false, target: tgt == null ? null : tgt, whiff: false, dramatic: false, extra: 0, move, style: cs2 ? cs2.style : null, kind, mult: A.mult || 1, pierce: A.pierce || 0, after: A.after || 0 };
+      p.swing = { t: 0, dur, dur0: dur, hitAt, hit: false, target: tgt == null ? null : tgt, whiff: false, dramatic: false, extra: 0, move, style: cs2 ? cs2.style : p.kindStyles && p.kindStyles[kind] || null, kind, mult: A.mult || 1, pierce: A.pierce || 0, after: A.after || 0 };
       p.moved = false;
       if (kind === "dash") p.lunge = { t: 0.18, v: c.dash.lunge };
       if (tgt != null) {
@@ -17099,6 +17130,7 @@ void main(){
         this.say(wasW ? "kill" : "hit", line + (wasW ? "  | KILLED WHILE WOUNDED (dramatic)" : "  | KILLED"));
       } else if (fin) {
         this.say("hit", line + "  | " + fin.toUpperCase() + " (armor % ignored)");
+        if (e.jug) this.pop(e);
       } else {
         let setW = false, consumed = false;
         if (e.broken) setW = dmg > 0;
@@ -17119,6 +17151,7 @@ void main(){
           this.text(e.x, e.y - 110 + (brokeNow ? -12 : 0), "WOUNDED", "#ffd27a", 10);
         }
         this.say(setW ? "wound" : "hit", line + (setW ? "  | WOUNDED " + c.woundedDur + "s" : consumed ? "  | shrugs it off" : ""));
+        if (swing && (e.jug || this.isJuggle(swing))) this.pop(e);
       }
       this.lastHit = rec;
     }
@@ -17132,6 +17165,11 @@ void main(){
       e.wounded = 0;
       e.atk = null;
       e.flee = false;
+      if (e.jug) {
+        e.vz = e.jug.vz;
+        e.jug = null;
+      }
+      if (e.kind === "tank" || e.kind === "elite") this.leaderFell(e);
       this.events.push({ kind: dramatic ? "dramatic" : "kill", step: this.stepN, x: e.x, y: e.y, id: e.id });
       if (this.events.length > 20) this.events.shift();
       const dir = Math.sign(e.x - p.x) || 1;
@@ -17181,16 +17219,25 @@ void main(){
         } else {
           e.x = this.clampX(e.x + e.vx * dt);
           e.vx *= 0.9;
+          if (e.z > 0) {
+            e.vz = (e.vz || 0) - 620 * dt;
+            e.z = Math.max(0, e.z + e.vz * dt);
+            if (!e.z) e.vz = 0;
+          }
         }
         return;
       }
       e.moving = false;
       if (e.clashT > 0) e.clashT -= dt;
-      if (e.held || e.fly) e.kvx = 0;
+      if (e.held || e.fly || e.jug) e.kvx = 0;
       else this.kv(e, dt);
       if (e.held) return;
       if (e.fly) {
         this.updateFly(e, dt);
+        return;
+      }
+      if (e.jug) {
+        this.updateJug(e, dt);
         return;
       }
       if (!p) return;
@@ -17256,6 +17303,30 @@ void main(){
         return;
       }
       e.atkCd -= dt;
+      if (e.hes > 0) {
+        e.hes -= dt;
+        e.x = this.clampX(e.x - Math.sign(dx2) * spd * 0.6 * dt);
+        e.moving = true;
+        e.face = dx2 >= 0 ? 1 : -1;
+        if (e.moving) e.walkT += dt;
+        return;
+      }
+      if (!e.tok) {
+        const K = c.crowd, side = Math.sign(e.x - p.x) || (e.id & 1 ? 1 : -1), row = K.rows[(e.slot || 0) % K.rows.length];
+        const tx2 = p.x + side * c.enemy.reach * K.wait * (1 + Math.floor((e.slot || 0) / K.rows.length) * 0.5), ty = this.clampY(p.y + row);
+        const feint = Math.sin(this.t * 2.1 + e.id) > 0.92 ? -side * K.drift : 0;
+        const gx = tx2 + feint - e.x, gy = ty - e.y;
+        if (Math.abs(gx) > 4) {
+          e.x = this.clampX(e.x + Math.sign(gx) * Math.min(Math.abs(gx), spd * 0.8 * dt));
+          e.moving = true;
+        }
+        if (Math.abs(gy) > 3) {
+          e.y = this.clampY(e.y + Math.sign(gy) * Math.min(Math.abs(gy), spd * 0.6 * dt));
+          e.moving = true;
+        }
+        if (e.moving) e.walkT += dt;
+        return;
+      }
       if (Math.abs(dy) > c.laneTol * 0.5) {
         e.y = this.clampY(e.y + Math.sign(dy) * spd * 0.7 * dt);
         e.moving = true;
@@ -17263,6 +17334,10 @@ void main(){
       if (Math.abs(dx2) > c.enemy.reach * c.enemy.engage) {
         e.x = this.clampX(e.x + Math.sign(dx2) * spd * dt);
         e.moving = true;
+      } else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0 && p.awe > 0 && e.kind !== "elite" && this.rng() < p.awe * c.awe.hesitate) {
+        e.hes = c.awe.back;
+        e.atkCd = 0.4;
+        this.text(e.x, e.y - 120, "...", "#cfd8e6", 9);
       } else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0) {
         e.atkN = (e.atkN || 0) + 1;
         const H = c.enemyHeavy, heavy = !!e.heavyEvery && e.atkN % e.heavyEvery === 0;
@@ -17276,7 +17351,7 @@ void main(){
       const S = this.cfg.sep;
       if (!S) return;
       const list = [];
-      for (const e of this.enemies) if (e.state === "alive" && !e.held && !e.fly && !e.flee) list.push(e);
+      for (const e of this.enemies) if (e.state === "alive" && !e.held && !e.fly && !e.jug && !e.flee) list.push(e);
       const n = list.length;
       if (n < 2) return;
       const grid = /* @__PURE__ */ new Map(), cell = (x, y) => Math.floor(x / S.rx) * 4096 + Math.floor(y / S.ry);
@@ -17331,6 +17406,158 @@ void main(){
         e.y = this.clampY(e.y + Math.max(-cap, Math.min(cap, oy[i15])));
       }
     }
+    /* ---------- the crowd: who may swing at whom this step ---------- */
+    crowdPlan() {
+      const K = this.cfg.crowd, by = /* @__PURE__ */ new Map();
+      for (const e of this.enemies) {
+        e.tok = true;
+        if (e.state !== "alive" || e.ai !== "advance" || e.flee || e.held || e.fly || e.jug) continue;
+        const p = this.pickTarget(e);
+        if (!p) continue;
+        if (e.kind === "elite") continue;
+        let L = by.get(p);
+        if (!L) by.set(p, L = []);
+        L.push([e, (e.atk ? -1e6 : 0) + (p.x - e.x) ** 2 + 4 * (p.y - e.y) ** 2]);
+      }
+      for (const L of by.values()) {
+        L.sort((a, b) => a[1] - b[1] || a[0].id - b[0].id);
+        L.forEach(([e], i15) => {
+          e.tok = i15 < K.attackers;
+          e.slot = Math.max(0, i15 - K.attackers);
+        });
+      }
+    }
+    separatePlayers(dt) {
+      const S = this.cfg.psep, L = this.players.filter((q) => q.hp > 0 && !q.grab && !q.carried && !q.rescued);
+      if (L.length < 2) return;
+      const cap = S.max * dt;
+      for (let i15 = 0; i15 < L.length; i15++) for (let j = i15 + 1; j < L.length; j++) {
+        const a = L[i15], b = L[j], nx2 = (b.x - a.x) / S.rx, ny = (b.y - a.y) / S.ry, d = Math.sqrt(nx2 * nx2 + ny * ny);
+        if (d >= 1) continue;
+        let ux2, uy;
+        if (d < 1e-6) {
+          ux2 = i15 & 1 ? 1 : -1;
+          uy = 0.4;
+        } else {
+          ux2 = nx2 / d;
+          uy = ny / d;
+        }
+        const m = (1 - d) * S.k, wa2 = a.moving && !b.moving ? 0.25 : !a.moving && b.moving ? 0.75 : 0.5, mx = Math.max(-cap, Math.min(cap, ux2 * m * S.rx)), my = Math.max(-cap, Math.min(cap, uy * m * S.ry));
+        a.x = this.clampX(a.x - mx * wa2);
+        a.y = this.clampY(a.y - my * wa2);
+        b.x = this.clampX(b.x + mx * (1 - wa2));
+        b.y = this.clampY(b.y + my * (1 - wa2));
+      }
+    }
+    /* ---------- juggles ---------- */
+    isJuggle(s) {
+      return !!(s && s.style && this.player && this.player.juggle && this.player.juggle.includes(s.style));
+    }
+    pop(e) {
+      const J = this.cfg.juggle, p = this.player, dir = Math.sign(e.x - (p ? p.x : e.x)) || 1;
+      if (!e.jug) {
+        e.jug = { vz: J.launch, n: 0, vx: dir * J.push };
+        e.z = Math.max(e.z || 0, 1);
+        this.text(e.x, e.y - 120, "LAUNCH", "#ffd27a", 10);
+      } else {
+        e.jug.n++;
+        e.jug.vz = Math.max(J.floor, J.launch * Math.pow(J.decay, e.jug.n));
+        e.jug.vx = dir * J.push * 0.6;
+        if (e.jug.n > 1) this.text(e.x, e.y - 120 - e.z, e.jug.n + " HITS", "#ffe27a", 9);
+      }
+      e.atk = null;
+      e.stun = 0;
+      e.down = false;
+      e.hes = 0;
+    }
+    updateJug(e, dt) {
+      const J = this.cfg.juggle, j = e.jug;
+      if (e.wounded > 0) e.wounded = Math.max(0, e.wounded - dt);
+      e.x = this.clampX(e.x + j.vx * dt);
+      j.vx *= 0.96;
+      e.z += j.vz * dt;
+      j.vz -= J.grav * dt;
+      if (e.z <= 0 && j.vz < 0) {
+        e.z = 0;
+        e.jug = null;
+        e.stun = J.downed;
+        e.down = true;
+        this.burst(e.x, e.y, 6, "#8a7a6a", 70);
+      }
+    }
+    /* ---------- morale ---------- */
+    leaderFell(L) {
+      const M = this.cfg.morale;
+      for (const e of this.enemies) {
+        if (e === L || e.state !== "alive" || e.flee || e.kind !== "fodder" || Math.abs(e.x - L.x) > M.radius) continue;
+        const q = this.pickTarget(e), chance = Math.max(0, Math.min(0.95, M.base - this.effSan(e) * M.perSan + (q && q.awe ? q.awe * M.awe : 0)));
+        if (this.rng() < chance) {
+          e.flee = true;
+          e.atk = null;
+          this.text(e.x, e.y - 120, "BREAKS!", "#9fd0ff", 10);
+        }
+      }
+      this.say("flee", "A leader fell: nearby fodder may break.");
+    }
+    /* ---------- rescuing a downed party member ---------- */
+    carryStep(pl2, dt) {
+      if (this.mode !== "battle" && this.mode !== "run") return false;
+      const R2 = this.cfg.rescue, pr2 = this._press;
+      if (pl2.carry) {
+        const q = this.players.find((o) => o.pid === pl2.carry);
+        if (!q || q.hp > 0 || q.rescued) {
+          pl2.carry = null;
+          if (q) q.carried = false;
+          return false;
+        }
+        if (pr2.g) {
+          pl2.carry = null;
+          q.carried = false;
+          pr2.g = false;
+          return false;
+        }
+        pr2.act = pr2.heavy = pr2.dash = pr2.jump = pr2.fire = false;
+        return false;
+      }
+      if (pr2.g && !pl2.grab) {
+        const q = this.players.find((o) => o !== pl2 && o.hp <= 0 && !o.rescued && !o.carried && Math.abs(o.x - pl2.x) <= R2.reach && Math.abs(o.y - pl2.y) <= this.cfg.laneTol + 6);
+        if (q) {
+          pl2.carry = q.pid;
+          q.carried = true;
+          pr2.g = false;
+          this.text(q.x, q.y - 60, "CARRY", "#9fd3ff", 9);
+        }
+      }
+      return false;
+    }
+    carryFollow(pl2) {
+      const R2 = this.cfg.rescue, c = this.cfg, q = this.players.find((o) => o.pid === pl2.carry);
+      if (!q) {
+        pl2.carry = null;
+        return;
+      }
+      q.x = this.clampX(pl2.x - pl2.face * 14);
+      q.y = pl2.y;
+      q.face = pl2.face;
+      if (pl2.x <= c.arena.left + R2.edge || pl2.x >= c.arena.right - R2.edge) {
+        q.rescued = true;
+        q.carried = false;
+        pl2.carry = null;
+        this.text(pl2.x, pl2.y - 110, (q.name || "Ally") + " RESCUED", "#9fd3ff", 10);
+        this.say("info", (q.name || "Ally") + " was carried off the field: back next wave.");
+      }
+    }
+    pendStep(pl2) {
+      const P3 = pl2.pend, e = this.enemies.find((x) => x.id === P3.eId && x.state === "alive") || { id: P3.eId, x: P3.x, atk: null };
+      if ((pl2.blocking || pl2.dash || pl2.air) && this.defend(e, P3.heavy)) {
+        pl2.pend = null;
+        return;
+      }
+      if (this.t >= P3.at) {
+        pl2.pend = null;
+        this.enemyHitsPlayer(e, P3.heavy);
+      }
+    }
     pickTarget(e) {
       let best = null, bd2 = 1e12;
       for (const q of this.players) {
@@ -17374,9 +17601,13 @@ void main(){
       }
       return { dmg, broke };
     }
-    enemyHitsPlayer(e) {
-      const p = this.player, c = this.cfg, heavy = !!(e.atk && e.atk.heavy);
+    enemyHitsPlayer(e, heavyIn) {
+      const p = this.player, c = this.cfg, heavy = heavyIn != null ? heavyIn : !!(e.atk && e.atk.heavy);
       if ((p.blocking || p.dash || p.air) && this.defend(e, heavy)) return;
+      if (p.grace > 0 && heavyIn == null && !p.pend) {
+        p.pend = { eId: e.id, x: e.x, heavy, at: this.t + Math.min(0.15, p.grace) };
+        return;
+      }
       p.flash = 0.2;
       p.hurt = 0.6;
       p.blocking = false;
@@ -19268,6 +19499,13 @@ void main(){
         for (const m of this.members) if (m.ready && !this.atCart(m)) m.ready = false;
         return;
       }
+      for (const m of this.members) {
+        const q = this.pl(m);
+        if (q) {
+          const t = this.tierOf(m);
+          q.awe = t >= 4 ? 1 : t >= 3 ? 0.5 : 0;
+        }
+      }
       for (const f of feed) {
         const who = f.pid != null ? [this.byPid(f.pid)].filter(Boolean) : f.t === "kill" ? this.members : [this.me];
         if (f.t === "kill") {
@@ -19379,8 +19617,18 @@ void main(){
           for (const h of m.p.hirelings) if (hirelingXp(h, 1)) this.say(h.name + " reached level " + h.level + ".");
         } else m.hireXp++;
         const q = this.pl(m), i15 = this.idx(m);
-        if (q.hp <= 0) applyCmd(sim, { t: "set", p: i15, hp: Math.max(1, Math.round(q.maxHp * R2.reviveHp)) });
-        else applyCmd(sim, { t: "set", p: i15, hp: Math.min(q.maxHp, q.hp + Math.round(q.maxHp * R2.healBetween)) });
+        if (q.hp <= 0) {
+          applyCmd(sim, { t: "set", p: i15, hp: Math.max(1, Math.round(q.maxHp * R2.reviveHp)) });
+          if (q.rescued) {
+            const lead = sim.players.find((o) => o !== q && o.hp > 0);
+            q.x = sim.clampX((lead ? lead.x : 320) - 40);
+            q.y = lead ? lead.y : 282;
+          }
+        } else applyCmd(sim, { t: "set", p: i15, hp: Math.min(q.maxHp, q.hp + Math.round(q.maxHp * R2.healBetween)) });
+        q.rescued = false;
+        q.carried = false;
+        q.carry = null;
+        q.pend = null;
         applyCmd(sim, { t: "set", p: i15, stamina: q.staminaMax });
         m.down = false;
       }
@@ -30167,8 +30415,8 @@ void main(){
     }
     return out;
   };
-  var BOOL = /* @__PURE__ */ new Set(["broken", "flee", "moving", "dramatic", "down", "held", "dummy", "blocking", "air", "inv", "hit", "whiff", "heavy", "fr"]);
-  var OBJ = /* @__PURE__ */ new Set(["swing", "grab", "dash", "atk", "fly", "look", "roleStyles", "kindMoves"]);
+  var BOOL = /* @__PURE__ */ new Set(["carried", "rescued", "broken", "flee", "moving", "dramatic", "down", "held", "dummy", "blocking", "air", "inv", "hit", "whiff", "heavy", "fr"]);
+  var OBJ = /* @__PURE__ */ new Set(["jug", "swing", "grab", "dash", "atk", "fly", "look", "roleStyles", "kindMoves"]);
   var unpack = (n, keys, extra) => {
     const o = {};
     for (const k of keys.concat(extra || [])) {
@@ -30177,10 +30425,11 @@ void main(){
     }
     return o;
   };
-  var P_KEYS = ["pid", "name", "look", "armorKey", "roleStyles", "weapon", "x", "y", "z", "face", "hp", "maxHp", "stamina", "staminaMax", "moving", "walkT", "flash", "hurt", "blocking", "blockT", "stunT", "clashT", "clashMax", "parryT", "shotT", "air", "jumpT", "chain", "move", "inv", "dex"];
+  var P_KEYS = ["carry", "carried", "rescued", "pid", "name", "look", "armorKey", "roleStyles", "weapon", "x", "y", "z", "face", "hp", "maxHp", "stamina", "staminaMax", "moving", "walkT", "flash", "hurt", "blocking", "blockT", "stunT", "clashT", "clashMax", "parryT", "shotT", "air", "jumpT", "chain", "move", "inv", "dex"];
   var SW_KEYS = ["t", "dur", "dur0", "hitAt", "extra", "move", "target", "hit", "kind", "style", "whiff", "mult"];
   var GR_KEYS = ["eId", "phase", "t", "dur", "hit", "strikes", "holdT"];
-  var E_KEYS = ["id", "x", "y", "z", "face", "state", "hp", "maxHp", "dur", "durMax", "broken", "wounded", "flee", "tier", "kind", "lookSeed", "moving", "walkT", "flash", "hurt", "deathT", "dramatic", "stun", "down", "held", "clashT", "clashMax", "dummy"];
+  var E_KEYS = ["jug", "id", "x", "y", "z", "face", "state", "hp", "maxHp", "dur", "durMax", "broken", "wounded", "flee", "tier", "kind", "lookSeed", "moving", "walkT", "flash", "hurt", "deathT", "dramatic", "stun", "down", "held", "clashT", "clashMax", "dummy"];
+  var JUG = (j) => j ? { n: j.n } : null;
   var A_KEYS = ["id", "name", "x", "y", "z", "face", "hp", "maxHp", "tier", "weapon", "state", "deathT", "moving", "walkT", "flash", "hurt", "broken", "lookSeed", "owner"];
   function packSnap(sim, run, tick, texts) {
     return {
@@ -30195,7 +30444,7 @@ void main(){
         dash: q.dash ? { t: r2(q.dash.t), dx: q.dash.dx, dy: q.dash.dy } : null,
         kindMoves: q.kindMoves && Object.keys(q.kindMoves).length ? q.kindMoves : void 0
       })),
-      enemies: sim.enemies.map((e) => Object.assign(pickR(e, E_KEYS, r1), { atk: e.atk ? pickR(e.atk, ["t", "dur", "hitAt", "heavy", "hit"], r2) : null, fly: e.fly ? { vx: r1(e.fly.vx || 0), vz: r1(e.fly.vz || 0), fr: !!e.fly.fr } : null })),
+      enemies: sim.enemies.map((e) => Object.assign(pickR(e, E_KEYS, r1), { jug: JUG(e.jug), atk: e.atk ? pickR(e.atk, ["t", "dur", "hitAt", "heavy", "hit"], r2) : null, fly: e.fly ? { vx: r1(e.fly.vx || 0), vz: r1(e.fly.vz || 0), fr: !!e.fly.fr } : null })),
       allies: sim.allies.map((a) => Object.assign(pickR(a, A_KEYS, r1), { atk: a.atk ? { t: r2(a.atk.t) } : null })),
       proj: sim.proj.map((q) => ({ x: r1(q.x), y: r1(q.y), vx: r1(q.vx), vy: r1(q.vy) })),
       texts: texts || [],
@@ -30395,6 +30644,15 @@ void main(){
         case "ack":
           run.ack(from);
           break;
+        case "pong": {
+          const pe = this.peers.get(from), q = sim.players.find((o) => o.pid === from);
+          if (pe && q && typeof m.k === "number") {
+            const rtt = Math.max(0, Date.now() - m.k);
+            pe.rtt = pe.rtt == null ? rtt : pe.rtt * 0.7 + rtt * 0.3;
+            q.grace = Math.min(0.15, pe.rtt / 2e3 + 0.05);
+          }
+          break;
+        }
       }
     }
     /* call once per sim step after run.update(); sends snapshots at 20 Hz and each guest's result once */
@@ -30410,6 +30668,7 @@ void main(){
       if (this.tick % 3) return;
       const texts = sim.textOut.splice(0).map((t) => ({ x: r1(t.x), y: r1(t.y), text: t.text, col: t.col, size: t.size }));
       const snap = packSnap(sim, run, this.tick, texts);
+      if (this.tick % 120 === 0) snap.ping = Date.now();
       if (this.peers.size) this.send(null, snap);
     }
   };
@@ -30483,8 +30742,45 @@ void main(){
         setTimeout(step, 250);
       })();
     }, drawFigure = function(f) {
-      const rig = model3d_default.pose(f.role, f);
-      if (!rig) return;
+      const id = f.cacheId, calm = id != null && !f.swing && !f.st && !(f.flash > 0) && !(f.hurt > 0) && !f.dead && !f.gx && !f.gv && !f.woundedPose && !(f.z > 0);
+      let ent = id != null ? FC.get(id) : null;
+      const sig = calm ? sigOf(f) : "";
+      const fresh = !(calm && ent && ent.sig === sig && sim.t - ent.t < FC_DT && sim.t >= ent.t);
+      let dx2, dy, A, B;
+      if (fresh) {
+        const rig = model3d_default.pose(f.role, f);
+        if (!rig) return;
+        const cv3 = model3d_default.render(rig);
+        dx2 = -Math.round(model3d_default.ox);
+        dy = -Math.round(model3d_default.oy);
+        prep3D(cv3, f.flash > 0);
+        A = oc;
+        B = sil;
+        if (calm) {
+          if (!ent) {
+            ent = { a: document.createElement("canvas"), b: document.createElement("canvas") };
+            FC.set(id, ent);
+          }
+          if (ent.a.width !== oc.width || ent.a.height !== oc.height) {
+            ent.a.width = ent.b.width = oc.width;
+            ent.a.height = ent.b.height = oc.height;
+          }
+          const ga2 = ent.a.getContext("2d"), gb = ent.b.getContext("2d");
+          ga2.clearRect(0, 0, oc.width, oc.height);
+          gb.clearRect(0, 0, oc.width, oc.height);
+          ga2.drawImage(oc, 0, 0);
+          gb.drawImage(sil, 0, 0);
+          ent.sig = sig;
+          ent.t = sim.t;
+          ent.dx = dx2;
+          ent.dy = dy;
+        } else if (ent) ent.t = -1;
+      } else {
+        A = ent.a;
+        B = ent.b;
+        dx2 = ent.dx;
+        dy = ent.dy;
+      }
       ctx.save();
       ctx.globalAlpha = f.alpha == null ? 1 : f.alpha;
       if (!f.noShadow) {
@@ -30493,15 +30789,37 @@ void main(){
         ctx.ellipse(Math.round(f.x), Math.round(f.y), 17, 4.5, 0, 0, 7);
         ctx.fill();
       }
-      const cv3 = model3d_default.render(rig);
       ctx.translate(Math.round(f.x), Math.round(f.y - (f.z || 0)));
       ctx.scale(f.face, 1);
       ctx.imageSmoothingEnabled = false;
-      const dx2 = -Math.round(model3d_default.ox), dy = -Math.round(model3d_default.oy);
-      prep3D(cv3, f.flash > 0);
-      for (const [ox2, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) ctx.drawImage(sil, dx2 + ox2, dy + oy);
-      ctx.drawImage(oc, dx2, dy);
+      for (const [ox2, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) ctx.drawImage(B, dx2 + ox2, dy + oy);
+      ctx.drawImage(A, dx2, dy);
       ctx.restore();
+    }, smoothFrom = function() {
+      SM = [];
+      for (const L of [live.players, live.enemies, live.allies]) for (const o of L) SM.push([o, o.x, o.y, o.z || 0]);
+    }, smoothTo = function() {
+      const now = performance.now(), keep = /* @__PURE__ */ new Set([...live.players, ...live.enemies, ...live.allies]);
+      for (const [o, x, y, z2] of SM) {
+        if (!keep.has(o) || Math.abs(o.x - x) > 90 || Math.abs(o.y - y) > 60) {
+          o._sm = null;
+          continue;
+        }
+        o._sm = { x0: x, y0: y, z0: z2, x1: o.x, y1: o.y, z1: o.z || 0, t: now };
+        o.x = x;
+        o.y = y;
+        o.z = z2;
+      }
+    }, smoothStep = function(now) {
+      for (const L of [live.players, live.enemies, live.allies]) for (const o of L) {
+        const m = o._sm;
+        if (!m) continue;
+        const a = Math.min(1, (now - m.t) / 55);
+        o.x = m.x0 + (m.x1 - m.x0) * a;
+        o.y = m.y0 + (m.y1 - m.y0) * a;
+        o.z = m.z0 + (m.z1 - m.z0) * a;
+        if (a >= 1) o._sm = null;
+      }
     }, hudBegin = function() {
       const r = hudCv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, w = Math.max(640, Math.min(2560, Math.round(r.width * dpr)));
       if (hudCv.width !== w) {
@@ -30586,6 +30904,7 @@ void main(){
         }
         return live.moves[id2] ? id2 : null;
       };
+      const ks2 = {};
       const km2 = { heavy: bakeStyle(roleStyle.heavy || "chop"), dash: bakeStyle(roleStyle.dash || (w.twoHanded ? "lunge" : "cut")), counter: bakeStyle(roleStyle.counter || "cut"), jump: bakeStyle(roleStyle.jump || "chop") };
       if (runui && runui.active) {
         const R2 = runui.R, pr2 = runui.profile, two = w.twoHanded, hands = two ? 2 : 1, wk = w.kind || "sword";
@@ -30602,10 +30921,16 @@ void main(){
         cmd({ t: "set", chainStyles: cs2 });
         for (const r of ["heavy", "dash", "counter", "jump"]) {
           const id2 = pr2.styles.roles[r];
-          if (fits(id2)) km2[r] = bk(id2);
+          if (fits(id2)) {
+            km2[r] = bk(id2);
+            ks2[r] = id2;
+          }
         }
       }
+      for (const r of ["heavy", "dash", "counter", "jump"]) if (!ks2[r] && roleStyle[r] && !(runui && runui.active)) ks2[r] = roleStyle[r];
+      const jl2 = libStyles.filter((x) => x.juggle).map((x) => x.id);
       if (JSON.stringify(km2) !== JSON.stringify(live.player.kindMoves)) cmd({ t: "set", kindMoves: km2 });
+      if (JSON.stringify(ks2) !== JSON.stringify(live.player.kindStyles) || JSON.stringify(jl2) !== JSON.stringify(live.player.juggle)) cmd({ t: "set", kindStyles: ks2, juggle: jl2 });
       netSync();
     }, applySettings = function() {
       const ov = $("dmgov").value.trim();
@@ -30703,10 +31028,13 @@ void main(){
       for (const it of list) {
         if (it.kind === "p") {
           const q = it.q, mine = q === p, lk2 = mine ? look : lookOf(q), qw = mine ? w : weaponOf(q);
-          if (q.hp <= 0 && !mine && sim.mode !== "arena") {
+          if (q.rescued) continue;
+          if (q.hp <= 0 && (sim.mode === "battle" || sim.mode === "run")) {
+            drawFigure({ role: "p", x: q.x, y: q.y, z: q.carried ? 18 : 0, face: q.face, tier: lk2.tier, pHead: lk2.head, pBody: lk2.body, pLiv: lk2.liv, pMetal: lk2.metal, two: qw.twoHanded, wkind: qw.kind || "sword", shield: false, dead: true, deathT: 3, t: sim.t, flash: 0, swing: null, alpha: q.carried ? 0.9 : 0.85, noShadow: !!q.carried });
             continue;
           }
           drawFigure(Object.assign({
+            cacheId: "p" + q.pid,
             role: "p",
             x: q.x,
             y: q.y,
@@ -30737,7 +31065,7 @@ void main(){
           const swing = a.atk ? { t: a.atk.t, dur: 1, dur0: 1, hitAt: 0.45, extra: 0 } : null;
           const base = { role: "p", x: a.x, y: a.y, face: a.face, tier: "leather", pHead: L.head, pBody: L.body, pLiv: L.liv || look.liv, pMetal: L.metal, two, wkind: aw.kind || "sword", shield: !two, t: sim.t };
           if (a.state === "dying") drawFigure(Object.assign(base, { dead: true, deathT: a.deathT, alpha: a.deathT > 1.9 ? Math.max(0, 1 - (a.deathT - 1.9) / 0.7) : 1, flash: 0, swing: null }));
-          else drawFigure(Object.assign(base, { swing, moving: a.moving, walkT: a.walkT, flash: a.flash, flashMax: 0.2, hurt: a.hurt, hurtMax: 0.6, broken: a.broken }));
+          else drawFigure(Object.assign(base, { cacheId: "a" + a.id, swing, moving: a.moving, walkT: a.walkT, flash: a.flash, flashMax: 0.2, hurt: a.hurt, hurtMax: 0.6, broken: a.broken }));
         } else {
           const e = it.e;
           if (e.state === "dying") {
@@ -30771,7 +31099,7 @@ void main(){
             }
             const aDur = e.atk && e.atk.dur || CFG.enemy.atkDur, aHit = e.atk && e.atk.hitAt || CFG.enemy.atkHitAt;
             const atk = e.atk ? { t: e.atk.t, dur: aDur, dur0: aDur, hitAt: aHit, extra: 0 } : null;
-            const est = e.atk ? null : e.clashT > 0 ? { kind: "clash", u: 1 - e.clashT / (e.clashMax || 0.34) } : e.stun > 0 && !e.down && !e.held && !e.fly ? { kind: "stun" } : null;
+            const est = e.jug ? { kind: "stun" } : e.atk ? null : e.clashT > 0 ? { kind: "clash", u: 1 - e.clashT / (e.clashMax || 0.34) } : e.stun > 0 && !e.down && !e.held && !e.fly ? { kind: "stun" } : null;
             const gvw = model3d_default.grabVic(sim, e, w.twoHanded), fe2 = {
               role: "e",
               x: e.x,
@@ -30798,13 +31126,14 @@ void main(){
               fe2.x += gvw.dx;
               fe2.swing = null;
             }
+            fe2.cacheId = "e" + e.id;
             drawFigure(withLook(e, fe2));
           }
         }
       }
       for (const e of sim.enemies) {
         if (e.state !== "alive") continue;
-        const x = Math.round(e.x), y = Math.round(e.y) - 128;
+        const x = Math.round(e.x), y = Math.round(e.y - (e.z || 0)) - 128;
         ctx.fillStyle = "#14101c";
         ctx.fillRect(x - 15, y - 1, 30, 6);
         ctx.fillStyle = "#d65a4a";
@@ -30893,6 +31222,9 @@ void main(){
         label(t.text, t.x, t.y, t.col, t.size + 2);
       }
       ctx.globalAlpha = 1;
+      if (p.hp > 0 && !p.carry && (sim.mode === "battle" || sim.mode === "run") && sim.players.some((q) => q !== p && q.hp <= 0 && !q.rescued && !q.carried && Math.abs(q.x - p.x) <= CFG.rescue.reach + 6 && Math.abs(q.y - p.y) <= CFG.laneTol + 6)) label("G: carry them to the edge", p.x, p.y - 140, "#9fd3ff", 9);
+      if (p.carry) label("Carry to the edge of the field (G drops)", p.x, p.y - 140, "#9fd3ff", 9);
+      for (const q of sim.players) if (q !== p && q.hp <= 0 && !q.rescued && (sim.mode === "battle" || sim.mode === "run")) label((q.name || "Ally") + " DOWN", q.x, q.y - 40, "#ff9a8a", 9);
       for (const q of sim.players) if (q !== p && (q.hp > 0 || sim.mode === "arena")) {
         label(q.name || "Ally", q.x, q.y - 126, "#9fd3ff", 10);
         ctx.fillStyle = "#14101c";
@@ -30900,15 +31232,19 @@ void main(){
         ctx.fillStyle = "#6fd07a";
         ctx.fillRect(q.x - 14, q.y - 121, Math.round(28 * Math.max(0, q.hp) / q.maxHp), 3);
       }
-      label("YOU", p.x, p.y - 126, "#f4ecd8", 10);
-      ctx.fillStyle = "#14101c";
-      ctx.fillRect(p.x - 15, p.y - 122, 30, 5);
-      ctx.fillStyle = "#6fd07a";
-      ctx.fillRect(p.x - 14, p.y - 121, Math.round(28 * p.hp / p.maxHp), 3);
-      ctx.fillStyle = "#14101c";
-      ctx.fillRect(p.x - 15, p.y - 117, 30, 4);
-      ctx.fillStyle = p.stunT > 0 ? "#ff7a6a" : "#e8c24a";
-      ctx.fillRect(p.x - 14, p.y - 116, Math.round(28 * p.stamina / p.staminaMax), 2);
+      const meDown = p.hp <= 0 && (sim.mode === "battle" || sim.mode === "run");
+      if (meDown && !p.rescued) label(p.carried ? "YOU: being carried out" : "YOU ARE DOWN: a partner can carry you out", p.x, p.y - 40, "#ff9a8a", 9);
+      if (!meDown) {
+        label("YOU", p.x, p.y - 126, "#f4ecd8", 10);
+        ctx.fillStyle = "#14101c";
+        ctx.fillRect(p.x - 15, p.y - 122, 30, 5);
+        ctx.fillStyle = "#6fd07a";
+        ctx.fillRect(p.x - 14, p.y - 121, Math.round(28 * p.hp / p.maxHp), 3);
+        ctx.fillStyle = "#14101c";
+        ctx.fillRect(p.x - 15, p.y - 117, 30, 4);
+        ctx.fillStyle = p.stunT > 0 ? "#ff7a6a" : "#e8c24a";
+        ctx.fillRect(p.x - 14, p.y - 116, Math.round(28 * p.stamina / p.staminaMax), 2);
+      }
       if (p.blocking && p.blockT <= CFG.stamina.parryWin) {
         ctx.strokeStyle = "#ffe27a";
         ctx.lineWidth = 2;
@@ -31062,7 +31398,7 @@ void main(){
         }
         return live.moves[id] ? id : null;
       };
-      cmd({ t: "set", p: i15, chainStyles: rs2.chain.map((id) => ({ style: id, move: bk(id) })), kindMoves: { heavy: bk(rs2.roles.heavy || "chop"), dash: bk(rs2.roles.dash || (two ? "lunge" : "cut")), counter: bk(rs2.roles.counter || "cut"), jump: bk(rs2.roles.jump || "chop") }, move: bk("cut") });
+      cmd({ t: "set", p: i15, juggle: libStyles.filter((x) => x.juggle).map((x) => x.id), kindStyles: Object.assign({}, rs2.roles), chainStyles: rs2.chain.map((id) => ({ style: id, move: bk(id) })), kindMoves: { heavy: bk(rs2.roles.heavy || "chop"), dash: bk(rs2.roles.dash || (two ? "lunge" : "cut")), counter: bk(rs2.roles.counter || "cut"), jump: bk(rs2.roles.jump || "chop") }, move: bk("cut") });
     }, partyEnd = function(why) {
       if (!party) return;
       const was = party;
@@ -31120,7 +31456,10 @@ void main(){
         else if (m.t === "peer-leave" && P3.h) P3.h.onLeave(m.id);
         else if (P3.h && m.from) P3.h.onMsg(m.from, m);
         else if (P3.g && m.t === "snap") {
+          if (typeof m.ping === "number") out({ t: "pong", k: m.ping });
+          smoothFrom();
           applySnap(live, m, P3.id);
+          smoothTo();
           P3.g.onSnap(m, P3.id);
         } else if (P3.g && m.t === "result") P3.g.onResult(m.res);
       };
@@ -31179,6 +31518,7 @@ void main(){
         sim.texts = sim.texts.filter((t) => t.life > 0);
         for (const f of sim.fx) f.life -= real;
         sim.fx = sim.fx.filter((f) => f.life > 0);
+        smoothStep(now);
         if (runui && runui.active) runui.update(real);
       } else if (pb) {
         pb.acc += real * pb.speed;
@@ -31229,7 +31569,7 @@ void main(){
           if (!x.keys || !x.keys.length) continue;
           const two = x.load ? x.load === "2" : !!x.two, typ = x.type || "attack";
           if (!model3d_default.registerAnim({ id: x.id || "legacy", type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit, vm: x.vm })) continue;
-          if (typ === "attack") libStyles.push({ id: "c_" + (x.id || "legacy"), name: x.name || "Custom", hands: two ? 2 : 1, custom: true });
+          if (typ === "attack") libStyles.push({ id: "c_" + (x.id || "legacy"), name: (x.name || "Custom") + (x.juggle ? " [juggle]" : ""), hands: two ? 2 : 1, custom: true, juggle: !!x.juggle });
           if (typ === "attack" && x.role) {
             roleStyle[x.role] = "c_" + (x.id || "legacy");
             info.push((x.name || "attack") + " [" + x.role + " attack]");
@@ -31476,6 +31816,13 @@ void main(){
       f.pMetal = l.metal;
       return f;
     };
+    const FC = /* @__PURE__ */ new Map(), FC_DT = 1 / 12;
+    const sigOf = (f) => [f.role, f.tier, f.pHead || "", f.pBody || "", f.pLiv || "", f.pMetal || "", f.broken ? 1 : 0, f.two ? 1 : 0, f.wkind || "", f.shield ? 1 : 0, f.moving ? 1 : 0].join("|");
+    setInterval(() => {
+      const ids = new Set(sim.enemies.map((e) => "e" + e.id).concat(sim.allies.map((a) => "a" + a.id), sim.players.map((q) => "p" + q.pid)));
+      for (const k of FC.keys()) if (!ids.has(k)) FC.delete(k);
+    }, 2e3);
+    let SM = [];
     const hudCv = $("hud"), hx2 = hudCv.getContext("2d");
     let hudOn = true;
     const keys = {}, aim = { x: null, y: null };

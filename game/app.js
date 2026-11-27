@@ -91,18 +91,51 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   }
   const enemyLook = e => e._look || (e._look = M3.enemyLook(e.tier, e.lookSeed));
   const withLook = (e, f) => { const l = enemyLook(e); f.pHead = l.head; f.pBody = l.body; f.pLiv = l.liv; f.pMetal = l.metal; return f; };
+  /* figures that are only standing or walking are drawn at 12 frames a second and reused in between: each fresh 3D frame
+     costs a read back from the graphics card, which was most of the frame time in busy fights. Swings, hits, grabs and deaths stay full rate. */
+  const FC = new Map(), FC_DT = 1 / 12;
+  const sigOf = f => [f.role, f.tier, f.pHead || '', f.pBody || '', f.pLiv || '', f.pMetal || '', f.broken ? 1 : 0, f.two ? 1 : 0, f.wkind || '', f.shield ? 1 : 0, f.moving ? 1 : 0].join('|');
   function drawFigure(f) {
-    const rig = M3.pose(f.role, f); if (!rig) return;
+    const id = f.cacheId, calm = id != null && !f.swing && !f.st && !(f.flash > 0) && !(f.hurt > 0) && !f.dead && !f.gx && !f.gv && !f.woundedPose && !(f.z > 0);
+    let ent = id != null ? FC.get(id) : null; const sig = calm ? sigOf(f) : '';
+    const fresh = !(calm && ent && ent.sig === sig && sim.t - ent.t < FC_DT && sim.t >= ent.t);
+    let dx, dy, A, B;
+    if (fresh) {
+      const rig = M3.pose(f.role, f); if (!rig) return;
+      const cv3 = M3.render(rig); dx = -Math.round(M3.ox); dy = -Math.round(M3.oy);
+      prep3D(cv3, f.flash > 0); A = oc; B = sil;
+      if (calm) {
+        if (!ent) { ent = { a: document.createElement('canvas'), b: document.createElement('canvas') }; FC.set(id, ent); }
+        if (ent.a.width !== oc.width || ent.a.height !== oc.height) { ent.a.width = ent.b.width = oc.width; ent.a.height = ent.b.height = oc.height; }
+        const ga = ent.a.getContext('2d'), gb = ent.b.getContext('2d'); ga.clearRect(0, 0, oc.width, oc.height); gb.clearRect(0, 0, oc.width, oc.height); ga.drawImage(oc, 0, 0); gb.drawImage(sil, 0, 0);
+        ent.sig = sig; ent.t = sim.t; ent.dx = dx; ent.dy = dy;
+      } else if (ent) ent.t = -1;
+    } else { A = ent.a; B = ent.b; dx = ent.dx; dy = ent.dy; }
     ctx.save();
     ctx.globalAlpha = f.alpha == null ? 1 : f.alpha;
     if (!f.noShadow) { ctx.fillStyle = 'rgba(0,0,0,.38)'; ctx.beginPath(); ctx.ellipse(Math.round(f.x), Math.round(f.y), 17, 4.5, 0, 0, 7); ctx.fill(); }
-    const cv3 = M3.render(rig);
     ctx.translate(Math.round(f.x), Math.round(f.y - (f.z || 0))); ctx.scale(f.face, 1); ctx.imageSmoothingEnabled = false;
-    const dx = -Math.round(M3.ox), dy = -Math.round(M3.oy);
-    prep3D(cv3, f.flash > 0);
-    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) ctx.drawImage(sil, dx + ox, dy + oy);
-    ctx.drawImage(oc, dx, dy);
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) ctx.drawImage(B, dx + ox, dy + oy);
+    ctx.drawImage(A, dx, dy);
     ctx.restore();
+  }
+  setInterval(() => { const ids = new Set(sim.enemies.map(e => 'e' + e.id).concat(sim.allies.map(a => 'a' + a.id), sim.players.map(q => 'p' + q.pid))); for (const k of FC.keys()) if (!ids.has(k)) FC.delete(k); }, 2000);
+
+  /* guests: the host's updates come 20 times a second; blend each fighter from where it is drawn to where the update puts it */
+  let SM = [];
+  function smoothFrom() { SM = []; for (const L of [live.players, live.enemies, live.allies]) for (const o of L) SM.push([o, o.x, o.y, o.z || 0]); }
+  function smoothTo() {
+    const now = performance.now(), keep = new Set([...live.players, ...live.enemies, ...live.allies]);
+    for (const [o, x, y, z] of SM) {
+      if (!keep.has(o) || Math.abs(o.x - x) > 90 || Math.abs(o.y - y) > 60) { o._sm = null; continue; }
+      o._sm = { x0: x, y0: y, z0: z, x1: o.x, y1: o.y, z1: o.z || 0, t: now }; o.x = x; o.y = y; o.z = z;
+    }
+  }
+  function smoothStep(now) {
+    for (const L of [live.players, live.enemies, live.allies]) for (const o of L) {
+      const m = o._sm; if (!m) continue; const a = Math.min(1, (now - m.t) / 55);
+      o.x = m.x0 + (m.x1 - m.x0) * a; o.y = m.y0 + (m.y1 - m.y0) * a; o.z = m.z0 + (m.z1 - m.z0) * a; if (a >= 1) o._sm = null;
+    }
   }
 
   /* the HUD layer: text and windows drawn at the screen's own resolution, so they stay sharp while the 3D fighters stay pixel art */
@@ -201,6 +234,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     if (!live.moves[id]) { const m = M3.bakeMove(key, { two: w.twoHanded, wkind: w.kind || 'sword' }); if (m) cmd({ t: 'move', id, data: m }); }
     const mv = live.moves[id] ? id : null; if (live.player.move !== mv) cmd({ t: 'set', move: mv });
     const bakeStyle = st => { const k = M3.moveKey(st, w.twoHanded), id2 = k + '|' + (w.kind || 'sword'); if (!live.moves[id2]) { const m = M3.bakeMove(k, { two: w.twoHanded, wkind: w.kind || 'sword' }); if (m) cmd({ t: 'move', id: id2, data: m }); } return live.moves[id2] ? id2 : null; };
+    const ks = {};
     const km = { heavy: bakeStyle(roleStyle.heavy || 'chop'), dash: bakeStyle(roleStyle.dash || (w.twoHanded ? 'lunge' : 'cut')), counter: bakeStyle(roleStyle.counter || 'cut'), jump: bakeStyle(roleStyle.jump || 'chop') };   // heavy, dash and counter swings use their own blade paths
     if (runui && runui.active) {                                   // camp and run: the chain and attacks come from the profile's Style station
       const R = runui.R, pr = runui.profile, two = w.twoHanded, hands = two ? 2 : 1, wk = w.kind || 'sword';
@@ -208,9 +242,12 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       const fits = id => id && pr.styles.owned.includes(id) && R.styleFits(runui.styles().find(x => x.id === id) || { hands: 0 }, hands);
       const cs = R.chainFor(pr, runui.styles(), hands).map(id => ({ style: id, move: bk(id) }));
       cmd({ t: 'set', chainStyles: cs });
-      for (const r of ['heavy', 'dash', 'counter', 'jump']) { const id = pr.styles.roles[r]; if (fits(id)) km[r] = bk(id); }
+      for (const r of ['heavy', 'dash', 'counter', 'jump']) { const id = pr.styles.roles[r]; if (fits(id)) { km[r] = bk(id); ks[r] = id; } }
     }
+    for (const r of ['heavy', 'dash', 'counter', 'jump']) if (!ks[r] && roleStyle[r] && !(runui && runui.active)) ks[r] = roleStyle[r];
+    const jl = libStyles.filter(x => x.juggle).map(x => x.id);
     if (JSON.stringify(km) !== JSON.stringify(live.player.kindMoves)) cmd({ t: 'set', kindMoves: km });
+    if (JSON.stringify(ks) !== JSON.stringify(live.player.kindStyles) || JSON.stringify(jl) !== JSON.stringify(live.player.juggle)) cmd({ t: 'set', kindStyles: ks, juggle: jl });
     netSync();
   }
   ['ptier', 'lkhead', 'lkbody', 'lkliv', 'lkmetal', 'atkstyle'].forEach(id => $(id).addEventListener('change', readLook));
@@ -315,8 +352,12 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     for (const it of list) {
       if (it.kind === 'p') {
         const q = it.q, mine = q === p, lk = mine ? look : lookOf(q), qw = mine ? w : weaponOf(q);
-        if (q.hp <= 0 && !mine && sim.mode !== 'arena') { continue; }
-        drawFigure(Object.assign({ role: 'p', x: q.x, y: q.y, z: q.z || 0, face: q.face, tier: lk.tier, pHead: lk.head, pBody: lk.body, pLiv: lk.liv, pMetal: lk.metal, broken: false, two: qw.twoHanded, wkind: qw.kind || 'sword', shield: false,
+        if (q.rescued) continue;
+        if (q.hp <= 0 && (sim.mode === 'battle' || sim.mode === 'run')) {                // downed: lying where they fell (or over a carrier's shoulder) until rescued or the wave ends
+          drawFigure({ role: 'p', x: q.x, y: q.y, z: q.carried ? 18 : 0, face: q.face, tier: lk.tier, pHead: lk.head, pBody: lk.body, pLiv: lk.liv, pMetal: lk.metal, two: qw.twoHanded, wkind: qw.kind || 'sword', shield: false, dead: true, deathT: 3, t: sim.t, flash: 0, swing: null, alpha: q.carried ? 0.9 : 0.85, noShadow: !!q.carried });
+          continue;
+        }
+        drawFigure(Object.assign({ cacheId: 'p' + q.pid, role: 'p', x: q.x, y: q.y, z: q.z || 0, face: q.face, tier: lk.tier, pHead: lk.head, pBody: lk.body, pLiv: lk.liv, pMetal: lk.metal, broken: false, two: qw.twoHanded, wkind: qw.kind || 'sword', shield: false,
           swing: q.swing, moving: q.moving, walkT: q.walkT, t: sim.t, flash: q.flash, flashMax: 0.2, hurt: q.hurt, hurtMax: 0.6, st: playerState(q),
           style: q.swing && q.swing.kind && q.swing.kind !== 'light' ? (((mine && !(runui && runui.active)) ? roleStyle : (q.roleStyles || {}))[q.swing.kind] || ({ heavy: 'chop', dash: qw.twoHanded ? 'lunge' : 'cut', counter: 'cut', jump: 'chop' })[q.swing.kind]) : ((q.swing && q.swing.style) || (mine ? look.style : 'cut')) }, M3.grabAtt(sim, qw.twoHanded)));
       } else if (it.kind === 'a') {                                  // a hireling: a fighter on your side
@@ -324,7 +365,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
         const swing = a.atk ? { t: a.atk.t, dur: 1.0, dur0: 1.0, hitAt: 0.45, extra: 0 } : null;
         const base = { role: 'p', x: a.x, y: a.y, face: a.face, tier: 'leather', pHead: L.head, pBody: L.body, pLiv: L.liv || look.liv, pMetal: L.metal, two, wkind: aw.kind || 'sword', shield: !two, t: sim.t };
         if (a.state === 'dying') drawFigure(Object.assign(base, { dead: true, deathT: a.deathT, alpha: a.deathT > 1.9 ? Math.max(0, 1 - (a.deathT - 1.9) / 0.7) : 1, flash: 0, swing: null }));
-        else drawFigure(Object.assign(base, { swing, moving: a.moving, walkT: a.walkT, flash: a.flash, flashMax: 0.2, hurt: a.hurt, hurtMax: 0.6, broken: a.broken }));
+        else drawFigure(Object.assign(base, { cacheId: 'a' + a.id, swing, moving: a.moving, walkT: a.walkT, flash: a.flash, flashMax: 0.2, hurt: a.hurt, hurtMax: 0.6, broken: a.broken }));
       } else {
         const e = it.e;
         if (e.state === 'dying') {
@@ -338,11 +379,11 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
           }
           const aDur = e.atk && e.atk.dur || CFG.enemy.atkDur, aHit = e.atk && e.atk.hitAt || CFG.enemy.atkHitAt;
           const atk = e.atk ? { t: e.atk.t, dur: aDur, dur0: aDur, hitAt: aHit, extra: 0 } : null;
-          const est = e.atk ? null : e.clashT > 0 ? { kind: 'clash', u: 1 - e.clashT / (e.clashMax || 0.34) } : (e.stun > 0 && !e.down && !e.held && !e.fly) ? { kind: 'stun' } : null;
+          const est = e.jug ? { kind: 'stun' } : e.atk ? null : e.clashT > 0 ? { kind: 'clash', u: 1 - e.clashT / (e.clashMax || 0.34) } : (e.stun > 0 && !e.down && !e.held && !e.fly) ? { kind: 'stun' } : null;
           const gvw = M3.grabVic(sim, e, w.twoHanded), fe = { role: 'e', x: e.x, y: e.y, z: e.z, face: e.face, tier: e.tier, broken: e.broken, shield: true,
             swing: atk, st: est, style: e.atk && e.atk.heavy ? 'chop' : undefined, woundedPose: e.wounded > 0, moving: e.moving, walkT: e.walkT, t: sim.t, flash: e.flash, flashMax: 0.12, hurt: e.hurt, hurtMax: 0.6 };
           if (gvw) { Object.assign(fe, gvw.fields); fe.x += gvw.dx; fe.swing = null; }
-          drawFigure(withLook(e, fe));
+          fe.cacheId = 'e' + e.id; drawFigure(withLook(e, fe));
         }
       }
     }
@@ -350,7 +391,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     // bars + tags
     for (const e of sim.enemies) {
       if (e.state !== 'alive') continue;
-      const x = Math.round(e.x), y = Math.round(e.y) - 128;
+      const x = Math.round(e.x), y = Math.round(e.y - (e.z || 0)) - 128;
       ctx.fillStyle = '#14101c'; ctx.fillRect(x - 15, y - 1, 30, 6);
       ctx.fillStyle = '#d65a4a'; ctx.fillRect(x - 14, y, Math.round(28 * e.hp / e.maxHp), 4);
       if (e.durMax > 0) {
@@ -382,13 +423,20 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     ctx.globalAlpha = 1;
 
     // player hp + swing
+    if (p.hp > 0 && !p.carry && (sim.mode === 'battle' || sim.mode === 'run') && sim.players.some(q => q !== p && q.hp <= 0 && !q.rescued && !q.carried && Math.abs(q.x - p.x) <= CFG.rescue.reach + 6 && Math.abs(q.y - p.y) <= CFG.laneTol + 6)) label('G: carry them to the edge', p.x, p.y - 140, '#9fd3ff', 9);
+    if (p.carry) label('Carry to the edge of the field (G drops)', p.x, p.y - 140, '#9fd3ff', 9);
+    for (const q of sim.players) if (q !== p && q.hp <= 0 && !q.rescued && (sim.mode === 'battle' || sim.mode === 'run')) label((q.name || 'Ally') + ' DOWN', q.x, q.y - 40, '#ff9a8a', 9);
     for (const q of sim.players) if (q !== p && (q.hp > 0 || sim.mode === 'arena')) {
       label(q.name || 'Ally', q.x, q.y - 126, '#9fd3ff', 10);
       ctx.fillStyle = '#14101c'; ctx.fillRect(q.x - 15, q.y - 122, 30, 5); ctx.fillStyle = '#6fd07a'; ctx.fillRect(q.x - 14, q.y - 121, Math.round(28 * Math.max(0, q.hp) / q.maxHp), 3);
     }
+    const meDown = p.hp <= 0 && (sim.mode === 'battle' || sim.mode === 'run');
+    if (meDown && !p.rescued) label(p.carried ? 'YOU: being carried out' : 'YOU ARE DOWN: a partner can carry you out', p.x, p.y - 40, '#ff9a8a', 9);
+    if (!meDown) {
         label('YOU', p.x, p.y - 126, '#f4ecd8', 10);
     ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 15, p.y - 122, 30, 5); ctx.fillStyle = '#6fd07a'; ctx.fillRect(p.x - 14, p.y - 121, Math.round(28 * p.hp / p.maxHp), 3);
     ctx.fillStyle = '#14101c'; ctx.fillRect(p.x - 15, p.y - 117, 30, 4); ctx.fillStyle = p.stunT > 0 ? '#ff7a6a' : '#e8c24a'; ctx.fillRect(p.x - 14, p.y - 116, Math.round(28 * p.stamina / p.staminaMax), 2);
+    }
     if (p.blocking && p.blockT <= CFG.stamina.parryWin) { ctx.strokeStyle = '#ffe27a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(Math.round(p.x), Math.round(p.y), 24, 7, 0, 0, 7); ctx.stroke(); }
     if (p.stunT > 0) label('GUARD BROKEN', p.x, p.y - 132, '#ff9a6a', 9);
     if (dbg && p.swing && p.swing.move && sim.moves[p.swing.move]) {
@@ -496,7 +544,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     if (m.p) return; const b = m.build, aw = CFG.weapons[b.weapon]; if (!aw) return;
     const two = CFG.weaponClasses[aw.cls].twoHanded, wk = aw.kind || 'sword', rs = resolveStyles(b.styles, BASE_STYLES.concat(libStyles), two ? 2 : 1);
     const bk = st => { const k = M3.moveKey(st, two), id = k + '|' + wk; if (!live.moves[id]) { const mv = M3.bakeMove(k, { two, wkind: wk }); if (mv) cmd({ t: 'move', id, data: mv }); } return live.moves[id] ? id : null; };
-    cmd({ t: 'set', p: i, chainStyles: rs.chain.map(id => ({ style: id, move: bk(id) })), kindMoves: { heavy: bk(rs.roles.heavy || 'chop'), dash: bk(rs.roles.dash || (two ? 'lunge' : 'cut')), counter: bk(rs.roles.counter || 'cut'), jump: bk(rs.roles.jump || 'chop') }, move: bk('cut') });
+    cmd({ t: 'set', p: i, juggle: libStyles.filter(x => x.juggle).map(x => x.id), kindStyles: Object.assign({}, rs.roles), chainStyles: rs.chain.map(id => ({ style: id, move: bk(id) })), kindMoves: { heavy: bk(rs.roles.heavy || 'chop'), dash: bk(rs.roles.dash || (two ? 'lunge' : 'cut')), counter: bk(rs.roles.counter || 'cut'), jump: bk(rs.roles.jump || 'chop') }, move: bk('cut') });
   }
   function partyEnd(why) {
     if (!party) return; const was = party; party = null; live.textOut = null;
@@ -519,7 +567,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       } else if (m.t === 'peer-join' && P.h) P.h.onJoin(m.id);
       else if (m.t === 'peer-leave' && P.h) P.h.onLeave(m.id);
       else if (P.h && m.from) P.h.onMsg(m.from, m);
-      else if (P.g && m.t === 'snap') { applySnap(live, m, P.id); P.g.onSnap(m, P.id); }
+      else if (P.g && m.t === 'snap') { if (typeof m.ping === 'number') out({ t: 'pong', k: m.ping }); smoothFrom(); applySnap(live, m, P.id); smoothTo(); P.g.onSnap(m, P.id); }
       else if (P.g && m.t === 'result') P.g.onResult(m.res);
     };
     ws.onclose = () => partyEnd(party && party.g ? 'The host left. Back in your own camp.' : null);
@@ -582,7 +630,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       if (party.ws.readyState === 1 && (k !== party.lastIn || now - party.inAt > 200)) { party.lastIn = k; party.inAt = now; party.ws.send(JSON.stringify({ t: 'in', i: inp })); }
       for (const t of sim.texts) t.life -= real; sim.texts = sim.texts.filter(t => t.life > 0);
       for (const f of sim.fx) f.life -= real; sim.fx = sim.fx.filter(f => f.life > 0);
-      if (runui && runui.active) runui.update(real);
+      smoothStep(now); if (runui && runui.active) runui.update(real);
     } else if (pb) {                                             // a replay or kill cam is playing
       pb.acc += real * pb.speed;
       while (pb.acc >= STEP && pb.sim.stepN < pb.end) { pbStep(); pb.acc -= STEP; }
@@ -617,7 +665,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
         if (!x.keys || !x.keys.length) continue;
         const two = x.load ? x.load === '2' : !!x.two, typ = x.type || 'attack';
         if (!M3.registerAnim({ id: x.id || 'legacy', type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit, vm: x.vm })) continue;
-        if (typ === 'attack') libStyles.push({ id: 'c_' + (x.id || 'legacy'), name: x.name || 'Custom', hands: two ? 2 : 1, custom: true });
+        if (typ === 'attack') libStyles.push({ id: 'c_' + (x.id || 'legacy'), name: (x.name || 'Custom') + (x.juggle ? ' [juggle]' : ''), hands: two ? 2 : 1, custom: true, juggle: !!x.juggle });
         if (typ === 'attack' && x.role) { roleStyle[x.role] = 'c_' + (x.id || 'legacy'); info.push((x.name || 'attack') + ' [' + x.role + ' attack]'); continue; }
         if (typ === 'attack') {
           const op = document.createElement('option'); op.value = 'c_' + (x.id || 'legacy'); op.dataset.custom = 1;

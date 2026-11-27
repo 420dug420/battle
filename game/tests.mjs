@@ -414,4 +414,53 @@ console.log('PASS shrug off after surviving crit');
   console.log('PASS several players');
 }
 
+// crowd: only two swing at one fighter; the rest wait a step back. Elites ignore the limit
+{
+  const s = new Sim(CFG, 9); applyCmd(s, { t: 'manual', on: true }); applyCmd(s, { t: 'set', inv: true });
+  for (let i = 0; i < 7; i++) { const e = s.spawn({ kind: 'fodder', ai: 'advance' }); e.x = 360 + i * 20; e.y = 270 + (i % 3) * 8; }
+  let most = 0; for (let i = 0; i < 900; i++) { s.step(1 / 60); most = Math.max(most, s.enemies.filter(e => e.state === 'alive' && e.atk).length); }
+  assert(most <= 2, 'at most 2 attackers at once, saw ' + most);
+  const el = s.spawn({ kind: 'elite', ai: 'advance' }); el.x = 230; let elAtk = false; for (let i = 0; i < 600; i++) { s.step(1 / 60); if (el.atk) elAtk = true; }
+  assert(elAtk, 'an elite attacks regardless of the turn limit');
+  console.log('PASS crowd: attack turns, elites relentless');
+}
+// juggle: a tagged style launches; more hits keep it up, each pop lower but never below the floor
+{
+  const s = new Sim(CFG, 4); applyCmd(s, { t: 'manual', on: true }); applyCmd(s, { t: 'set', juggle: ['c_up'] });
+  const e = s.spawn({ kind: 'tank', ai: 'stand' }); e.hp = e.maxHp = 999; e.x = s.player.x + 30; e.y = s.player.y;
+  s.applyHit(e, 1, { kind: 'light', style: 'c_up', mult: 1 }); assert(e.jug && e.jug.vz > 0, 'launched');
+  const v = []; for (let k = 0; k < 12; k++) { for (let i = 0; i < 20; i++) s.step(1 / 60); s.applyHit(e, 1, { kind: 'light', style: 'cut', mult: 1 }); v.push(e.jug && e.jug.vz); }
+  assert(v.every(x => x >= CFG.juggle.floor) && v[1] < CFG.juggle.launch, 'pops decay to a floor and keep it airborne');
+  for (let i = 0; i < 240; i++) s.step(1 / 60); assert(!e.jug && e.z === 0, 'lands when left alone');
+  console.log('PASS juggle: launch, decaying pops, lands');
+}
+// morale: a fallen elite can break nearby fodder
+{
+  let broke = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const s = new Sim(CFG, seed); applyCmd(s, { t: 'manual', on: true });
+    const L = s.spawn({ kind: 'elite', ai: 'stand' }); L.x = 400; const f = []; for (let i = 0; i < 5; i++) { const e = s.spawn({ kind: 'fodder', ai: 'stand' }); e.x = 380 + i * 10; e.san = 1; f.push(e); }
+    s.applyHit(L, 999, { kind: 'light', mult: 1 }); broke += f.filter(e => e.flee).length;
+  }
+  assert(broke > 5, 'low-SAN fodder breaks when its leader falls');
+  console.log('PASS morale: leader falls, fodder breaks');
+}
+// rescue: carry a downed party member to the field's edge
+{
+  const s = new Sim(CFG, 2); s.mode = 'run'; s.addPlayer('b', 'B'); const a = s.players[0], b = s.players[1]; b.hp = 0; b.x = a.x + 10; b.y = a.y;
+  applyCmd(s, { t: 'input', p: 0, x: 0, y: 0, g: true }); s.step(1 / 60); assert.strictEqual(a.carry, 'b', 'G next to a downed ally picks them up');
+  applyCmd(s, { t: 'input', p: 0, x: -1, y: 0, g: false }); for (let i = 0; i < 600 && !b.rescued; i++) s.step(1 / 60);
+  assert(b.rescued && !a.carry, 'dragged off the edge: rescued');
+  console.log('PASS rescue: carry and drop off');
+}
+// a guest's late block still parries inside their grace window
+{
+  const s = new Sim(CFG, 2); applyCmd(s, { t: 'manual', on: true }); applyCmd(s, { t: 'set', inv: false, grace: 0.12 });
+  const e = s.spawn({ kind: 'fodder', ai: 'stand' }); e.x = s.player.x + 30; e.y = s.player.y; s.player.face = 1; const hp0 = s.player.hp;
+  e.atk = { t: 0.5, hit: true }; s.enemyHits(e, s.player); assert(s.player.pend && s.player.hp === hp0, 'hit held for the grace window');
+  applyCmd(s, { t: 'input', x: 0, y: 0, block: true }); s.step(1 / 60); s.step(1 / 60);
+  assert(!s.player.pend && s.player.hp === hp0 && s.player.parryT > 0, 'late block parries');
+  console.log('PASS guest grace: late parry');
+}
+
 console.log('\nALL SIM TESTS PASSED');

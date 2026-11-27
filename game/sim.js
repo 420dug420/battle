@@ -64,6 +64,12 @@ export const CFG = {
   aim: { throwRange: 170, throwAir: 0.387 },
   // Crowd separation (design): standing enemies keep a little room instead of stacking on one spot. Soft push, capped per second. PLACEHOLDERS.
   sep: { rx: 26, ry: 11, k: 0.6, max: 140, atk: 0.4 },
+  psep: { rx: 22, ry: 10, k: 0.35, max: 90 },                          // party members push apart too
+  crowd: { attackers: 2, wait: 1.9, rows: [0, -16, 16, -30, 30], drift: 9, feint: 0.25 },   // only this many swing at one fighter; the rest wait a step back in rows and feint. Elites ignore it
+  juggle: { launch: 300, decay: 0.86, floor: 130, push: 22, downed: 0.45, grav: 620 },        // a juggle hit pops an enemy up; each pop lower, never lower than floor, so it stays up while you keep hitting
+  morale: { radius: 130, base: 0.75, perSan: 0.07, awe: 0.2 },        // a leader (tank or elite) falls: nearby fodder may break and run
+  awe: { hesitate: 0.45, back: 0.5 },                                  // a high style rank: enemies sometimes balk at swinging and step back
+  rescue: { edge: 16, slow: 0.6, reach: 34 },                          // drag a downed party member to the edge of the field to rescue them
   proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
   // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
   kinds: { fodder: { hp: 5, tier: 'leather', clash: false }, soldier: { clash: true }, tank: { hp: 14, tier: 'plate', clash: true },
@@ -120,7 +126,7 @@ export function applyCmd(sim, c) {
     case 'heal': sim.healAll(); break;
     case 'repair': sim.repairAll(); break;
     case 'resetp': sim.resetPlayer(); sim.say('info', 'Player reset.'); break;
-    case 'set': { const tp = sim.players[c.p | 0] || sim.player; for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'kindMoves', 'skills', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr', 'dmgMult', 'spdMult', 'regenMult', 'staminaMax', 'stamina']) if (k in c) tp[k] = c[k]; break; }
+    case 'set': { const tp = sim.players[c.p | 0] || sim.player; for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'kindMoves', 'skills', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr', 'dmgMult', 'spdMult', 'regenMult', 'staminaMax', 'stamina', 'kindStyles', 'juggle', 'grace']) if (k in c) tp[k] = c[k]; break; }
     case 'ally': sim.spawnAlly(c.o); break;
     case 'mode': sim.mode = c.mode; break;
     case 'cfg': { const d = JSON.parse(JSON.stringify(c.cfg)); for (const k in d) sim.cfg[k] = d[k]; break; }
@@ -206,7 +212,7 @@ export class Sim {
       swing: null, chain: 0, cooldown: 0, moved: false, flash: 0, hurt: 0, walkT: 0, moving: false,
       armorPct: 0, dur: 0, durMax: 0, broken: false, chainStyles: null, san: 5, chr: 5,
       stamina: c.stamina.max, staminaMax: c.stamina.max, stamRegenT: 0, blocking: false, blockT: 0, stunT: 0, freeze: 0, dash: null, dashT: 99, kvx: 0, projCd: 0, counter: null, clashT: 0, clashMax: 0, z: 0, vz: 0, air: false, jumpT: 0, dmgMult: 1, spdMult: 1, regenMult: 1,
-      skills: { riposte: false, shove: false, multi: false }, kindMoves: {},   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
+      skills: { riposte: false, shove: false, multi: false }, kindMoves: {}, kindStyles: {}, juggle: [], awe: 0, grace: 0, pend: null, carry: null, carried: false, rescued: false,   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
     };
     })();
     p.i = i; p.pid = pid; p.name = ''; p.look = null; p.input = { x: 0, y: 0, act: false, g: false, fin: '', heavy: false, block: false, dash: false, fire: false, jump: false, ax: null, ay: null };
@@ -305,13 +311,18 @@ export class Sim {
       const fin = I.fin || '', finPress = fin && fin !== E.fin ? fin : ''; E.fin = fin;
       this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP };
       if (pl.hp <= 0 && (this.mode === 'battle' || this.mode === 'run')) { pl.moving = false; pl.swing = null; pl.blocking = false; pl.dash = null; if (pl.grab) this.endGrab(0); continue; }   // a downed fighter takes no part
+      if (this.carryStep(pl, dt)) continue;
       this.checkClash();
+      const x0 = pl.x, y0 = pl.y;
       if (pl.freeze > 0) { pl.freeze -= dt; pl.moving = false; if (pl.clashT > 0) pl.clashT -= dt; }   // only a clashing fighter holds, for a few frames
       else this.updatePlayer(dt);
+      if (pl.carry) { const R = this.cfg.rescue; pl.x = x0 + (pl.x - x0) * R.slow; pl.y = y0 + (pl.y - y0) * R.slow; this.carryFollow(pl); }
+      if (pl.pend) this.pendStep(pl);
     }
+    this.crowdPlan();
     this.useP(this.players[0]); this.credit = null;
     for (const e of this.enemies) { if (e.freeze > 0) { e.freeze -= dt; e.moving = false; if (e.clashT > 0) e.clashT -= dt; continue; } this.updateEnemy(e, dt); }
-    this.separate(dt);
+    this.separate(dt); this.separatePlayers(dt);
     for (const a of this.allies) this.updateAlly(a, dt);
     this.updateProj(dt);
     this.enemies = this.enemies.filter(e => !(e.state === 'dying' && e.deathT > 2.6) && e.state !== 'routed');
@@ -346,7 +357,7 @@ export class Sim {
     const dur = kind === 'light' ? base : base * A.durMult, hitAt = kind === 'light' ? base * 0.45 : dur * A.hitFrac;
     const cs = kind === 'light' && p.chainStyles && p.chainStyles.length ? p.chainStyles[p.chain % p.chainStyles.length] : null;
     const move = (p.kindMoves && p.kindMoves[kind]) || (cs ? cs.move : (p.move || null));
-    p.swing = { t: 0, dur, dur0: dur, hitAt, hit: false, target: tgt == null ? null : tgt, whiff: false, dramatic: false, extra: 0, move, style: cs ? cs.style : null, kind, mult: A.mult || 1, pierce: A.pierce || 0, after: A.after || 0 };
+    p.swing = { t: 0, dur, dur0: dur, hitAt, hit: false, target: tgt == null ? null : tgt, whiff: false, dramatic: false, extra: 0, move, style: cs ? cs.style : ((p.kindStyles && p.kindStyles[kind]) || null), kind, mult: A.mult || 1, pierce: A.pierce || 0, after: A.after || 0 };
     p.moved = false;
     if (kind === 'dash') p.lunge = { t: 0.18, v: c.dash.lunge };
     if (tgt != null) { const e = this.enemies.find(x => x.id === tgt); if (e) p.face = e.x >= p.x ? 1 : -1; }
@@ -681,6 +692,7 @@ export class Sim {
       this.say(wasW ? 'kill' : 'hit', line + (wasW ? '  | KILLED WHILE WOUNDED (dramatic)' : '  | KILLED'));
     } else if (fin) {
       this.say('hit', line + '  | ' + fin.toUpperCase() + ' (armor % ignored)');
+      if (e.jug) this.pop(e);
     } else {
       let setW = false, consumed = false;
       if (e.broken) setW = dmg > 0;
@@ -691,6 +703,7 @@ export class Sim {
       if (consumed) { e.wounded = 0; rec.notes.push('Crit consumed Wounded; enemy shrugs it off'); this.checkFlee(e); }
       if (setW) { e.wounded = c.woundedDur; e.atk = null; rec.woundedSet = true; this.text(e.x, e.y - 110 + (brokeNow ? -12 : 0), 'WOUNDED', '#ffd27a', 10); }
       this.say(setW ? 'wound' : 'hit', line + (setW ? '  | WOUNDED ' + c.woundedDur + 's' : (consumed ? '  | shrugs it off' : '')));
+      if (swing && (e.jug || this.isJuggle(swing))) this.pop(e);
     }
     this.lastHit = rec;
   }
@@ -698,7 +711,8 @@ export class Sim {
   kill(e, dramatic, swing) {
     const p = this.player;
     this.feed.push({ t: 'kill', kind: e.kind || 'soldier', tier: e.tier, x: e.x, y: e.y, pid: this.credit }); if (this.feed.length > 300) this.feed.shift();
-    e.state = 'dying'; e.deathT = 0; e.dramatic = dramatic; e.wounded = 0; e.atk = null; e.flee = false;
+    e.state = 'dying'; e.deathT = 0; e.dramatic = dramatic; e.wounded = 0; e.atk = null; e.flee = false; if (e.jug) { e.vz = e.jug.vz; e.jug = null; }
+    if (e.kind === 'tank' || e.kind === 'elite') this.leaderFell(e);
     this.events.push({ kind: dramatic ? 'dramatic' : 'kill', step: this.stepN, x: e.x, y: e.y, id: e.id }); if (this.events.length > 20) this.events.shift();   // kill cams
     const dir = Math.sign(e.x - p.x) || 1;
     if (dramatic) {
@@ -730,14 +744,15 @@ export class Sim {
       if (e.dramatic) {
         if (e.z > 0 || e.vz > 0) { e.z += e.vz * dt; e.vz -= 620 * dt; if (e.z <= 0) { e.z = 0; e.vz = 0; this.burst(e.x, e.y, 6, '#8a7a6a', 60); } }
         e.x = this.clampX(e.x + e.vx * dt); e.vx *= 0.975;
-      } else { e.x = this.clampX(e.x + e.vx * dt); e.vx *= 0.9; }
+      } else { e.x = this.clampX(e.x + e.vx * dt); e.vx *= 0.9; if (e.z > 0) { e.vz = (e.vz || 0) - 620 * dt; e.z = Math.max(0, e.z + e.vz * dt); if (!e.z) e.vz = 0; } }
       return;
     }
     e.moving = false;
     if (e.clashT > 0) e.clashT -= dt;
-    if (e.held || e.fly) e.kvx = 0; else this.kv(e, dt);
+    if (e.held || e.fly || e.jug) e.kvx = 0; else this.kv(e, dt);
     if (e.held) return;                                              // in the player's grip: pinned by updateGrab
     if (e.fly) { this.updateFly(e, dt); return; }
+    if (e.jug) { this.updateJug(e, dt); return; }
     if (!p) return;                                                  // nobody left standing to fight
     if (e.stun > 0) { e.stun -= dt; if (e.stun <= 0) e.down = false; return; }                         // staggered after losing a clash
     if (e.wounded > 0) {
@@ -782,8 +797,21 @@ export class Sim {
       return;
     }
     e.atkCd -= dt;
+    if (e.hes > 0) {                                                 // balking at a fighter with a high style rank: a step back
+      e.hes -= dt; e.x = this.clampX(e.x - Math.sign(dx) * spd * 0.6 * dt); e.moving = true; e.face = dx >= 0 ? 1 : -1; if (e.moving) e.walkT += dt; return;
+    }
+    if (!e.tok) {                                                    // not this one's turn: hold a place a step back and feint
+      const K = c.crowd, side = Math.sign(e.x - p.x) || (e.id & 1 ? 1 : -1), row = K.rows[(e.slot || 0) % K.rows.length];
+      const tx = p.x + side * c.enemy.reach * K.wait * (1 + Math.floor((e.slot || 0) / K.rows.length) * 0.5), ty = this.clampY(p.y + row);
+      const feint = Math.sin(this.t * 2.1 + e.id) > 0.92 ? -side * K.drift : 0;
+      const gx = tx + feint - e.x, gy = ty - e.y;
+      if (Math.abs(gx) > 4) { e.x = this.clampX(e.x + Math.sign(gx) * Math.min(Math.abs(gx), spd * 0.8 * dt)); e.moving = true; }
+      if (Math.abs(gy) > 3) { e.y = this.clampY(e.y + Math.sign(gy) * Math.min(Math.abs(gy), spd * 0.6 * dt)); e.moving = true; }
+      if (e.moving) e.walkT += dt; return;
+    }
     if (Math.abs(dy) > c.laneTol * 0.5) { e.y = this.clampY(e.y + Math.sign(dy) * spd * 0.7 * dt); e.moving = true; }
     if (Math.abs(dx) > c.enemy.reach * c.enemy.engage) { e.x = this.clampX(e.x + Math.sign(dx) * spd * dt); e.moving = true; }
+    else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0 && p.awe > 0 && e.kind !== 'elite' && this.rng() < p.awe * c.awe.hesitate) { e.hes = c.awe.back; e.atkCd = 0.4; this.text(e.x, e.y - 120, '...', '#cfd8e6', 9); }
     else if (Math.abs(dy) <= c.laneTol && e.atkCd <= 0) {
       e.atkN = (e.atkN || 0) + 1; const H = c.enemyHeavy, heavy = !!e.heavyEvery && e.atkN % e.heavyEvery === 0;
       e.atk = heavy ? { t: 0, hit: false, heavy: true, dur: c.enemy.atkDur * H.durMult, hitAt: c.enemy.atkHitAt * H.hitMult } : { t: 0, hit: false, dur: c.enemy.atkDur, hitAt: c.enemy.atkHitAt };
@@ -795,7 +823,7 @@ export class Sim {
      Swinging, staggered, frozen or knocked-back enemies hold their ground and the others make room. Grid-bucketed, so a big crowd stays cheap. */
   separate(dt) {
     const S = this.cfg.sep; if (!S) return;
-    const list = []; for (const e of this.enemies) if (e.state === 'alive' && !e.held && !e.fly && !e.flee) list.push(e);
+    const list = []; for (const e of this.enemies) if (e.state === 'alive' && !e.held && !e.fly && !e.jug && !e.flee) list.push(e);
     const n = list.length; if (n < 2) return;
     const grid = new Map(), cell = (x, y) => Math.floor(x / S.rx) * 4096 + Math.floor(y / S.ry);
     const fixed = new Uint8Array(n), soft = new Float64Array(n).fill(1), ox = new Float64Array(n), oy = new Float64Array(n);
@@ -824,6 +852,81 @@ export class Sim {
       e.x = this.clampX(e.x + Math.max(-cap, Math.min(cap, ox[i]))); e.y = this.clampY(e.y + Math.max(-cap, Math.min(cap, oy[i])));
     }
   }
+  /* ---------- the crowd: who may swing at whom this step ---------- */
+  crowdPlan() {
+    const K = this.cfg.crowd, by = new Map();
+    for (const e of this.enemies) {
+      e.tok = true; if (e.state !== 'alive' || e.ai !== 'advance' || e.flee || e.held || e.fly || e.jug) continue;
+      const p = this.pickTarget(e); if (!p) continue;
+      if (e.kind === 'elite') continue;                              // elites never wait their turn
+      let L = by.get(p); if (!L) by.set(p, L = []); L.push([e, (e.atk ? -1e6 : 0) + (p.x - e.x) ** 2 + 4 * (p.y - e.y) ** 2]);
+    }
+    for (const L of by.values()) { L.sort((a, b) => a[1] - b[1] || a[0].id - b[0].id); L.forEach(([e], i) => { e.tok = i < K.attackers; e.slot = Math.max(0, i - K.attackers); }); }
+  }
+  separatePlayers(dt) {
+    const S = this.cfg.psep, L = this.players.filter(q => q.hp > 0 && !q.grab && !q.carried && !q.rescued); if (L.length < 2) return;
+    const cap = S.max * dt;
+    for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
+      const a = L[i], b = L[j], nx = (b.x - a.x) / S.rx, ny = (b.y - a.y) / S.ry, d = Math.sqrt(nx * nx + ny * ny); if (d >= 1) continue;
+      let ux, uy; if (d < 1e-6) { ux = (i & 1) ? 1 : -1; uy = 0.4; } else { ux = nx / d; uy = ny / d; }
+      const m = (1 - d) * S.k, wa = a.moving && !b.moving ? 0.25 : !a.moving && b.moving ? 0.75 : 0.5, mx = Math.max(-cap, Math.min(cap, ux * m * S.rx)), my = Math.max(-cap, Math.min(cap, uy * m * S.ry));   // the one walking squeezes past; the one standing gives way
+      a.x = this.clampX(a.x - mx * wa); a.y = this.clampY(a.y - my * wa); b.x = this.clampX(b.x + mx * (1 - wa)); b.y = this.clampY(b.y + my * (1 - wa));
+    }
+  }
+  /* ---------- juggles ---------- */
+  isJuggle(s) { return !!(s && s.style && this.player && this.player.juggle && this.player.juggle.includes(s.style)); }
+  pop(e) {
+    const J = this.cfg.juggle, p = this.player, dir = Math.sign(e.x - (p ? p.x : e.x)) || 1;
+    if (!e.jug) { e.jug = { vz: J.launch, n: 0, vx: dir * J.push }; e.z = Math.max(e.z || 0, 1); this.text(e.x, e.y - 120, 'LAUNCH', '#ffd27a', 10); }
+    else { e.jug.n++; e.jug.vz = Math.max(J.floor, J.launch * Math.pow(J.decay, e.jug.n)); e.jug.vx = dir * J.push * 0.6; if (e.jug.n > 1) this.text(e.x, e.y - 120 - e.z, e.jug.n + ' HITS', '#ffe27a', 9); }
+    e.atk = null; e.stun = 0; e.down = false; e.hes = 0;
+  }
+  updateJug(e, dt) {
+    const J = this.cfg.juggle, j = e.jug;
+    if (e.wounded > 0) e.wounded = Math.max(0, e.wounded - dt);
+    e.x = this.clampX(e.x + j.vx * dt); j.vx *= 0.96; e.z += j.vz * dt; j.vz -= J.grav * dt;
+    if (e.z <= 0 && j.vz < 0) { e.z = 0; e.jug = null; e.stun = J.downed; e.down = true; this.burst(e.x, e.y, 6, '#8a7a6a', 70); }
+  }
+  /* ---------- morale ---------- */
+  leaderFell(L) {
+    const M = this.cfg.morale;
+    for (const e of this.enemies) {
+      if (e === L || e.state !== 'alive' || e.flee || e.kind !== 'fodder' || Math.abs(e.x - L.x) > M.radius) continue;
+      const q = this.pickTarget(e), chance = Math.max(0, Math.min(0.95, M.base - this.effSan(e) * M.perSan + (q && q.awe ? q.awe * M.awe : 0)));
+      if (this.rng() < chance) { e.flee = true; e.atk = null; this.text(e.x, e.y - 120, 'BREAKS!', '#9fd0ff', 10); }
+    }
+    this.say('flee', 'A leader fell: nearby fodder may break.');
+  }
+  /* ---------- rescuing a downed party member ---------- */
+  carryStep(pl, dt) {
+    if (this.mode !== 'battle' && this.mode !== 'run') return false;
+    const R = this.cfg.rescue, pr = this._press;
+    if (pl.carry) {
+      const q = this.players.find(o => o.pid === pl.carry);
+      if (!q || q.hp > 0 || q.rescued) { pl.carry = null; if (q) q.carried = false; return false; }
+      if (pr.g) { pl.carry = null; q.carried = false; pr.g = false; return false; }               // G again: put them down
+      pr.act = pr.heavy = pr.dash = pr.jump = pr.fire = false;                                      // hands full
+      return false;
+    }
+    if (pr.g && !pl.grab) {
+      const q = this.players.find(o => o !== pl && o.hp <= 0 && !o.rescued && !o.carried && Math.abs(o.x - pl.x) <= R.reach && Math.abs(o.y - pl.y) <= this.cfg.laneTol + 6);
+      if (q) { pl.carry = q.pid; q.carried = true; pr.g = false; this.text(q.x, q.y - 60, 'CARRY', '#9fd3ff', 9); }
+    }
+    return false;
+  }
+  carryFollow(pl) {
+    const R = this.cfg.rescue, c = this.cfg, q = this.players.find(o => o.pid === pl.carry); if (!q) { pl.carry = null; return; }
+    q.x = this.clampX(pl.x - pl.face * 14); q.y = pl.y; q.face = pl.face;
+    if (pl.x <= c.arena.left + R.edge || pl.x >= c.arena.right - R.edge) {
+      q.rescued = true; q.carried = false; pl.carry = null;
+      this.text(pl.x, pl.y - 110, (q.name || 'Ally') + ' RESCUED', '#9fd3ff', 10); this.say('info', (q.name || 'Ally') + ' was carried off the field: back next wave.');
+    }
+  }
+  pendStep(pl) {
+    const P = pl.pend, e = this.enemies.find(x => x.id === P.eId && x.state === 'alive') || { id: P.eId, x: P.x, atk: null };
+    if ((pl.blocking || pl.dash || pl.air) && this.defend(e, P.heavy)) { pl.pend = null; return; }
+    if (this.t >= P.at) { pl.pend = null; this.enemyHitsPlayer(e, P.heavy); }
+  }
   pickTarget(e) {
     let best = null, bd = 1e12;
     for (const q of this.players) { if (q.hp <= 0) continue; const d = (q.x - e.x) ** 2 + 4 * (q.y - e.y) ** 2; if (d < bd) { best = q; bd = d; } }
@@ -838,9 +941,10 @@ export class Sim {
     if (t.durMax > 0 && !t.broken) { t.dur = Math.max(0, t.dur - raw); if (t.dur <= 0) { t.broken = true; broke = true; } }
     return { dmg, broke };
   }
-  enemyHitsPlayer(e) {
-    const p = this.player, c = this.cfg, heavy = !!(e.atk && e.atk.heavy);
+  enemyHitsPlayer(e, heavyIn) {
+    const p = this.player, c = this.cfg, heavy = heavyIn != null ? heavyIn : !!(e.atk && e.atk.heavy);
     if ((p.blocking || p.dash || p.air) && this.defend(e, heavy)) return;
+    if (p.grace > 0 && heavyIn == null && !p.pend) { p.pend = { eId: e.id, x: e.x, heavy, at: this.t + Math.min(0.15, p.grace) }; return; }   // a guest sees the swing late: give their block that long to arrive
     p.flash = 0.2; p.hurt = 0.6; p.blocking = false; p.blockLock = !!this.input.block;
     if (!p.inv) {
       const r = this.takeHit(p, Math.floor(c.enemy.atkDmg * (heavy ? c.enemyHeavy.dmgMult : 1) + 1e-9));

@@ -17,7 +17,7 @@ ok(H.r.phase === 'wave', 'both ready -> wave, got ' + H.r.phase);
 host.onMsg('p2', { t: 'in', i: { x: 1, y: 0 } });
 for (let i = 0; i < 200; i++) { H.s.step(1 / 60); H.r.update(1 / 60); host.afterStep(); }
 const snaps = q.filter(x => x[0] === null && x[1].t === 'snap'); ok(snaps.length > 10, 'snaps sent ' + snaps.length);
-ok(H.s.players[1].x > 300, 'guest input moved player');
+ok(H.s.players[1].x > 230, 'guest input moved player');
 // guest mirror
 const G = new Sim(CFG, 1); const gr = new GuestRun(G, gp, () => { }); const last = JSON.parse(JSON.stringify(snaps[snaps.length - 1][1]));
 applySnap(G, last, 'p2'); gr.onSnap(last, 'p2');

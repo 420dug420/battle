@@ -308,6 +308,7 @@ export class Run {
       for (const m of this.members) if (m.ready && !this.atCart(m)) m.ready = false;       // walking away takes the ready back
       return;
     }
+    for (const m of this.members) { const q = this.pl(m); if (q) { const t = this.tierOf(m); q.awe = t >= 4 ? 1 : t >= 3 ? 0.5 : 0; } }   // a high style rank makes enemies balk
     for (const f of feed) {
       const who = f.pid != null ? [this.byPid(f.pid)].filter(Boolean) : (f.t === 'kill' ? this.members : [this.me]);
       if (f.t === 'kill') { for (const m of who) this.onKill(m, f, who.length); }
@@ -365,8 +366,12 @@ export class Run {
       m.gold += Math.round(R.gold.wave * this.wave * this.goldMult(m)); this.giveXp(m, R.xp.wave * this.wave);
       if (m.p) { for (const h of m.p.hirelings) if (hirelingXp(h, 1)) this.say(h.name + ' reached level ' + h.level + '.'); } else m.hireXp++;
       const q = this.pl(m), i = this.idx(m);
-      if (q.hp <= 0) applyCmd(sim, { t: 'set', p: i, hp: Math.max(1, Math.round(q.maxHp * R.reviveHp)) });       // a downed fighter is back on their feet
+      if (q.hp <= 0) {                                                             // a downed fighter is back on their feet; one carried off the field walks back in
+        applyCmd(sim, { t: 'set', p: i, hp: Math.max(1, Math.round(q.maxHp * R.reviveHp)) });
+        if (q.rescued) { const lead = sim.players.find(o => o !== q && o.hp > 0); q.x = sim.clampX((lead ? lead.x : 320) - 40); q.y = lead ? lead.y : 282; }
+      }
       else applyCmd(sim, { t: 'set', p: i, hp: Math.min(q.maxHp, q.hp + Math.round(q.maxHp * R.healBetween)) });
+      q.rescued = false; q.carried = false; q.carry = null; q.pend = null;
       applyCmd(sim, { t: 'set', p: i, stamina: q.staminaMax }); m.down = false;
     }
     this.spawnAllies();                                // fallen hirelings return, no penalty
