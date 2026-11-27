@@ -1,6 +1,6 @@
 # Project War: decisions for upcoming work
 
-## Classes (planned, not built yet): mage, flame blade, musketeer, troglodyte (later)
+## Classes (back burner until the user says so): mage, flame blade, musketeer, troglodyte (later)
 - Unlocked at **level 10**; players are classless before that.
 - **Hard locks** on weapons and armor per class (a mage can't wear plate, a musketeer needs a musket).
 - Can change class later **for a lot of gold**.
@@ -20,6 +20,21 @@ First set: **Charge** (rush forward, knock enemies down), **Second wind** (resto
 
 ## Book of Swords / profiles (later)
 Players will set: a title/epithet, company banner and logo, a short bio line, pinned achievements.
+
+## Wanted features (decided 2026-11-27, not built yet)
+- **Sieges**: the endgame mode, up to 5 players attacking a fort (ladders, ram, archers on the walls, a gate to break).
+- **Living camp**: hirelings idle and spar at the fire, and offline players appear as ghosts in camp.
+- **Rare named weapons** as drops (no crafting).
+- **Weather and time of day**, random per run (rain slows, night shrinks vision, fog hides archers).
+- **Spectators**: people in the voice channel who aren't playing watch live and cheer, giving the party small buffs.
+- **Bosses** with phases and arenas, as rare encounters (a warlord who calls reinforcements, a giant you climb).
+- **Dynamic music** that swells with wave intensity and style rank.
+- **Companies**: cosmetic only for now (name, banner).
+- **Destructible battlefields**: cosmetic breakage only (fences, carts, braziers).
+- **AI director**: watches how the party is doing and shapes the next waves both ways (mercy when struggling, ambushes when cruising).
+
+## Not now / later
+Persistent world map (later), daily faction war (later), mounted combat (not now), PvP (not now), replays and clips (not now), loot crafting (no).
 
 ## Kept as is
 - Death penalty: lose the run's gold; gear, levels and skills stay.
