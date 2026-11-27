@@ -352,6 +352,34 @@ export function initRunUI(env) {
 
   const camp = makeCampBg(CFG.W, CFG.H); ui.campBg = camp.canvas;
   ui.inCamp = () => ui.active && run.phase === 'camp';
+  /* a living camp: your hirelings sit at the fire or spar by the dummy, and fighters from the Book of Swords who are away drift about the edges as ghosts */
+  const ghosts = { list: [], at: -1e9, busy: false };
+  function ghostLoad() {
+    const cl = env.cloud && env.cloud(); if (!cl || ghosts.busy || Date.now() - ghosts.at < 300000) return; ghosts.busy = true; ghosts.at = Date.now();
+    cl.book('').then(r => {
+      const others = ((r && r.players) || []).filter(x => x.name !== profile.name).slice(0, 3);
+      return Promise.all(others.map(x => cl.profile(x.id).then(q => q && q.profile ? { name: x.name, level: x.level, prof: q.profile } : null).catch(() => null)));
+    }).then(L => { ghosts.list = (L || []).filter(Boolean); ghosts.busy = false; }).catch(() => { ghosts.busy = false; });
+  }
+  ui._ghosts = ghosts;
+  const SEATS = [[284, 246, 1], [390, 246, -1], [236, 318, 1], [530, 318, -1]];
+  ui.campActors = () => {
+    if (!ui.inCamp()) return [];
+    ghostLoad();
+    const t = live.t, out = [], H = profile.hirelings || [];
+    const spar = H.length >= 2 ? H.slice(0, 2) : [], sit = H.length >= 2 ? H.slice(2) : H;
+    spar.forEach((h, i) => {                                        // two of them trade blows: one swings, the other parries, then they swap
+      const cyc = t % 3.2, mine = i === (cyc < 1.6 ? 0 : 1), u = (cyc % 1.6) / 1.0;
+      out.push({ key: 'h' + h.hid, x: i ? 468 : 432, y: 318, face: i ? -1 : 1, tier: h.tier, weapon: h.weapon, seed: h.hid * 7919 + 13, name: '',
+        swing: mine && u < 1 ? { t: u, dur: 1, dur0: 1, hitAt: 0.45, extra: 0 } : null, st: !mine && u > 0.35 && u < 0.75 ? { kind: 'parry', u: (u - 0.35) / 0.4 } : null });
+    });
+    sit.slice(0, 4).forEach((h, i) => { const s = SEATS[i]; out.push({ key: 'h' + h.hid, x: s[0], y: s[1], face: s[2], tier: h.tier, weapon: h.weapon, seed: h.hid * 7919 + 13, name: '' }); });
+    ghosts.list.forEach((g, i) => {                                 // away: pale, slow, wandering the far side of camp
+      const m = (g.prof && g.prof.model) || {}, ph = t * 0.12 + i * 2.1, base = 470 + i * 55;
+      out.push({ key: 'g' + i, x: base + Math.sin(ph) * 40, y: 248 + i * 5, face: Math.cos(ph) >= 0 ? 1 : -1, moving: true, walkT: t * 0.8, tier: m.tier || 'leather', weapon: m.weapon || 'longsword', look: m.look || null, ghost: true, alpha: 0.32, name: g.name + ' (away)' });
+    });
+    return out;
+  };
   ui.drawBack = c => {                                               // fire, flags and the station props, over the camp background and behind the fighters
     if (!ui.inCamp()) return;
     drawCampLive(c, live.t, camp.flags);

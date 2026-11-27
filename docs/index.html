@@ -21485,6 +21485,54 @@ void main(){
     const camp = makeCampBg(CFG.W, CFG.H);
     ui.campBg = camp.canvas;
     ui.inCamp = () => ui.active && run.phase === "camp";
+    const ghosts = { list: [], at: -1e9, busy: false };
+    function ghostLoad() {
+      const cl2 = env2.cloud && env2.cloud();
+      if (!cl2 || ghosts.busy || Date.now() - ghosts.at < 3e5) return;
+      ghosts.busy = true;
+      ghosts.at = Date.now();
+      cl2.book("").then((r) => {
+        const others = (r && r.players || []).filter((x) => x.name !== profile.name).slice(0, 3);
+        return Promise.all(others.map((x) => cl2.profile(x.id).then((q) => q && q.profile ? { name: x.name, level: x.level, prof: q.profile } : null).catch(() => null)));
+      }).then((L) => {
+        ghosts.list = (L || []).filter(Boolean);
+        ghosts.busy = false;
+      }).catch(() => {
+        ghosts.busy = false;
+      });
+    }
+    ui._ghosts = ghosts;
+    const SEATS = [[284, 246, 1], [390, 246, -1], [236, 318, 1], [530, 318, -1]];
+    ui.campActors = () => {
+      if (!ui.inCamp()) return [];
+      ghostLoad();
+      const t = live.t, out = [], H = profile.hirelings || [];
+      const spar = H.length >= 2 ? H.slice(0, 2) : [], sit = H.length >= 2 ? H.slice(2) : H;
+      spar.forEach((h, i15) => {
+        const cyc = t % 3.2, mine = i15 === (cyc < 1.6 ? 0 : 1), u = cyc % 1.6 / 1;
+        out.push({
+          key: "h" + h.hid,
+          x: i15 ? 468 : 432,
+          y: 318,
+          face: i15 ? -1 : 1,
+          tier: h.tier,
+          weapon: h.weapon,
+          seed: h.hid * 7919 + 13,
+          name: "",
+          swing: mine && u < 1 ? { t: u, dur: 1, dur0: 1, hitAt: 0.45, extra: 0 } : null,
+          st: !mine && u > 0.35 && u < 0.75 ? { kind: "parry", u: (u - 0.35) / 0.4 } : null
+        });
+      });
+      sit.slice(0, 4).forEach((h, i15) => {
+        const s = SEATS[i15];
+        out.push({ key: "h" + h.hid, x: s[0], y: s[1], face: s[2], tier: h.tier, weapon: h.weapon, seed: h.hid * 7919 + 13, name: "" });
+      });
+      ghosts.list.forEach((g, i15) => {
+        const m = g.prof && g.prof.model || {}, ph2 = t * 0.12 + i15 * 2.1, base = 470 + i15 * 55;
+        out.push({ key: "g" + i15, x: base + Math.sin(ph2) * 40, y: 248 + i15 * 5, face: Math.cos(ph2) >= 0 ? 1 : -1, moving: true, walkT: t * 0.8, tier: m.tier || "leather", weapon: m.weapon || "longsword", look: m.look || null, ghost: true, alpha: 0.32, name: g.name + " (away)" });
+      });
+      return out;
+    };
     ui.drawBack = (c) => {
       if (!ui.inCamp()) return;
       drawCampLive(c, live.t, camp.flags);
@@ -32031,6 +32079,8 @@ void main(){
         ctx.fillRect(x02, p.y - CFG.laneTol, w.reach + 8, CFG.laneTol * 2);
       }
       const list = sim.players.map((q) => ({ kind: "p", q, y: q.y })).concat(sim.enemies.map((e) => ({ kind: "e", e, y: e.y - (e.state === "dying" ? 0.5 : 0) }))).concat(sim.allies.map((a) => ({ kind: "a", a, y: a.y - (a.state === "dying" ? 0.5 : 0) })));
+      const CA = runui && runui.campActors ? runui.campActors() : [];
+      for (const c of CA) list.push({ kind: "c", c, y: c.y });
       list.sort((a, b) => a.y - b.y);
       const target = !p.swing ? sim.findTarget(w) : sim.enemies.find((e) => e.id === p.swing.target);
       for (const it of list) {
@@ -32067,6 +32117,32 @@ void main(){
             st: playerState(q),
             style: q.swing && q.swing.kind && q.swing.kind !== "light" ? (mine && !(runui && runui.active) ? roleStyle : q.roleStyles || {})[q.swing.kind] || { heavy: "chop", dash: qw.twoHanded ? "lunge" : "cut", counter: "cut", jump: "chop" }[q.swing.kind] : q.swing && q.swing.style || (mine ? look.style : "cut")
           }, model3d_default.grabAtt(sim, qw.twoHanded)));
+        } else if (it.kind === "c") {
+          const c = it.c, aw = CFG.weapons[c.weapon] || CFG.weapons.longsword, two = CFG.weaponClasses[aw.cls].twoHanded, L = c.look || model3d_default.enemyLook(CFG.tiers[c.tier] ? c.tier : "leather", c.seed || 1);
+          drawFigure({
+            role: "p",
+            cacheId: c.swing || c.st || c.moving ? null : "c" + c.key,
+            x: c.x,
+            y: c.y,
+            face: c.face,
+            tier: c.look ? CFG.tiers[c.tier] ? c.tier : "leather" : "leather",
+            pHead: L.head,
+            pBody: L.body,
+            pLiv: L.liv || look.liv,
+            pMetal: L.metal,
+            two,
+            wkind: aw.kind || "sword",
+            shield: !two,
+            t: sim.t,
+            swing: c.swing || null,
+            st: c.st || null,
+            moving: !!c.moving,
+            walkT: c.walkT || 0,
+            flash: 0,
+            alpha: c.alpha,
+            noShadow: !!c.ghost
+          });
+          if (c.name) label(c.name, c.x, c.y - 112, c.ghost ? "rgba(190,210,255,.7)" : "#cfe8cf", 8);
         } else if (it.kind === "a") {
           const a = it.a, aw = CFG.weapons[a.weapon], two = CFG.weaponClasses[aw.cls].twoHanded, L = a.look || model3d_default.enemyLook(a.tier, a.lookSeed);
           const swing = a.atk ? { t: a.atk.t, dur: 1, dur0: 1, hitAt: 0.45, extra: 0 } : null;
@@ -32905,7 +32981,7 @@ void main(){
     const sigOf = (f) => [f.role, f.tier, f.pHead || "", f.pBody || "", f.pLiv || "", f.pMetal || "", f.broken ? 1 : 0, f.two ? 1 : 0, f.wkind || "", f.shield ? 1 : 0, f.moving ? 1 : 0].join("|");
     setInterval(() => {
       const ids = new Set(sim.enemies.map((e) => "e" + e.id).concat(sim.allies.map((a) => "a" + a.id), sim.players.map((q) => "p" + q.pid)));
-      for (const k of FC.keys()) if (!ids.has(k)) FC.delete(k);
+      for (const k of FC.keys()) if (!ids.has(k) && k[0] !== "c") FC.delete(k);
     }, 2e3);
     let SM = [];
     const hudCv = $("hud"), hx2 = hudCv.getContext("2d");

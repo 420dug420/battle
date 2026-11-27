@@ -122,7 +122,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     ctx.drawImage(A, dx, dy);
     ctx.restore();
   }
-  setInterval(() => { const ids = new Set(sim.enemies.map(e => 'e' + e.id).concat(sim.allies.map(a => 'a' + a.id), sim.players.map(q => 'p' + q.pid))); for (const k of FC.keys()) if (!ids.has(k)) FC.delete(k); }, 2000);
+  setInterval(() => { const ids = new Set(sim.enemies.map(e => 'e' + e.id).concat(sim.allies.map(a => 'a' + a.id), sim.players.map(q => 'p' + q.pid))); for (const k of FC.keys()) if (!ids.has(k) && k[0] !== 'c') FC.delete(k); }, 2000);
 
   /* guests: the host's updates come 20 times a second; blend each fighter from where it is drawn to where the update puts it */
   let SM = [];
@@ -378,6 +378,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     }
 
     const list = sim.players.map(q => ({ kind: 'p', q, y: q.y })).concat(sim.enemies.map(e => ({ kind: 'e', e, y: e.y - (e.state === 'dying' ? 0.5 : 0) }))).concat(sim.allies.map(a => ({ kind: 'a', a, y: a.y - (a.state === 'dying' ? 0.5 : 0) })));
+    const CA = runui && runui.campActors ? runui.campActors() : []; for (const c of CA) list.push({ kind: 'c', c, y: c.y });
     list.sort((a, b) => a.y - b.y);
     const target = (!p.swing) ? sim.findTarget(w) : sim.enemies.find(e => e.id === p.swing.target);
 
@@ -392,6 +393,11 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
         drawFigure(Object.assign({ role: 'p', x: q.x, y: q.y, z: q.z || 0, face: q.skill && q.skill.id === 'whirlwind' ? (Math.floor(q.skill.t / 0.07) % 2 ? -q.face : q.face) : q.face, tier: lk.tier, pHead: lk.head, pBody: lk.body, pLiv: lk.liv, pMetal: lk.metal, broken: false, two: qw.twoHanded, wkind: qw.kind || 'sword', shield: !!q.shield && !qw.twoHanded,
           swing: q.swing, moving: q.moving, walkT: q.walkT, t: sim.t, flash: q.flash, flashMax: 0.2, hurt: q.hurt, hurtMax: 0.6, st: playerState(q),
           style: q.swing && q.swing.kind && q.swing.kind !== 'light' ? (((mine && !(runui && runui.active)) ? roleStyle : (q.roleStyles || {}))[q.swing.kind] || ({ heavy: 'chop', dash: qw.twoHanded ? 'lunge' : 'cut', counter: 'cut', jump: 'chop' })[q.swing.kind]) : ((q.swing && q.swing.style) || (mine ? look.style : 'cut')) }, M3.grabAtt(sim, qw.twoHanded)));
+      } else if (it.kind === 'c') {                                  // camp life: a hireling at the fire or sparring, or a ghost of an absent fighter
+        const c = it.c, aw = CFG.weapons[c.weapon] || CFG.weapons.longsword, two = CFG.weaponClasses[aw.cls].twoHanded, L = c.look || M3.enemyLook(CFG.tiers[c.tier] ? c.tier : 'leather', c.seed || 1);
+        drawFigure({ role: 'p', cacheId: c.swing || c.st || c.moving ? null : 'c' + c.key, x: c.x, y: c.y, face: c.face, tier: c.look ? (CFG.tiers[c.tier] ? c.tier : 'leather') : 'leather', pHead: L.head, pBody: L.body, pLiv: L.liv || look.liv, pMetal: L.metal, two, wkind: aw.kind || 'sword', shield: !two,
+          t: sim.t, swing: c.swing || null, st: c.st || null, moving: !!c.moving, walkT: c.walkT || 0, flash: 0, alpha: c.alpha, noShadow: !!c.ghost });
+        if (c.name) label(c.name, c.x, c.y - 112, c.ghost ? 'rgba(190,210,255,.7)' : '#cfe8cf', 8);
       } else if (it.kind === 'a') {                                  // a hireling: a fighter on your side
         const a = it.a, aw = CFG.weapons[a.weapon], two = CFG.weaponClasses[aw.cls].twoHanded, L = a.look || M3.enemyLook(a.tier, a.lookSeed);
         const swing = a.atk ? { t: a.atk.t, dur: 1.0, dur0: 1.0, hitAt: 0.45, extra: 0 } : null;
