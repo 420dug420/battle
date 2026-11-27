@@ -157,7 +157,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   // Mouse side = facing, left click = light attack, right click = heavy attack, cursor = aim for throws and shots. Keys are rebindable.
   const keys = {}, aim = { x: null, y: null };
   const DEF = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', dash: 'ShiftLeft', block: 'KeyQ', grab: 'KeyG', throw: 'KeyF', slam: 'KeyV', strike: 'KeyR', fire: 'KeyE', jump: 'Space', use: 'KeyT' };
-  const NAMES = { up: 'Move up', down: 'Move down', left: 'Move left', right: 'Move right', dash: 'Dash (stamina)', block: 'Block (hold) / parry (tap)', grab: 'Grab (hold)', throw: 'Throw', slam: 'Slam', strike: 'Strike', fire: 'Fire shot (off for now: saved for items and skills)', jump: 'Jump (click in the air = jump attack)', use: 'Use (walk up to a camp sign)' };
+  const NAMES = { up: 'Move up', down: 'Move down', left: 'Move left', right: 'Move right', dash: 'Dash (stamina)', block: 'Block (hold) / parry (tap)', grab: 'Grab (hold; middle mouse button too)', throw: 'Throw', slam: 'Slam', strike: 'Strike', fire: 'Fire shot (off for now: saved for items and skills)', jump: 'Jump (click in the air = jump attack)', use: 'Use (walk up to a camp sign)' };
   let binds = Object.assign({}, DEF); try { Object.assign(binds, JSON.parse(localStorage.getItem('pw.binds') || '{}')); } catch (e) { }
   const ARROW = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   const norm = c => c.startsWith('Shift') ? 'ShiftLeft' : c;
@@ -188,8 +188,10 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   window.addEventListener('keyup', e => { const a = actOf(e.code); if (a) setKey(a, false); });
   const toSim = ev => { const r = cv.getBoundingClientRect(); aim.x = Math.round((ev.clientX - r.left) / r.width * CFG.W); aim.y = Math.round((ev.clientY - r.top) / r.height * CFG.H); };
   cv.addEventListener('pointermove', toSim);
-  cv.addEventListener('pointerdown', ev => { toSim(ev); cv.focus(); if (ev.button === 2) keys.heavy = true; else if (ev.button === 0) keys.act = true; ev.preventDefault(); });
-  window.addEventListener('pointerup', ev => { if (ev.button === 2) keys.heavy = false; else if (ev.button === 0) keys.act = false; });
+  cv.addEventListener('pointerdown', ev => { toSim(ev); cv.focus(); if (ev.button === 2) keys.heavy = true; else if (ev.button === 0) keys.act = true; else if (ev.button === 1) keys.mg = true; ev.preventDefault(); });
+  window.addEventListener('pointerup', ev => { if (ev.button === 2) keys.heavy = false; else if (ev.button === 0) keys.act = false; else if (ev.button === 1) keys.mg = false; });
+  cv.addEventListener('mousedown', ev => { if (ev.button === 1) ev.preventDefault(); });      // middle click grabs; stop the browser's auto-scroll
+  cv.addEventListener('auxclick', ev => { if (ev.button === 1) ev.preventDefault(); });
   cv.addEventListener('contextmenu', e => e.preventDefault());
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
   function drawBinds() {
@@ -199,7 +201,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   }
   drawBinds();
   const resetBinds = $('bindreset'); if (resetBinds) resetBinds.onclick = () => { binds = Object.assign({}, DEF); try { localStorage.removeItem('pw.binds'); } catch (e) { } rebinding = null; drawBinds(); };
-  const curInput = () => ({ x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!keys.g, fin: keys.fin || '', heavy: !!keys.heavy, block: !!keys.block, dash: !!keys.dash, fire: false, jump: !!keys.jump, ax: aim.x, ay: aim.y });
+  const curInput = () => ({ x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!(keys.g || keys.mg), fin: keys.fin || '', heavy: !!keys.heavy, block: !!keys.block, dash: !!keys.dash, fire: false, jump: !!keys.jump, ax: aim.x, ay: aim.y });
   const sameInput = (a, b) => ['x', 'y', 'act', 'g', 'fin', 'heavy', 'block', 'dash', 'fire', 'jump', 'ax', 'ay'].every(k => (a[k] == null ? null : a[k]) === (b[k] == null ? null : b[k]));
   let delayQ = [];                                                    // input delay (ms) to feel the parry and clash timing at online lag
 
@@ -706,7 +708,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     if (saved.dur == null) tierDefaults();
     applySettings();
     try { if (saved.atkstyle && saved.atkstyle.slice(0, 2) === 'c_') $('atkstyle').value = saved.atkstyle; } catch (e) { }
-    cmd({ t: 'say', text: 'Manual combat: mouse aims and attacks, Q blocks, Shift dashes, G grabs.' });
+    cmd({ t: 'say', text: 'Manual combat: mouse aims and attacks, Q blocks, Shift dashes, G or middle click grabs.' });
     cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] });
     const clearKeys = () => { for (const k in keys) keys[k] = k === 'fin' ? '' : false; };
     runui = initRunUI({ $, live, FONT, readLook, lookOptions: tiers => { const pools = (tiers || ['leather', 'mail', 'plate']).map(t => M3.rankPools[t]).filter(Boolean), ok = (k, v) => !v || pools.some(p => p[k].includes(v));      // only the head, body and metal pieces of the armor tiers you may use

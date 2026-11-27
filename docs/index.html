@@ -118,7 +118,7 @@ i.bar { display: block; height: 6px; background: #04062a; border: 1px solid #f2f
       <canvas id="stage" width="640" height="360" tabindex="0" aria-label="Combat arena. Move with W A S D or the arrow keys."></canvas>
       <canvas id="hud" width="640" height="360" aria-hidden="true"></canvas>
       <div class="under">
-        <span><b>Mouse</b>: side sets facing, left click light attack, right click heavy attack, cursor aims. <b>W A S D</b> move, <b>Shift</b> dash (click during it for a dash attack), <b>Space</b> jump (click in the air for a jump attack), hold <b>Q</b> to block, tap <b>Q</b> just before a hit to parry (heavies can only be parried), Hold <b>G</b> beside a staggered enemy to grab it, then <b>left click</b> a quick strike (twice at most), <b>right click</b> throw toward the cursor, <b>V</b> slam (<b>F</b> and <b>R</b> still throw and strike). <b>P</b> pauses. Keys are rebindable below.</span>
+        <span><b>Mouse</b>: side sets facing, left click light attack, right click heavy attack, cursor aims. <b>W A S D</b> move, <b>Shift</b> dash (click during it for a dash attack), <b>Space</b> jump (click in the air for a jump attack), hold <b>Q</b> to block, tap <b>Q</b> just before a hit to parry (heavies can only be parried), Hold <b>G</b> (or the <b>middle mouse button</b>) beside a staggered enemy to grab it, then <b>left click</b> a quick strike (twice at most), <b>right click</b> throw toward the cursor, <b>V</b> slam (<b>F</b> and <b>R</b> still throw and strike). <b>P</b> pauses. Keys are rebindable below.</span>
         <span id="status" aria-live="off">Chain step 1</span>
       </div>
       <div class="sub">Tuning guesses, not design: swing speed, how DEX shortens it, two-hander damage, armor durability, flee SAN. Everything else follows the style guide.</div>
@@ -31792,7 +31792,7 @@ void main(){
         if (saved.atkstyle && saved.atkstyle.slice(0, 2) === "c_") $("atkstyle").value = saved.atkstyle;
       } catch (e) {
       }
-      cmd({ t: "say", text: "Manual combat: mouse aims and attacks, Q blocks, Shift dashes, G grabs." });
+      cmd({ t: "say", text: "Manual combat: mouse aims and attacks, Q blocks, Shift dashes, G or middle click grabs." });
       cmd({ t: "spawn", list: [{ tier: "leather", dur: CFG.tiers.leather.dur, ai: "stand" }] });
       const clearKeys = () => {
         for (const k in keys) keys[k] = k === "fin" ? "" : false;
@@ -31995,7 +31995,7 @@ void main(){
     let hudOn = true;
     const keys = {}, aim = { x: null, y: null };
     const DEF = { up: "KeyW", down: "KeyS", left: "KeyA", right: "KeyD", dash: "ShiftLeft", block: "KeyQ", grab: "KeyG", throw: "KeyF", slam: "KeyV", strike: "KeyR", fire: "KeyE", jump: "Space", use: "KeyT" };
-    const NAMES2 = { up: "Move up", down: "Move down", left: "Move left", right: "Move right", dash: "Dash (stamina)", block: "Block (hold) / parry (tap)", grab: "Grab (hold)", throw: "Throw", slam: "Slam", strike: "Strike", fire: "Fire shot (off for now: saved for items and skills)", jump: "Jump (click in the air = jump attack)", use: "Use (walk up to a camp sign)" };
+    const NAMES2 = { up: "Move up", down: "Move down", left: "Move left", right: "Move right", dash: "Dash (stamina)", block: "Block (hold) / parry (tap)", grab: "Grab (hold; middle mouse button too)", throw: "Throw", slam: "Slam", strike: "Strike", fire: "Fire shot (off for now: saved for items and skills)", jump: "Jump (click in the air = jump attack)", use: "Use (walk up to a camp sign)" };
     let binds = Object.assign({}, DEF);
     try {
       Object.assign(binds, JSON.parse(localStorage.getItem("pw.binds") || "{}"));
@@ -32069,11 +32069,19 @@ void main(){
       cv.focus();
       if (ev.button === 2) keys.heavy = true;
       else if (ev.button === 0) keys.act = true;
+      else if (ev.button === 1) keys.mg = true;
       ev.preventDefault();
     });
     window.addEventListener("pointerup", (ev) => {
       if (ev.button === 2) keys.heavy = false;
       else if (ev.button === 0) keys.act = false;
+      else if (ev.button === 1) keys.mg = false;
+    });
+    cv.addEventListener("mousedown", (ev) => {
+      if (ev.button === 1) ev.preventDefault();
+    });
+    cv.addEventListener("auxclick", (ev) => {
+      if (ev.button === 1) ev.preventDefault();
     });
     cv.addEventListener("contextmenu", (e) => e.preventDefault());
     window.addEventListener("blur", () => {
@@ -32090,7 +32098,7 @@ void main(){
       rebinding = null;
       drawBinds();
     };
-    const curInput = () => ({ x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!keys.g, fin: keys.fin || "", heavy: !!keys.heavy, block: !!keys.block, dash: !!keys.dash, fire: false, jump: !!keys.jump, ax: aim.x, ay: aim.y });
+    const curInput = () => ({ x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!(keys.g || keys.mg), fin: keys.fin || "", heavy: !!keys.heavy, block: !!keys.block, dash: !!keys.dash, fire: false, jump: !!keys.jump, ax: aim.x, ay: aim.y });
     const sameInput = (a, b) => ["x", "y", "act", "g", "fin", "heavy", "block", "dash", "fire", "jump", "ax", "ay"].every((k) => (a[k] == null ? null : a[k]) === (b[k] == null ? null : b[k]));
     let delayQ = [];
     let paused = false, timeScale = 1;
