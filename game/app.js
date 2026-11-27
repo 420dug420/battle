@@ -423,6 +423,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     ctx.globalAlpha = 1;
 
     // player hp + swing
+    if (runui && runui.active && runui.drawOver) runui.drawOver(ctx);              // the camp's darkness, over the fighters
     if (p.hp > 0 && !p.carry && (sim.mode === 'battle' || sim.mode === 'run') && sim.players.some(q => q !== p && q.hp <= 0 && !q.rescued && !q.carried && Math.abs(q.x - p.x) <= CFG.rescue.reach + 6 && Math.abs(q.y - p.y) <= CFG.laneTol + 6)) label('G: carry them to the edge', p.x, p.y - 140, '#9fd3ff', 9);
     if (p.carry) label('Carry to the edge of the field (G drops)', p.x, p.y - 140, '#9fd3ff', 9);
     for (const q of sim.players) if (q !== p && q.hp <= 0 && !q.rescued && (sim.mode === 'battle' || sim.mode === 'run')) label((q.name || 'Ally') + ' DOWN', q.x, q.y - 40, '#ff9a8a', 9);

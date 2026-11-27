@@ -5,7 +5,7 @@
    ============================================================ */
 import { CFG, applyCmd } from './sim.js';
 import * as R from './run.js';
-import { makeCampBg, drawCampLive, drawStation } from './camp.js';
+import { makeCampBg, drawCampLive, drawCampOver, drawStation, STATION_TOP } from './camp.js';
 
 const KEY = 'pw.run.profile';
 const STATIONS = [                                        // where things are in camp (sim x); the dummy stands at 120
@@ -258,10 +258,11 @@ export function initRunUI(env) {
     drawCampLive(c, live.t, camp.flags);
     for (const s of STATIONS) drawStation(c, s.id, s.x, 262, Math.abs(s.x - live.player.x) <= NEAR, live.t);
   };
+  ui.drawOver = c => { if (ui.inCamp()) drawCampOver(c, live.t, CFG.W, CFG.H); };
   ui.drawLabels = c => {                                             // station names, at screen resolution
     if (!ui.inCamp()) return;
     c.save(); c.textAlign = 'center'; c.lineJoin = 'round'; c.lineWidth = 3; c.strokeStyle = '#14101c';
-    for (const s of STATIONS) { const nearIt = Math.abs(s.x - live.player.x) <= NEAR; c.font = '9px ' + FONT; c.strokeText(s.name, s.x, 262 - 58); c.fillStyle = nearIt ? '#ffe27a' : '#f2ecdc'; c.fillText(s.name, s.x, 262 - 58); }
+    for (const s of STATIONS) { const nearIt = Math.abs(s.x - live.player.x) <= NEAR; c.font = '9px ' + FONT; const ly = 262 - (STATION_TOP[s.id] || 58) - 6; c.strokeText(s.name, s.x, ly); c.fillStyle = nearIt ? '#ffe27a' : '#f2ecdc'; c.fillText(s.name, s.x, ly); }
     c.font = '9px ' + FONT; c.strokeText('Practice dummy', 120, 232); c.fillStyle = '#f2ecdc'; c.fillText('Practice dummy', 120, 232);
     c.restore();
   };
