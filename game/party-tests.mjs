@@ -16,7 +16,7 @@ H.s.players[1].x = RUNCFG.cart.x; host.onMsg('p2', { t: 'ready', map: 'fields' }
 ok(H.r.phase === 'wave', 'both ready -> wave, got ' + H.r.phase);
 host.onMsg('p2', { t: 'in', i: { x: 1, y: 0 } });
 for (let i = 0; i < 200; i++) { H.s.step(1 / 60); H.r.update(1 / 60); host.afterStep(); }
-const snaps = q.filter(x => x[0] === 'p2' && x[1].t === 'snap'); ok(snaps.length > 10, 'snaps sent ' + snaps.length);
+const snaps = q.filter(x => x[0] === null && x[1].t === 'snap'); ok(snaps.length > 10, 'snaps sent ' + snaps.length);
 ok(H.s.players[1].x > 300, 'guest input moved player');
 // guest mirror
 const G = new Sim(CFG, 1); const gr = new GuestRun(G, gp, () => { }); const last = JSON.parse(JSON.stringify(snaps[snaps.length - 1][1]));
@@ -27,4 +27,8 @@ ok(G.enemies.length === H.s.enemies.length, 'mirror enemies');
 host.onMsg('p2', { t: 'build', build: { name: 'x'.repeat(99), level: 9999, d: { maxHp: 1e9, dmgMult: 1e9 } } });
 ok(H.r.byPid('p2').build.name.length <= 16 && H.r.byPid('p2').build.d.maxHp <= 400, 'build clamped');
 host.onLeave('p2'); ok(H.r.members.length === 1, 'leave removes');
+// a host can't hand a guest an impossible reward
+{ const { applyRemoteResult, newProfile: np } = await import('./run.js'); const g = np('G'), g0 = g.gold; applyRemoteResult(g, { kind: 'left', wave: 5, gold: 1e9, xp: 1e9, uses: { str: 1e9 } }); ok(g.gold - g0 <= 360 && g.level < 30, 'remote reward clamped'); }
+// a hostile snapshot can't set prototypes or unknown fields
+{ const S = new Sim(CFG, 1); applySnap(S, JSON.parse('{"t":"snap","time":1,"players":[{"pid":"p9","x":5,"__proto__":{"evil":1},"zzz":2}],"enemies":[],"allies":[],"proj":[],"texts":[]}'), 'p9'); ok(S.player.evil === undefined && S.player.zzz === undefined && S.player.x === 5, 'snapshot keys filtered'); }
 if (fails) process.exit(1); console.log('PASS party net');

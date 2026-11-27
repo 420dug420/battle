@@ -1,6 +1,6 @@
 /* Party relay: a Durable Object that only passes messages. The first connection is the host (runs the sim); everyone else is a guest.
    Guest -> host only, host -> one guest or all. Max 5, small messages, rate capped. If the host leaves, the room closes so a fresh one can start. */
-const MAX = 5, MAXLEN = 6000, RATE = 90;                    // messages per second per socket
+const MAX = 5, MAXLEN = 6000, HOSTLEN = 65536, RATE = 90, HOSTRATE = 240;      // guests send small inputs; the host sends snapshots (bigger, more often)
 export class PartyRoom {
   constructor(state) { this.state = state; this.socks = new Map(); this.host = null; this.n = 0; }
   async fetch(req) {
@@ -12,8 +12,8 @@ export class PartyRoom {
     s.send(JSON.stringify({ t: 'hello', id, host: isHost }));
     if (!isHost) this.to(this.host, { t: 'peer-join', id });
     s.addEventListener('message', ev => {
-      if (typeof ev.data !== 'string' || ev.data.length > MAXLEN) return;
-      const now = Date.now(); if (now - rec.win > 1000) { rec.win = now; rec.cnt = 0; } if (++rec.cnt > RATE) return;
+      const isH = id === this.host; if (typeof ev.data !== 'string' || ev.data.length > (isH ? HOSTLEN : MAXLEN)) return;
+      const now = Date.now(); if (now - rec.win > 1000) { rec.win = now; rec.cnt = 0; } if (++rec.cnt > (isH ? HOSTRATE : RATE)) return;
       let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (!m || typeof m !== 'object') return;
       if (id === this.host) { const dest = m.to; delete m.to; if (dest) this.to(dest, m); else for (const k of this.socks.keys()) if (k !== id) this.to(k, m); }

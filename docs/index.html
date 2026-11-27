@@ -19458,7 +19458,9 @@ void main(){
   };
   var R_HP = () => RUNCFG.waveHp;
   function applyRemoteResult(p, r) {
-    if (!r || r.kind === "wait") return { levels: 0 };
+    if (!r || r.kind === "wait" || r.kind !== "left" && r.kind !== "dead") return { levels: 0 };
+    const n = (v2, hi) => Math.max(0, Math.min(hi, Math.floor(+v2) || 0)), wave = n(r.wave, 500);
+    r = { kind: r.kind, wave, xp: n(r.xp, 400 + 120 * wave), gold: n(r.gold, 60 + 60 * wave), hireXp: n(r.hireXp, 20 * wave + 20), uses: Object.fromEntries(["heavy", "throw", "slam", "strike", "light", "counter", "dash", "jump", "hurt"].map((k) => [k, n(r.uses && r.uses[k], 1500)])) };
     let up2 = addXp(p, r.xp || 0);
     for (const k in r.uses || {}) for (let i15 = 0; i15 < r.uses[k]; i15++) trainFromUse(p, k);
     for (const h of p.hirelings) for (let i15 = 0; i15 < (r.hireXp || 0); i15++) hirelingXp(h, 1);
@@ -30158,15 +30160,27 @@ void main(){
   var pickR = (o, keys, r) => {
     const out = {};
     for (const k of keys) {
-      const v2 = o[k];
-      out[k] = typeof v2 === "number" ? r ? r(v2) : v2 : v2;
+      let v2 = o[k];
+      if (typeof v2 === "number" && r) v2 = r(v2);
+      if (v2 === 0 || v2 === false || v2 == null || v2 === "") continue;
+      out[k] = v2;
     }
     return out;
+  };
+  var BOOL = /* @__PURE__ */ new Set(["broken", "flee", "moving", "dramatic", "down", "held", "dummy", "blocking", "air", "inv", "hit", "whiff", "heavy", "fr"]);
+  var OBJ = /* @__PURE__ */ new Set(["swing", "grab", "dash", "atk", "fly", "look", "roleStyles", "kindMoves"]);
+  var unpack = (n, keys, extra) => {
+    const o = {};
+    for (const k of keys.concat(extra || [])) {
+      const v2 = n[k];
+      o[k] = v2 !== void 0 ? v2 && typeof v2 === "object" && !Array.isArray(v2) ? JSON.parse(JSON.stringify(v2)) : v2 : BOOL.has(k) ? false : OBJ.has(k) ? null : k === "name" || k === "pid" || k === "state" || k === "tier" || k === "kind" || k === "weapon" || k === "armorKey" || k === "chain" || k === "move" ? k === "state" ? "alive" : null : 0;
+    }
+    return o;
   };
   var P_KEYS = ["pid", "name", "look", "armorKey", "roleStyles", "weapon", "x", "y", "z", "face", "hp", "maxHp", "stamina", "staminaMax", "moving", "walkT", "flash", "hurt", "blocking", "blockT", "stunT", "clashT", "clashMax", "parryT", "shotT", "air", "jumpT", "chain", "move", "inv", "dex"];
   var SW_KEYS = ["t", "dur", "dur0", "hitAt", "extra", "move", "target", "hit", "kind", "style", "whiff", "mult"];
   var GR_KEYS = ["eId", "phase", "t", "dur", "hit", "strikes", "holdT"];
-  var E_KEYS = ["id", "x", "y", "z", "face", "state", "hp", "maxHp", "dur", "durMax", "broken", "wounded", "flee", "tier", "kind", "lookSeed", "moving", "walkT", "flash", "hurt", "deathT", "dramatic", "stun", "down", "held", "clashT", "clashMax", "dummy", "chr", "san"];
+  var E_KEYS = ["id", "x", "y", "z", "face", "state", "hp", "maxHp", "dur", "durMax", "broken", "wounded", "flee", "tier", "kind", "lookSeed", "moving", "walkT", "flash", "hurt", "deathT", "dramatic", "stun", "down", "held", "clashT", "clashMax", "dummy"];
   var A_KEYS = ["id", "name", "x", "y", "z", "face", "hp", "maxHp", "tier", "weapon", "state", "deathT", "moving", "walkT", "flash", "hurt", "broken", "lookSeed", "owner"];
   function packSnap(sim, run, tick, texts) {
     return {
@@ -30198,27 +30212,30 @@ void main(){
     };
   }
   function applySnap(sim, m, myPid) {
-    sim.t = m.time;
-    sim.shake = m.shake;
-    sim.mode = m.mode;
+    sim.t = +m.time || 0;
+    sim.shake = +m.shake || 0;
+    sim.mode = m.mode === "battle" || m.mode === "run" ? m.mode : "arena";
     const old = new Map(sim.players.map((q) => [q.pid, q]));
-    sim.players = m.players.map((n) => {
-      const q = old.get(n.pid) || sim.mkPlayer(0, n.pid);
-      Object.assign(q, n);
-      if (!n.swing) q.swing = null;
-      if (!n.grab) q.grab = null;
-      if (!n.dash) q.dash = null;
-      if (!n.kindMoves) q.kindMoves = {};
+    sim.players = (m.players || []).slice(0, 5).map((n) => {
+      const v2 = unpack(n, P_KEYS, ["swing", "grab", "dash", "kindMoves"]), q = old.get(v2.pid) || sim.mkPlayer(0, v2.pid);
+      if (!v2.kindMoves) v2.kindMoves = {};
+      Object.assign(q, v2);
       return q;
     });
     sim.players.forEach((q, i15) => q.i = i15);
     sim.player = sim.players.find((q) => q.pid === myPid) || sim.players[0];
     const oe = new Map(sim.enemies.map((e) => [e.id, e]));
-    sim.enemies = m.enemies.map((n) => Object.assign(oe.get(n.id) || {}, n));
+    sim.enemies = (m.enemies || []).slice(0, 80).map((n) => {
+      const v2 = unpack(n, E_KEYS, ["atk", "fly"]), e = oe.get(v2.id) || {};
+      return Object.assign(e, v2);
+    });
     const oa2 = new Map(sim.allies.map((a) => [a.id, a]));
-    sim.allies = m.allies.map((n) => Object.assign(oa2.get(n.id) || {}, n));
-    sim.proj = m.proj;
-    for (const t of m.texts) sim.texts.push(Object.assign({ life: 0.9, max: 0.9, size: 10 }, t));
+    sim.allies = (m.allies || []).slice(0, 20).map((n) => {
+      const v2 = unpack(n, A_KEYS, ["atk"]), a = oa2.get(v2.id) || {};
+      return Object.assign(a, v2);
+    });
+    sim.proj = (m.proj || []).slice(0, 60).map((q) => ({ x: +q.x || 0, y: +q.y || 0, vx: +q.vx || 0, vy: +q.vy || 0 }));
+    for (const t of (m.texts || []).slice(0, 20)) sim.texts.push({ x: +t.x || 0, y: +t.y || 0, text: String(t.text || "").slice(0, 24), col: String(t.col || "#fff").slice(0, 16), size: +t.size || 10, life: 0.9, max: 0.9 });
   }
   var GuestRun = class {
     constructor(sim, profile, send, hooks) {
@@ -30393,7 +30410,7 @@ void main(){
       if (this.tick % 3) return;
       const texts = sim.textOut.splice(0).map((t) => ({ x: r1(t.x), y: r1(t.y), text: t.text, col: t.col, size: t.size }));
       const snap = packSnap(sim, run, this.tick, texts);
-      for (const id of this.peers.keys()) this.send(id, snap);
+      if (this.peers.size) this.send(null, snap);
     }
   };
   function clean(b) {
@@ -31032,14 +31049,6 @@ void main(){
           poly(p);
         }
       }
-    }, netSync = function() {
-      if (!net) return;
-      const p = sim.player;
-      for (const id in sim.moves) if (!net.sentMoves.has(id)) {
-        send({ t: "move", id, data: sim.moves[id] });
-        net.sentMoves.add(id);
-      }
-      send({ t: "set", weapon: p.weapon, dex: p.dex, move: p.move });
     }, bakeBuild = function(m, i15) {
       if (m.p) return;
       const b = m.build, aw = CFG.weapons[b.weapon];
@@ -31097,7 +31106,7 @@ void main(){
           P3.id = m.id;
           if (m.host) {
             runui.run.hooks.build = bakeBuild;
-            P3.h = new PartyHost({ sim: live, run: runui.run, send: (to2, x) => out(Object.assign({ to: to2 }, x)), selfId: m.id });
+            P3.h = new PartyHost({ sim: live, run: runui.run, send: (to2, x) => out(to2 ? Object.assign({ to: to2 }, x) : x), selfId: m.id });
             $("netmsg").textContent = "Room " + room + ": you are hosting. Others join the same room.";
           } else {
             P3.prev = runui.run;
@@ -31690,9 +31699,10 @@ void main(){
     });
     $("euse").addEventListener("change", applyEnemy);
     applyEnemy();
-    let net = null;
-    const send = (m) => {
-      if (net && net.ws.readyState === 1 && net.role === "player") net.ws.send(JSON.stringify(m));
+    const net = null;
+    const send = () => {
+    };
+    const netSync = () => {
     };
     let party = null;
     const roomName = () => ($("netroom").value.trim() || "test").replace(/[^\w-]/g, "").slice(0, 40);

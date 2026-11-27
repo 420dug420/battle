@@ -398,7 +398,9 @@ const R_HP = () => RUNCFG.waveHp;
 
 /* what a remote member's browser does with the reward the host sends it when a run ends (and for the local run's growth is already applied) */
 export function applyRemoteResult(p, r) {
-  if (!r || r.kind === 'wait') return { levels: 0 };
+  if (!r || r.kind === 'wait' || (r.kind !== 'left' && r.kind !== 'dead')) return { levels: 0 };
+  const n = (v, hi) => Math.max(0, Math.min(hi, Math.floor(+v) || 0)), wave = n(r.wave, 500);      // the host's numbers are not trusted: each is held to what one run could earn
+  r = { kind: r.kind, wave, xp: n(r.xp, 400 + 120 * wave), gold: n(r.gold, 60 + 60 * wave), hireXp: n(r.hireXp, 20 * wave + 20), uses: Object.fromEntries(['heavy', 'throw', 'slam', 'strike', 'light', 'counter', 'dash', 'jump', 'hurt'].map(k => [k, n(r.uses && r.uses[k], 1500)])) };
   let up = addXp(p, r.xp || 0);
   for (const k in (r.uses || {})) for (let i = 0; i < r.uses[k]; i++) trainFromUse(p, k);
   for (const h of p.hirelings) for (let i = 0; i < (r.hireXp || 0); i++) hirelingXp(h, 1);

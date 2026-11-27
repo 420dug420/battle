@@ -5,7 +5,6 @@
 import M3 from '../rig/model3d.js';
 import { CFG, Sim, applyCmd, SIM_VERSION, fitsWindow, minDexForWindow, moveTau, segAt } from './sim.js';
 import BUILTIN_ANIMS from './anims.json';
-import { applySnapshot } from '../server/protocol.js';
 import { initRunUI } from './runui.js';
 import { initDiscord } from './discord.js';
 import { PartyHost, GuestRun, applySnap } from './party.js';
@@ -486,13 +485,10 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   applyEnemy();
 
   /* ---------- online test: a server room owns the fight; this page sends input and draws its snapshots ---------- */
-  let net = null;
-  const send = m => { if (net && net.ws.readyState === 1 && net.role === 'player') net.ws.send(JSON.stringify(m)); };
-  function netSync() {                                           // weapon, DEX and the move (with its baked blade path) to the room
-    if (!net) return; const p = sim.player;
-    for (const id in sim.moves) if (!net.sentMoves.has(id)) { send({ t: 'move', id, data: sim.moves[id] }); net.sentMoves.add(id); }   // player and enemy blade paths
-    send({ t: 'set', weapon: p.weapon, dex: p.dex, move: p.move });
-  }
+  const net = null;                                                // the old server-run test room is gone; online play is the party (below)
+  const send = () => { };
+  const netSync = () => { };
+
   /* ---------- party: one browser hosts the run, the others send input and draw what the host sends (game/party.js, server/party-room.js) ---------- */
   let party = null;
   const roomName = () => ($('netroom').value.trim() || 'test').replace(/[^\w-]/g, '').slice(0, 40);
@@ -518,7 +514,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       let m; try { m = JSON.parse(ev.data); } catch (e) { return; } const P = party; if (!P) return;
       if (m.t === 'hello') {
         P.id = m.id;
-        if (m.host) { runui.run.hooks.build = bakeBuild; P.h = new PartyHost({ sim: live, run: runui.run, send: (to, x) => out(Object.assign({ to }, x)), selfId: m.id }); $('netmsg').textContent = 'Room ' + room + ': you are hosting. Others join the same room.'; }
+        if (m.host) { runui.run.hooks.build = bakeBuild; P.h = new PartyHost({ sim: live, run: runui.run, send: (to, x) => out(to ? Object.assign({ to }, x) : x), selfId: m.id }); $('netmsg').textContent = 'Room ' + room + ': you are hosting. Others join the same room.'; }
         else { P.prev = runui.run; P.g = new GuestRun(live, runui.profile, out, { result: () => runui.afterResult() }); P.g.me.pid = m.id; runui.setRun(P.g); out({ t: 'join', build: buildOf(runui.profile) }); $('netmsg').textContent = 'Room ' + room + ': you joined the host\'s camp.'; }
       } else if (m.t === 'peer-join' && P.h) P.h.onJoin(m.id);
       else if (m.t === 'peer-leave' && P.h) P.h.onLeave(m.id);

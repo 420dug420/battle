@@ -7,11 +7,15 @@ import { Run, buildOf, applyRemoteResult, RUNCFG } from './run.js';
 import { applyCmd } from './sim.js';
 
 const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
-const pickR = (o, keys, r) => { const out = {}; for (const k of keys) { const v = o[k]; out[k] = typeof v === 'number' ? (r ? r(v) : v) : v; } return out; };
+const pickR = (o, keys, r) => { const out = {}; for (const k of keys) { let v = o[k]; if (typeof v === 'number' && r) v = r(v); if (v === 0 || v === false || v == null || v === '') continue; out[k] = v; } return out; };   // falsy values are left out; the guest puts them back
+const BOOL = new Set(['broken', 'flee', 'moving', 'dramatic', 'down', 'held', 'dummy', 'blocking', 'air', 'inv', 'hit', 'whiff', 'heavy', 'fr']);
+const OBJ = new Set(['swing', 'grab', 'dash', 'atk', 'fly', 'look', 'roleStyles', 'kindMoves']);
+// rebuild a record from the host's compact one: only known keys (nothing like __proto__ gets through), with defaults for what was left out
+const unpack = (n, keys, extra) => { const o = {}; for (const k of keys.concat(extra || [])) { const v = n[k]; o[k] = v !== undefined ? (v && typeof v === 'object' && !Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : v) : BOOL.has(k) ? false : OBJ.has(k) ? null : (k === 'name' || k === 'pid' || k === 'state' || k === 'tier' || k === 'kind' || k === 'weapon' || k === 'armorKey' || k === 'chain' || k === 'move') ? (k === 'state' ? 'alive' : null) : 0; } return o; };
 const P_KEYS = ['pid', 'name', 'look', 'armorKey', 'roleStyles', 'weapon', 'x', 'y', 'z', 'face', 'hp', 'maxHp', 'stamina', 'staminaMax', 'moving', 'walkT', 'flash', 'hurt', 'blocking', 'blockT', 'stunT', 'clashT', 'clashMax', 'parryT', 'shotT', 'air', 'jumpT', 'chain', 'move', 'inv', 'dex'];
 const SW_KEYS = ['t', 'dur', 'dur0', 'hitAt', 'extra', 'move', 'target', 'hit', 'kind', 'style', 'whiff', 'mult'];
 const GR_KEYS = ['eId', 'phase', 't', 'dur', 'hit', 'strikes', 'holdT'];
-const E_KEYS = ['id', 'x', 'y', 'z', 'face', 'state', 'hp', 'maxHp', 'dur', 'durMax', 'broken', 'wounded', 'flee', 'tier', 'kind', 'lookSeed', 'moving', 'walkT', 'flash', 'hurt', 'deathT', 'dramatic', 'stun', 'down', 'held', 'clashT', 'clashMax', 'dummy', 'chr', 'san'];
+const E_KEYS = ['id', 'x', 'y', 'z', 'face', 'state', 'hp', 'maxHp', 'dur', 'durMax', 'broken', 'wounded', 'flee', 'tier', 'kind', 'lookSeed', 'moving', 'walkT', 'flash', 'hurt', 'deathT', 'dramatic', 'stun', 'down', 'held', 'clashT', 'clashMax', 'dummy'];
 const A_KEYS = ['id', 'name', 'x', 'y', 'z', 'face', 'hp', 'maxHp', 'tier', 'weapon', 'state', 'deathT', 'moving', 'walkT', 'flash', 'hurt', 'broken', 'lookSeed', 'owner'];
 
 /* ---------- snapshot: what the host sends, and how a guest's mirror sim takes it ---------- */
@@ -30,17 +34,18 @@ export function packSnap(sim, run, tick, texts) {
   };
 }
 export function applySnap(sim, m, myPid) {
-  sim.t = m.time; sim.shake = m.shake; sim.mode = m.mode;
+  sim.t = +m.time || 0; sim.shake = +m.shake || 0; sim.mode = m.mode === 'battle' || m.mode === 'run' ? m.mode : 'arena';
   const old = new Map(sim.players.map(q => [q.pid, q]));
-  sim.players = m.players.map(n => {
-    const q = old.get(n.pid) || sim.mkPlayer(0, n.pid); Object.assign(q, n); if (!n.swing) q.swing = null; if (!n.grab) q.grab = null; if (!n.dash) q.dash = null; if (!n.kindMoves) q.kindMoves = {}; return q;
+  sim.players = (m.players || []).slice(0, 5).map(n => {
+    const v = unpack(n, P_KEYS, ['swing', 'grab', 'dash', 'kindMoves']), q = old.get(v.pid) || sim.mkPlayer(0, v.pid);
+    if (!v.kindMoves) v.kindMoves = {}; Object.assign(q, v); return q;
   });
   sim.players.forEach((q, i) => q.i = i);
   sim.player = sim.players.find(q => q.pid === myPid) || sim.players[0];
-  const oe = new Map(sim.enemies.map(e => [e.id, e])); sim.enemies = m.enemies.map(n => Object.assign(oe.get(n.id) || {}, n));   // keep client-only fields (cached look)
-  const oa = new Map(sim.allies.map(a => [a.id, a])); sim.allies = m.allies.map(n => Object.assign(oa.get(n.id) || {}, n));
-  sim.proj = m.proj;
-  for (const t of m.texts) sim.texts.push(Object.assign({ life: 0.9, max: 0.9, size: 10 }, t));
+  const oe = new Map(sim.enemies.map(e => [e.id, e])); sim.enemies = (m.enemies || []).slice(0, 80).map(n => { const v = unpack(n, E_KEYS, ['atk', 'fly']), e = oe.get(v.id) || {}; return Object.assign(e, v); });   // keeps client-only fields (cached look)
+  const oa = new Map(sim.allies.map(a => [a.id, a])); sim.allies = (m.allies || []).slice(0, 20).map(n => { const v = unpack(n, A_KEYS, ['atk']), a = oa.get(v.id) || {}; return Object.assign(a, v); });
+  sim.proj = (m.proj || []).slice(0, 60).map(q => ({ x: +q.x || 0, y: +q.y || 0, vx: +q.vx || 0, vy: +q.vy || 0 }));
+  for (const t of (m.texts || []).slice(0, 20)) sim.texts.push({ x: +t.x || 0, y: +t.y || 0, text: String(t.text || '').slice(0, 24), col: String(t.col || '#fff').slice(0, 16), size: +t.size || 10, life: 0.9, max: 0.9 });
 }
 
 /* ---------- guest side: stands in for Run, so the camp and HUD code reads one thing ---------- */
@@ -106,7 +111,7 @@ export class PartyHost {
     if (this.tick % 3) return;
     const texts = sim.textOut.splice(0).map(t => ({ x: r1(t.x), y: r1(t.y), text: t.text, col: t.col, size: t.size }));
     const snap = packSnap(sim, run, this.tick, texts);
-    for (const id of this.peers.keys()) this.send(id, snap);
+    if (this.peers.size) this.send(null, snap);                              // one copy; the relay hands it to every guest
   }
 }
 // builds come from the network: keep only what the host reads, bounded
