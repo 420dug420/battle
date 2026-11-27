@@ -69,7 +69,8 @@ export const CFG = {
   juggle: { launch: 300, decay: 0.86, floor: 130, push: 22, downed: 0.45, grav: 620 },        // a juggle hit pops an enemy up; each pop lower, never lower than floor, so it stays up while you keep hitting
   morale: { radius: 130, base: 0.75, perSan: 0.07, awe: 0.2 },        // a leader (tank or elite) falls: nearby fodder may break and run
   awe: { hesitate: 0.45, back: 0.5 },                                  // a high style rank: enemies sometimes balk at swinging and step back
-  rescue: { edge: 16, slow: 0.6, reach: 34 },                          // drag a downed party member to the edge of the field to rescue them
+  rescue: { edge: 16, slow: 0.6, reach: 34 },
+  slam: { dur: 0.42, hitAt: 0.14, reach: 40, cost: 14, push: 150, max: 2 },   // shield slam: attack with the shield raised                          // drag a downed party member to the edge of the field to rescue them
   proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
   // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
   kinds: { fodder: { hp: 5, tier: 'leather', clash: false }, soldier: { clash: true }, tank: { hp: 14, tier: 'plate', clash: true },
@@ -126,7 +127,7 @@ export function applyCmd(sim, c) {
     case 'heal': sim.healAll(); break;
     case 'repair': sim.repairAll(); break;
     case 'resetp': sim.resetPlayer(); sim.say('info', 'Player reset.'); break;
-    case 'set': { const tp = sim.players[c.p | 0] || sim.player; for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'kindMoves', 'skills', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr', 'dmgMult', 'spdMult', 'regenMult', 'staminaMax', 'stamina', 'kindStyles', 'juggle', 'grace']) if (k in c) tp[k] = c[k]; break; }
+    case 'set': { const tp = sim.players[c.p | 0] || sim.player; for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'kindMoves', 'skills', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr', 'dmgMult', 'spdMult', 'regenMult', 'staminaMax', 'stamina', 'kindStyles', 'juggle', 'grace', 'shield']) if (k in c) tp[k] = c[k]; break; }
     case 'ally': sim.spawnAlly(c.o); break;
     case 'mode': sim.mode = c.mode; break;
     case 'cfg': { const d = JSON.parse(JSON.stringify(c.cfg)); for (const k in d) sim.cfg[k] = d[k]; break; }
@@ -212,7 +213,7 @@ export class Sim {
       swing: null, chain: 0, cooldown: 0, moved: false, flash: 0, hurt: 0, walkT: 0, moving: false,
       armorPct: 0, dur: 0, durMax: 0, broken: false, chainStyles: null, san: 5, chr: 5,
       stamina: c.stamina.max, staminaMax: c.stamina.max, stamRegenT: 0, blocking: false, blockT: 0, stunT: 0, freeze: 0, dash: null, dashT: 99, kvx: 0, projCd: 0, counter: null, clashT: 0, clashMax: 0, z: 0, vz: 0, air: false, jumpT: 0, dmgMult: 1, spdMult: 1, regenMult: 1,
-      skills: { riposte: false, shove: false, multi: false }, kindMoves: {}, kindStyles: {}, juggle: [], awe: 0, grace: 0, pend: null, carry: null, carried: false, rescued: false,   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
+      skills: { riposte: false, shove: false, multi: false }, kindMoves: {}, kindStyles: {}, juggle: [], shield: null, bash: null, awe: 0, grace: 0, pend: null, carry: null, carried: false, rescued: false,   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
     };
     })();
     p.i = i; p.pid = pid; p.name = ''; p.look = null; p.input = { x: 0, y: 0, act: false, g: false, fin: '', heavy: false, block: false, dash: false, fire: false, jump: false, ax: null, ay: null };
@@ -432,11 +433,14 @@ export class Sim {
       const dx = mag > 0.1 ? ix / mag : p.face, dy = mag > 0.1 ? iy / mag : 0;
       p.dash = { t: 0, dx, dy }; p.dashT = 0; p.moving = true; return;
     }
-    const wantBlock = !!I.block && !p.swing && !p.blockLock && !p.air && p.stamina > 0;
+    const wantBlock = !!I.block && !p.swing && !p.bash && !p.blockLock && !p.air && p.stamina > 0;
     if (wantBlock && !p.blocking) { p.blocking = true; p.blockT = 0; p.stamina = Math.max(0, p.stamina - S.blockPress); }
     else if (!wantBlock) p.blocking = false;
     if (p.blocking) { p.blockT += dt; p.stamRegenT = S.regenDelay; }
-    const spd = c.player.speed * (p.spdMult || 1) * (p.swing ? c.swingMoveMult : 1) * (p.blocking ? 0.5 : 1);
+    const K = c.slam;
+    if (p.shield && p.blocking && (pr.act || pr.heavy) && !p.bash && p.stamina >= K.cost) { p.bash = { t: 0, hit: false }; p.blocking = false; p.stamina -= K.cost; p.stamRegenT = S.regenDelay; pr.act = pr.heavy = false; }
+    if (p.bash) { const b = p.bash; b.t += dt; if (!b.hit && b.t >= K.hitAt) { b.hit = true; this.shieldSlam(); } if (b.t >= K.dur) p.bash = null; }
+    const spd = c.player.speed * (p.spdMult || 1) * (p.swing ? c.swingMoveMult : 1) * (p.blocking ? (p.shield ? p.shield.spd : 0.5) : 1) * (p.bash ? 0.3 : 1);
     p.moving = mag > 0;
     if (p.moving) { p.x = this.clampX(p.x + ix * spd * dt); p.y = this.clampY(p.y + iy * spd * dt * 0.7); p.walkT += dt; }
     if (p.lunge && p.lunge.t > 0) { p.lunge.t -= dt; p.x = this.clampX(p.x + p.face * p.lunge.v * dt); }
@@ -454,7 +458,7 @@ export class Sim {
       if (s.t >= s.dur) { p.chain++; p.cooldown = Math.max(p.cooldown, s.after || 0); p.swing = null; }
     }
     if (!p.swing && p.counter) { const tg = p.counter.eId; p.counter = null; this.startSwing('counter', w, tg); return; }
-    if (!p.swing && !p.blocking && p.cooldown <= 0 && !I.g) {
+    if (!p.swing && !p.blocking && !p.bash && p.cooldown <= 0 && !I.g) {
       if (p.air) { if (pr.act || pr.heavy) this.startSwing('jump', w); }
       else if (pr.heavy) this.startSwing('heavy', w);
       else if (pr.act && p.dashT <= D.atkWin) this.startSwing('dash', w);
@@ -623,6 +627,14 @@ export class Sim {
     if (p.air && p.z > c.jump.dodgeZ) { this.text(p.x, p.y - 96 - p.z, 'AIR', '#9fd0ff', 10); return true; }
     if (p.dash && p.dash.t < c.dash.iframes) { this.text(p.x, p.y - 96, 'DODGE', '#9fd0ff', 10); return true; }
     if (!p.blocking || Math.sign(e.x - p.x) !== p.face) return false;
+    const sh = p.shield;
+    if (sh) {                                                         // a raised shield blocks; it never parries
+      if (heavy && !sh.heavy) return false;
+      p.stamina -= S.blockHit * sh.cost * (heavy ? 2 : 1); p.stamRegenT = S.regenDelay; p.blockHitT = 0.2;
+      this.burst(p.x + p.face * 16, p.y - 52, 7, '#d8c8a0', 90); this.text(p.x, p.y - 96, heavy ? 'SHIELD HOLDS' : 'BLOCK', '#d8c8a0', 10);
+      if (p.stamina <= 0) { p.stamina = 0; p.blocking = false; p.blockLock = true; p.stunT = S.breakStun; this.text(p.x, p.y - 110, 'GUARD BROKEN', '#ff9a6a', 10); this.say('info', 'Guard broken: stunned.'); }
+      return true;
+    }
     if (p.blockT <= S.parryWin) {                                     // perfect block
       e.atk = null; e.atkCd = 0.6; e.stun = Math.max(e.stun || 0, S.parryStun); e.down = false;
       p.stamina = Math.min(p.staminaMax, p.stamina + S.parryRefund); p.blocking = false; p.blockLock = true; p.counter = { eId: e.id }; p.parryT = 0.3;
@@ -851,6 +863,19 @@ export class Sim {
       if (!ox[i] && !oy[i]) continue; const e = list[i];
       e.x = this.clampX(e.x + Math.max(-cap, Math.min(cap, ox[i]))); e.y = this.clampY(e.y + Math.max(-cap, Math.min(cap, oy[i])));
     }
+  }
+  /* ---------- shield slam: the raised shield driven into whoever is in front ---------- */
+  shieldSlam() {
+    const p = this.player, c = this.cfg, K = c.slam, sh = p.shield; if (!sh) return;
+    const hits = this.enemies.filter(e => e.state === 'alive' && Math.sign(e.x - p.x) === p.face && Math.abs(e.x - p.x) <= K.reach && Math.abs(e.y - p.y) <= c.laneTol && !e.fly).sort((a, b) => Math.abs(a.x - p.x) - Math.abs(b.x - p.x)).slice(0, K.max);
+    p.x = this.clampX(p.x + p.face * 6);
+    if (!hits.length) { this.text(p.x, p.y - 96, 'SLAM', '#9a8a6a', 9); return; }
+    for (const e of hits) {
+      this.applyHit(e, sh.slam * (p.dmgMult || 1), { kind: 'bash', mult: 1 });
+      if (e.state !== 'alive') continue;
+      e.atk = null; e.stun = Math.max(e.stun || 0, sh.stun); e.down = false; e.kvx = p.face * K.push;
+    }
+    this.text(p.x + p.face * 20, p.y - 100, 'SHIELD SLAM', '#ffd27a', 11); this.burst(p.x + p.face * 22, p.y - 50, 10, '#e8d8a8', 120); this.shake = Math.max(this.shake, 0.1);
   }
   /* ---------- the crowd: who may swing at whom this step ---------- */
   crowdPlan() {

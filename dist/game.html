@@ -15860,7 +15860,8 @@ void main(){
     awe: { hesitate: 0.45, back: 0.5 },
     // a high style rank: enemies sometimes balk at swinging and step back
     rescue: { edge: 16, slow: 0.6, reach: 34 },
-    // drag a downed party member to the edge of the field to rescue them
+    slam: { dur: 0.42, hitAt: 0.14, reach: 40, cost: 14, push: 150, max: 2 },
+    // shield slam: attack with the shield raised                          // drag a downed party member to the edge of the field to rescue them
     proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
     // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
     kinds: {
@@ -15952,7 +15953,7 @@ void main(){
         break;
       case "set": {
         const tp2 = sim.players[c.p | 0] || sim.player;
-        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move", "kindMoves", "skills", "chainStyles", "armorPct", "dur", "durMax", "broken", "hp", "maxHp", "san", "chr", "dmgMult", "spdMult", "regenMult", "staminaMax", "stamina", "kindStyles", "juggle", "grace"]) if (k in c) tp2[k] = c[k];
+        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move", "kindMoves", "skills", "chainStyles", "armorPct", "dur", "durMax", "broken", "hp", "maxHp", "san", "chr", "dmgMult", "spdMult", "regenMult", "staminaMax", "stamina", "kindStyles", "juggle", "grace", "shield"]) if (k in c) tp2[k] = c[k];
         break;
       }
       case "ally":
@@ -16139,6 +16140,8 @@ void main(){
           kindMoves: {},
           kindStyles: {},
           juggle: [],
+          shield: null,
+          bash: null,
           awe: 0,
           grace: 0,
           pend: null,
@@ -16570,7 +16573,7 @@ void main(){
         p.moving = true;
         return;
       }
-      const wantBlock = !!I.block && !p.swing && !p.blockLock && !p.air && p.stamina > 0;
+      const wantBlock = !!I.block && !p.swing && !p.bash && !p.blockLock && !p.air && p.stamina > 0;
       if (wantBlock && !p.blocking) {
         p.blocking = true;
         p.blockT = 0;
@@ -16580,7 +16583,24 @@ void main(){
         p.blockT += dt;
         p.stamRegenT = S.regenDelay;
       }
-      const spd = c.player.speed * (p.spdMult || 1) * (p.swing ? c.swingMoveMult : 1) * (p.blocking ? 0.5 : 1);
+      const K = c.slam;
+      if (p.shield && p.blocking && (pr2.act || pr2.heavy) && !p.bash && p.stamina >= K.cost) {
+        p.bash = { t: 0, hit: false };
+        p.blocking = false;
+        p.stamina -= K.cost;
+        p.stamRegenT = S.regenDelay;
+        pr2.act = pr2.heavy = false;
+      }
+      if (p.bash) {
+        const b = p.bash;
+        b.t += dt;
+        if (!b.hit && b.t >= K.hitAt) {
+          b.hit = true;
+          this.shieldSlam();
+        }
+        if (b.t >= K.dur) p.bash = null;
+      }
+      const spd = c.player.speed * (p.spdMult || 1) * (p.swing ? c.swingMoveMult : 1) * (p.blocking ? p.shield ? p.shield.spd : 0.5 : 1) * (p.bash ? 0.3 : 1);
       p.moving = mag > 0;
       if (p.moving) {
         p.x = this.clampX(p.x + ix2 * spd * dt);
@@ -16620,7 +16640,7 @@ void main(){
         this.startSwing("counter", w, tg2);
         return;
       }
-      if (!p.swing && !p.blocking && p.cooldown <= 0 && !I.g) {
+      if (!p.swing && !p.blocking && !p.bash && p.cooldown <= 0 && !I.g) {
         if (p.air) {
           if (pr2.act || pr2.heavy) this.startSwing("jump", w);
         } else if (pr2.heavy) this.startSwing("heavy", w);
@@ -16930,6 +16950,24 @@ void main(){
         return true;
       }
       if (!p.blocking || Math.sign(e.x - p.x) !== p.face) return false;
+      const sh2 = p.shield;
+      if (sh2) {
+        if (heavy && !sh2.heavy) return false;
+        p.stamina -= S.blockHit * sh2.cost * (heavy ? 2 : 1);
+        p.stamRegenT = S.regenDelay;
+        p.blockHitT = 0.2;
+        this.burst(p.x + p.face * 16, p.y - 52, 7, "#d8c8a0", 90);
+        this.text(p.x, p.y - 96, heavy ? "SHIELD HOLDS" : "BLOCK", "#d8c8a0", 10);
+        if (p.stamina <= 0) {
+          p.stamina = 0;
+          p.blocking = false;
+          p.blockLock = true;
+          p.stunT = S.breakStun;
+          this.text(p.x, p.y - 110, "GUARD BROKEN", "#ff9a6a", 10);
+          this.say("info", "Guard broken: stunned.");
+        }
+        return true;
+      }
       if (p.blockT <= S.parryWin) {
         e.atk = null;
         e.atkCd = 0.6;
@@ -17318,6 +17356,28 @@ void main(){
         e.x = this.clampX(e.x + Math.max(-cap, Math.min(cap, ox2[i15])));
         e.y = this.clampY(e.y + Math.max(-cap, Math.min(cap, oy[i15])));
       }
+    }
+    /* ---------- shield slam: the raised shield driven into whoever is in front ---------- */
+    shieldSlam() {
+      const p = this.player, c = this.cfg, K = c.slam, sh2 = p.shield;
+      if (!sh2) return;
+      const hits = this.enemies.filter((e) => e.state === "alive" && Math.sign(e.x - p.x) === p.face && Math.abs(e.x - p.x) <= K.reach && Math.abs(e.y - p.y) <= c.laneTol && !e.fly).sort((a, b) => Math.abs(a.x - p.x) - Math.abs(b.x - p.x)).slice(0, K.max);
+      p.x = this.clampX(p.x + p.face * 6);
+      if (!hits.length) {
+        this.text(p.x, p.y - 96, "SLAM", "#9a8a6a", 9);
+        return;
+      }
+      for (const e of hits) {
+        this.applyHit(e, sh2.slam * (p.dmgMult || 1), { kind: "bash", mult: 1 });
+        if (e.state !== "alive") continue;
+        e.atk = null;
+        e.stun = Math.max(e.stun || 0, sh2.stun);
+        e.down = false;
+        e.kvx = p.face * K.push;
+      }
+      this.text(p.x + p.face * 20, p.y - 100, "SHIELD SLAM", "#ffd27a", 11);
+      this.burst(p.x + p.face * 22, p.y - 50, 10, "#e8d8a8", 120);
+      this.shake = Math.max(this.shake, 0.1);
     }
     /* ---------- the crowd: who may swing at whom this step ---------- */
     crowdPlan() {

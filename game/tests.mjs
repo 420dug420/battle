@@ -463,4 +463,17 @@ console.log('PASS shrug off after surviving crit');
   console.log('PASS guest grace: late parry');
 }
 
+// shields: the block key raises it (no parry); attacking with it raised is a slam
+{
+  const s = new Sim(CFG, 3); applyCmd(s, { t: 'manual', on: true }); applyCmd(s, { t: 'set', shield: { key: 'heater', cost: 0.6, heavy: true, spd: 0.55, slam: 4, stun: 0.7 } });
+  const e = s.spawn({ kind: 'soldier', ai: 'stand' }); e.hp = e.maxHp = 50; e.x = s.player.x + 30; e.y = s.player.y; s.player.face = 1;
+  applyCmd(s, { t: 'input', x: 0, y: 0, block: true }); s.step(1 / 60);
+  e.atk = { t: 0.5, hit: true, heavy: false }; const st0 = s.player.stamina; s.enemyHits(e, s.player);
+  assert(!(s.player.parryT > 0) && s.player.hp === s.player.maxHp && s.player.stamina < st0, 'blocked at once, no parry');
+  e.atk = { t: 0.5, hit: true, heavy: true }; s.enemyHits(e, s.player); assert(s.player.hp === s.player.maxHp, 'a heater holds a heavy');
+  const hp0 = e.hp; applyCmd(s, { t: 'input', x: 0, y: 0, block: true, act: true }); for (let i = 0; i < 30; i++) s.step(1 / 60);
+  assert(e.hp < hp0 && e.stun > 0, 'shield slam hits and staggers');
+  console.log('PASS shields: block only, heavy hold, slam');
+}
+
 console.log('\nALL SIM TESTS PASSED');

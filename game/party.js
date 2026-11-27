@@ -9,10 +9,10 @@ import { applyCmd } from './sim.js';
 const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
 const pickR = (o, keys, r) => { const out = {}; for (const k of keys) { let v = o[k]; if (typeof v === 'number' && r) v = r(v); if (v === 0 || v === false || v == null || v === '') continue; out[k] = v; } return out; };   // falsy values are left out; the guest puts them back
 const BOOL = new Set(['carried', 'rescued', 'broken', 'flee', 'moving', 'dramatic', 'down', 'held', 'dummy', 'blocking', 'air', 'inv', 'hit', 'whiff', 'heavy', 'fr']);
-const OBJ = new Set(['jug', 'swing', 'grab', 'dash', 'atk', 'fly', 'look', 'roleStyles', 'kindMoves']);
+const OBJ = new Set(['shield', 'bash', 'jug', 'swing', 'grab', 'dash', 'atk', 'fly', 'look', 'roleStyles', 'kindMoves']);
 // rebuild a record from the host's compact one: only known keys (nothing like __proto__ gets through), with defaults for what was left out
 const unpack = (n, keys, extra) => { const o = {}; for (const k of keys.concat(extra || [])) { const v = n[k]; o[k] = v !== undefined ? (v && typeof v === 'object' && !Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : v) : BOOL.has(k) ? false : OBJ.has(k) ? null : (k === 'name' || k === 'pid' || k === 'state' || k === 'tier' || k === 'kind' || k === 'weapon' || k === 'armorKey' || k === 'chain' || k === 'move') ? (k === 'state' ? 'alive' : null) : 0; } return o; };
-const P_KEYS = ['carry', 'carried', 'rescued', 'pid', 'name', 'look', 'armorKey', 'roleStyles', 'weapon', 'x', 'y', 'z', 'face', 'hp', 'maxHp', 'stamina', 'staminaMax', 'moving', 'walkT', 'flash', 'hurt', 'blocking', 'blockT', 'stunT', 'clashT', 'clashMax', 'parryT', 'shotT', 'air', 'jumpT', 'chain', 'move', 'inv', 'dex'];
+const P_KEYS = ['shield', 'bash', 'carry', 'carried', 'rescued', 'pid', 'name', 'look', 'armorKey', 'roleStyles', 'weapon', 'x', 'y', 'z', 'face', 'hp', 'maxHp', 'stamina', 'staminaMax', 'moving', 'walkT', 'flash', 'hurt', 'blocking', 'blockT', 'stunT', 'clashT', 'clashMax', 'parryT', 'shotT', 'air', 'jumpT', 'chain', 'move', 'inv', 'dex'];
 const SW_KEYS = ['t', 'dur', 'dur0', 'hitAt', 'extra', 'move', 'target', 'hit', 'kind', 'style', 'whiff', 'mult'];
 const GR_KEYS = ['eId', 'phase', 't', 'dur', 'hit', 'strikes', 'holdT'];
 const E_KEYS = ['jug', 'id', 'x', 'y', 'z', 'face', 'state', 'hp', 'maxHp', 'dur', 'durMax', 'broken', 'wounded', 'flee', 'tier', 'kind', 'lookSeed', 'moving', 'walkT', 'flash', 'hurt', 'deathT', 'dramatic', 'stun', 'down', 'held', 'clashT', 'clashMax', 'dummy'];
@@ -121,7 +121,7 @@ function clean(b) {
   const str = (v, n) => String(v == null ? '' : v).slice(0, n), num = (v, lo, hi, d) => { v = +v; return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; };
   const d = b.d || {};
   return { name: str(b.name, 16) || 'Player', look: b.look && typeof b.look === 'object' ? { head: str(b.look.head, 20), body: str(b.look.body, 20), liv: str(b.look.liv, 20), metal: str(b.look.metal, 20) } : null, level: num(b.level, 1, 99, 1),
-    weapon: str(b.weapon, 20), armor: str(b.armor, 20), skills: (Array.isArray(b.skills) ? b.skills : []).slice(0, 5).map(x => str(x, 12)),
+    weapon: str(b.weapon, 20), armor: str(b.armor, 20), shield: b.shield && ['buckler', 'heater', 'kite'].includes(b.shield) ? b.shield : null, skills: (Array.isArray(b.skills) ? b.skills : []).slice(0, 5).map(x => str(x, 12)),
     d: { dex: num(d.dex, 5, 99, 5), maxHp: num(d.maxHp, 1, 400, 30), staminaMax: num(d.staminaMax, 10, 500, 100), dmgMult: num(d.dmgMult, 0.1, 5, 1), spdMult: num(d.spdMult, 0.5, 2, 1), regenMult: num(d.regenMult, 0.5, 3, 1) },
     styles: { chain: (b.styles && Array.isArray(b.styles.chain) ? b.styles.chain : []).slice(0, 8).map(x => str(x, 40)), roles: Object.fromEntries(['heavy', 'dash', 'counter', 'jump'].map(k => [k, b.styles && b.styles.roles && b.styles.roles[k] ? str(b.styles.roles[k], 40) : null])) },
     hirelings: (Array.isArray(b.hirelings) ? b.hirelings : []).slice(0, 3).map(h => ({ hid: num(h.hid, 0, 1e6, 0), name: str(h.name, 16), tier: str(h.tier, 12), weapon: str(h.weapon, 20), hp: num(h.hp, 1, 200, 18), dmgMult: num(h.dmgMult, 0.1, 5, 1) })) };

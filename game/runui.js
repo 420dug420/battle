@@ -66,6 +66,12 @@ export function initRunUI(env) {
       h += '<div class="srow"><span>' + esc(t.label) + '</span><span class="d">' + Math.round(t.pct * 100) + '% off, durability ' + t.dur + '</span>' +
         (own ? '<button class="rb" data-a="equip:armor:' + k + '"' + (p.armor === k ? ' disabled>Worn' : '>Wear') + '</button>' : '<button class="rb" data-a="buy:armor:' + k + '">Buy ' + R.ARMOR_PRICE[k] + ' G</button>') + '</div>';
     }
+    h += '<div class="sec">Shields <small>(one-handed weapons only)</small></div>';
+    for (const k of Object.keys(R.SHIELDS)) {
+      const S = R.SHIELDS[k], own = p.owned.shields.includes(k);
+      h += '<div class="srow"><span>' + esc(S.n) + '</span><span class="d">' + esc(S.d) + '</span>' +
+        (own ? '<button class="rb" data-a="equip:shield:' + k + '"' + (p.shield === k ? ' disabled>Equipped' : '>Equip') + '</button>' : '<button class="rb" data-a="buy:shield:' + k + '">Buy ' + S.price + ' G</button>') + '</div>';
+    }
     h += '<div class="sec">Upgrades (permanent)</div>';
     for (const k of Object.keys(R.UPGRADES)) {
       const u = R.UPGRADES[k], n = p.upgrades[k];
@@ -126,13 +132,21 @@ export function initRunUI(env) {
   function equipPanel() {
     const p = profile; let h = head('Equipment', goldLine());
     const d = R.derive(p), wc = CFG.weaponClasses[CFG.weapons[p.weapon].cls], ar = CFG.tiers[p.armor];
-    h += '<div class="sum">Wielding ' + esc(CFG.weapons[p.weapon].label) + ' (' + (wc.twoHanded ? 'two-handed' : 'one-handed') + ') · wearing ' + esc(ar.label) + ' · HP ' + d.maxHp + ' · Damage x' + d.dmgMult.toFixed(2) + '</div>';
+    h += '<div class="sum">Wielding ' + esc(CFG.weapons[p.weapon].label) + ' (' + (wc.twoHanded ? 'two-handed' : 'one-handed') + ') · wearing ' + esc(ar.label) + (p.shield && R.SHIELDS[p.shield] ? ' · ' + esc(R.SHIELDS[p.shield].n) + (wc.twoHanded ? ' (stowed)' : '') : '') + ' · HP ' + d.maxHp + ' · Damage x' + d.dmgMult.toFixed(2) + '</div>';
     h += '<div class="sec">Weapons</div>';
     for (const k of p.owned.weapons) { const w = CFG.weapons[k], c = CFG.weaponClasses[w.cls];
       h += '<div class="srow"><span>' + esc(w.label) + '</span><span class="d">dmg ' + c.dmg + ', reach ' + c.reach + ', ' + (c.twoHanded ? 'two-handed' : 'one-handed') + '</span><button class="rb" data-a="equip:weapon:' + k + '"' + (p.weapon === k ? ' disabled>Equipped' : '>Equip') + '</button></div>'; }
     h += '<div class="sec">Armor</div>';
     for (const k of p.owned.armor) { const t = CFG.tiers[k];
       h += '<div class="srow"><span>' + esc(t.label) + '</span><span class="d">' + Math.round(t.pct * 100) + '% off, durability ' + t.dur + '</span><button class="rb" data-a="equip:armor:' + k + '"' + (p.armor === k ? ' disabled>Worn' : '>Wear') + '</button></div>'; }
+    const two = R.twoHanded(p.weapon), cur = p.shield && R.SHIELDS[p.shield];
+    h += '<div class="sec">Shield</div>';
+    h += '<div class="srow"><span>None</span><span class="d">Block key blocks and parries</span><button class="rb" data-a="equip:shield:none"' + (!p.shield ? ' disabled>Empty' : '>Unequip') + '</button></div>';
+    for (const k of p.owned.shields) { const S = R.SHIELDS[k];
+      h += '<div class="srow"><span>' + esc(S.n) + '</span><span class="d">' + esc(S.d) + '</span><button class="rb" data-a="equip:shield:' + k + '"' + (p.shield === k ? ' disabled>Equipped' : '>Equip') + '</button></div>'; }
+    if (!p.owned.shields.length) h += '<p class="d">No shields yet. The Smith sells them.</p>';
+    if (cur && two) h += '<p class="d">Your ' + esc(cur.n) + ' stays on your back while you wield a two-handed weapon.</p>';
+    else if (cur) h += '<p class="d">With a shield: hold the block key to raise it (no parry). Attack while it is raised for a shield slam.</p>';
     const lk = p.look || {}; h += '<div class="sec">Look</div>' + lookSelect('head', 'Head', lk.head, p.owned.armor) + lookSelect('body', 'Body', lk.body, p.owned.armor) + lookSelect('liv', 'Livery', lk.liv, p.owned.armor) + lookSelect('metal', 'Metal', lk.metal, p.owned.armor);
     return h + '<p class="d">Buy more at the Smith. A change takes effect in camp and goes with you on the next run.</p>' + msg();
   }
@@ -187,8 +201,8 @@ export function initRunUI(env) {
     const [a, x, y] = b.dataset.a.split(':'); note = '';
     if (a === 'close') { close(); return; }
     if (a === 'spend') { R.spendPoint(profile, x); rebuild(); }
-    else if (a === 'buy') { const r = R.buy(profile, x, y); note = r.ok ? '' : r.why; if (r.ok) { if (x === 'weapon') R.equipWeapon(profile, y); if (x === 'armor') R.equipArmor(profile, y); rebuild(); } }
-    else if (a === 'equip') { x === 'weapon' ? R.equipWeapon(profile, y) : R.equipArmor(profile, y); rebuild(); }
+    else if (a === 'buy') { const r = R.buy(profile, x, y); note = r.ok ? '' : r.why; if (r.ok) { if (x === 'weapon') R.equipWeapon(profile, y); if (x === 'armor') R.equipArmor(profile, y); if (x === 'shield') R.equipShield(profile, y); rebuild(); } }
+    else if (a === 'equip') { x === 'weapon' ? R.equipWeapon(profile, y) : x === 'shield' ? R.equipShield(profile, y) : R.equipArmor(profile, y); rebuild(); }
     else if (a === 'style') { const r = R.learnStyle(profile, x, env.styles()); note = r.ok ? '' : r.why; rebuild(); }
     else if (a === 'skill') { const r = R.toggleSkill(profile, x); note = r.ok ? '' : r.why; rebuild(); }
     else if (a === 'hire') { const r = R.hire(profile, R.recruits(profile, run.seed)[+x]); note = r.ok ? '' : r.why; save(); }

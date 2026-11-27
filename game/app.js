@@ -322,6 +322,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     if (p.clashT > 0) return { kind: 'clash', u: 1 - p.clashT / (p.clashMax || 0.34) };
     if (p.parryT > 0) return { kind: 'parry', u: 1 - p.parryT / 0.3 };
     if (p.dash) return { kind: 'dash', u: p.dash.t / CFG.dash.dur };
+    if (p.bash) return { kind: 'parry', u: Math.min(1, p.bash.t / CFG.slam.dur) };      // the slam: a shove forward with the shield
     if (p.blocking) return { kind: 'block', u: p.blockT };
     if (p.shotT > 0) return { kind: 'shoot', u: 1 - p.shotT / 0.25 };
     return null;
@@ -356,10 +357,10 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
         const q = it.q, mine = q === p, lk = mine ? look : lookOf(q), qw = mine ? w : weaponOf(q);
         if (q.rescued) continue;
         if (q.hp <= 0 && (sim.mode === 'battle' || sim.mode === 'run')) {                // downed: lying where they fell (or over a carrier's shoulder) until rescued or the wave ends
-          drawFigure({ role: 'p', x: q.x, y: q.y, z: q.carried ? 18 : 0, face: q.face, tier: lk.tier, pHead: lk.head, pBody: lk.body, pLiv: lk.liv, pMetal: lk.metal, two: qw.twoHanded, wkind: qw.kind || 'sword', shield: false, dead: true, deathT: 3, t: sim.t, flash: 0, swing: null, alpha: q.carried ? 0.9 : 0.85, noShadow: !!q.carried });
+          drawFigure({ role: 'p', x: q.x, y: q.y, z: q.carried ? 18 : 0, face: q.face, tier: lk.tier, pHead: lk.head, pBody: lk.body, pLiv: lk.liv, pMetal: lk.metal, two: qw.twoHanded, wkind: qw.kind || 'sword', shield: !!q.shield && !qw.twoHanded, dead: true, deathT: 3, t: sim.t, flash: 0, swing: null, alpha: q.carried ? 0.9 : 0.85, noShadow: !!q.carried });
           continue;
         }
-        drawFigure(Object.assign({ role: 'p', x: q.x, y: q.y, z: q.z || 0, face: q.face, tier: lk.tier, pHead: lk.head, pBody: lk.body, pLiv: lk.liv, pMetal: lk.metal, broken: false, two: qw.twoHanded, wkind: qw.kind || 'sword', shield: false,
+        drawFigure(Object.assign({ role: 'p', x: q.x, y: q.y, z: q.z || 0, face: q.face, tier: lk.tier, pHead: lk.head, pBody: lk.body, pLiv: lk.liv, pMetal: lk.metal, broken: false, two: qw.twoHanded, wkind: qw.kind || 'sword', shield: !!q.shield && !qw.twoHanded,
           swing: q.swing, moving: q.moving, walkT: q.walkT, t: sim.t, flash: q.flash, flashMax: 0.2, hurt: q.hurt, hurtMax: 0.6, st: playerState(q),
           style: q.swing && q.swing.kind && q.swing.kind !== 'light' ? (((mine && !(runui && runui.active)) ? roleStyle : (q.roleStyles || {}))[q.swing.kind] || ({ heavy: 'chop', dash: qw.twoHanded ? 'lunge' : 'cut', counter: 'cut', jump: 'chop' })[q.swing.kind]) : ((q.swing && q.swing.style) || (mine ? look.style : 'cut')) }, M3.grabAtt(sim, qw.twoHanded)));
       } else if (it.kind === 'a') {                                  // a hireling: a fighter on your side

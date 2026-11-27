@@ -38,14 +38,14 @@ export function newProfile(name) {
   return {
     v: 1, created: false, look: null, name: name || 'Baron', gold: RUNCFG.startGold, xp: 0, level: 1, points: 0,
     attrs: Object.fromEntries(ATTRS.map(a => [a, RUNCFG.base])), grown: { str: 0, dex: 0, agi: 0, con: 0 }, use: { str: 0, dex: 0, agi: 0, con: 0 },
-    weapon: 'longsword', armor: 'leather', owned: { weapons: ['longsword'], armor: ['leather'], skills: [] }, skills: [],
+    weapon: 'longsword', armor: 'leather', shield: null, owned: { weapons: ['longsword'], armor: ['leather'], shields: [], skills: [] }, skills: [],
     upgrades: { hp: 0, stamina: 0, damage: 0, slots: 0, chain: 0 }, styles: { owned: ['cut', 'chop'], chain: ['cut', 'chop'], roles: { heavy: null, dash: null, counter: null, jump: null } }, hirelings: [], nextHid: 1, runs: 0, best: 0,
   };
 }
 export const toJSON = p => JSON.stringify(p);
 export function fromJSON(txt) {
   try {
-    const o = JSON.parse(txt); if (!o || o.v !== 1) return null; const d = newProfile(), p = Object.assign(d, o); if (o.created == null) p.created = true;      // saves from before character creation count as made
+    const o = JSON.parse(txt); if (!o || o.v !== 1) return null; const d = newProfile(), p = Object.assign(d, o); if (o.created == null) p.created = true; if (!p.owned.shields) p.owned.shields = []; if (p.shield === undefined) p.shield = null;      // saves from before character creation count as made
     p.upgrades = Object.assign({}, newProfile().upgrades, o.upgrades || {}); p.styles = Object.assign({}, newProfile().styles, o.styles || {}); p.styles.roles = Object.assign({}, newProfile().styles.roles, p.styles.roles || {}); return p;
   } catch (e) { return null; }
 }
@@ -87,6 +87,13 @@ export function trainFromUse(p, kind) {
 /* ---------- shop ---------- */
 export const WEAPON_PRICE = { longsword: 0, greatsword: 120, axe: 60, mace: 60, spear: 90 };
 export const ARMOR_PRICE = { leather: 0, mail: 150, plate: 400 };
+/* shields: held up with the block key (no parry with a shield); attacking with it raised is a shield slam. One-handed weapons only.
+   cost: stamina per blocked hit (x the base); heavy: also stops heavy attacks (at double cost); spd: walking speed with it raised; slam/stun: the slam's damage and stagger */
+export const SHIELDS = {
+  buckler: { n: 'Buckler', price: 80, cost: 0.8, heavy: false, spd: 0.7, slam: 3, stun: 0.5, d: 'Light. Blocks normal hits, not heavies. Quick on your feet.' },
+  heater: { n: 'Heater shield', price: 220, cost: 0.6, heavy: true, spd: 0.55, slam: 4, stun: 0.7, d: 'Stops heavies too (at double stamina).' },
+  kite: { n: 'Kite shield', price: 420, cost: 0.45, heavy: true, spd: 0.45, slam: 5, stun: 0.9, d: 'Cheapest blocks and the hardest slam. Slow with it raised.' },
+};
 export const SKILLS = {
   riposte: { n: 'Riposte', d: 'A clash makes no bounce; you counter-swing at once.', price: 100 },
   shove: { n: 'Shove', d: 'A clash shoves the enemy far and stuns it, so you can grab it.', price: 100 },
@@ -100,12 +107,15 @@ function pay(p, n) { if (p.gold < n) return { ok: false, why: 'Not enough gold.'
 export function buy(p, kind, key) {
   if (kind === 'weapon') { if (p.owned.weapons.includes(key)) return { ok: false, why: 'Already owned.' }; const r = pay(p, WEAPON_PRICE[key]); if (r.ok) p.owned.weapons.push(key); return r; }
   if (kind === 'armor') { if (p.owned.armor.includes(key)) return { ok: false, why: 'Already owned.' }; const r = pay(p, ARMOR_PRICE[key]); if (r.ok) p.owned.armor.push(key); return r; }
+  if (kind === 'shield') { if (!SHIELDS[key]) return { ok: false, why: 'No such shield.' }; if (p.owned.shields.includes(key)) return { ok: false, why: 'Already owned.' }; const r = pay(p, SHIELDS[key].price); if (r.ok) p.owned.shields.push(key); return r; }
   if (kind === 'skill') { if (p.owned.skills.includes(key)) return { ok: false, why: 'Already learned.' }; const r = pay(p, SKILLS[key].price); if (r.ok) p.owned.skills.push(key); return r; }
   if (kind === 'upgrade') { if (p.upgrades[key] >= UPGRADES[key].max) return { ok: false, why: 'Maxed.' }; const r = pay(p, upgradePrice(p, key)); if (r.ok) p.upgrades[key]++; return r; }
   return { ok: false, why: 'Unknown item.' };
 }
 export const equipWeapon = (p, k) => p.owned.weapons.includes(k) ? (p.weapon = k, true) : false;
 export const equipArmor = (p, k) => p.owned.armor.includes(k) ? (p.armor = k, true) : false;
+export const equipShield = (p, k) => (!k || k === 'none') ? (p.shield = null, true) : p.owned.shields.includes(k) ? (p.shield = k, true) : false;
+export const twoHanded = w => !!(CFG.weapons[w] && CFG.weaponClasses[CFG.weapons[w].cls].twoHanded);
 /* ---------- styles: attack animations, the combo chain, and the heavy / dash / counter / jump attacks ---------- */
 export const STYLE_PRICE = { cut: 0, chop: 0, attack2: 40, lunge: 60 }, STYLE_PRICE_CUSTOM = 80;          // PLACEHOLDER
 export const stylePrice = id => id in STYLE_PRICE ? STYLE_PRICE[id] : STYLE_PRICE_CUSTOM;
@@ -183,7 +193,7 @@ export const stageOf = wave => Math.floor(wave / RUNCFG.exitEvery);
 /* ---------- what the host needs to know about a member ---------- */
 export function buildOf(p) {
   const d = derive(p);
-  return { name: p.name, look: p.look || null, level: p.level, weapon: p.weapon, armor: p.armor, skills: p.skills.slice(),
+  return { name: p.name, look: p.look || null, level: p.level, weapon: p.weapon, armor: p.armor, shield: p.shield || null, skills: p.skills.slice(),
     d: { dex: d.dex, maxHp: d.maxHp, staminaMax: d.staminaMax, dmgMult: d.dmgMult, spdMult: d.spdMult, regenMult: d.regenMult },
     styles: { chain: p.styles.chain.slice(0, d.chainSlots), roles: Object.assign({}, p.styles.roles) }, hirelings: p.hirelings.map(h => allySpec(h, p)) };
 }
@@ -252,7 +262,7 @@ export class Run {
     m = m || this.me; if (m.p) m.build = buildOf(m.p);
     const b = m.build, d = b.d, sim = this.sim, tier = CFG.tiers[b.armor], bonus = inRun ? 1 + RUNCFG.rank.dmgBonus * this.tierOf(m) : 1, i = this.idx(m); if (i < 0) return;
     applyCmd(sim, { t: 'set', p: i, weapon: b.weapon, dex: d.dex, maxHp: d.maxHp, hp: d.maxHp, staminaMax: d.staminaMax, stamina: d.staminaMax, dmgMult: d.dmgMult * bonus, spdMult: d.spdMult, regenMult: d.regenMult,
-      armorPct: tier.pct, dur: tier.dur, durMax: tier.dur, broken: false, inv: !inRun, skills: { riposte: b.skills.includes('riposte'), shove: b.skills.includes('shove'), multi: b.skills.includes('multi') } });
+      armorPct: tier.pct, dur: tier.dur, durMax: tier.dur, broken: false, inv: !inRun, shield: b.shield && SHIELDS[b.shield] && !twoHanded(b.weapon) ? Object.assign({ key: b.shield }, SHIELDS[b.shield]) : null, skills: { riposte: b.skills.includes('riposte'), shove: b.skills.includes('shove'), multi: b.skills.includes('multi') } });
     const q = sim.players[i]; q.name = b.name; q.look = b.look || null; q.armorKey = b.armor; q.roleStyles = Object.assign({}, b.styles.roles); m.down = false;
     if (this.hooks.build) this.hooks.build(m, i);                          // the page bakes the chain and attack moves it knows
   }
