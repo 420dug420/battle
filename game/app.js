@@ -160,7 +160,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   // Mouse side = facing, left click = light attack, right click = heavy attack, cursor = aim for throws and shots. Keys are rebindable.
   const keys = {}, aim = { x: null, y: null };
   const DEF = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', dash: 'ShiftLeft', block: 'KeyQ', grab: 'KeyG', throw: 'KeyF', slam: 'KeyV', strike: 'KeyR', fire: 'KeyE', jump: 'Space', use: 'KeyT' };
-  const NAMES = { up: 'Move up', down: 'Move down', left: 'Move left', right: 'Move right', dash: 'Dash (stamina)', block: 'Block (hold) / parry (tap)', grab: 'Grab (hold; middle mouse button too)', throw: 'Throw', slam: 'Slam', strike: 'Strike', fire: 'Fire shot (off for now: saved for items and skills)', jump: 'Jump (click in the air = jump attack)', use: 'Use (walk up to a camp sign)' };
+  const NAMES = { up: 'Move up', down: 'Move down', left: 'Move left', right: 'Move right', dash: 'Dash (stamina)', block: 'Block (hold) / parry (tap)', grab: 'Grab (hold; middle mouse button too)', throw: 'Throw', slam: 'Slam', strike: 'Active skill 2 (strike while grabbing is left click)', fire: 'Active skill 1', jump: 'Jump (click in the air = jump attack)', use: 'Use (walk up to a camp sign)' };
   let binds = Object.assign({}, DEF); try { Object.assign(binds, JSON.parse(localStorage.getItem('pw.binds') || '{}')); } catch (e) { }
   const ARROW = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   const norm = c => c.startsWith('Shift') ? 'ShiftLeft' : c;
@@ -175,7 +175,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   }
   const setKey = (a, v) => {
     if (a === 'up') keys.u = v; else if (a === 'down') keys.d = v; else if (a === 'left') keys.l = v; else if (a === 'right') keys.r = v;
-    else if (a === 'dash') keys.dash = v; else if (a === 'block') keys.block = v; else if (a === 'grab') keys.g = v; else if (a === 'fire') keys.fire = v; else if (a === 'jump') keys.jump = v; else if (a === 'use') { }
+    else if (a === 'dash') keys.dash = v; else if (a === 'block') keys.block = v; else if (a === 'grab') keys.g = v; else if (a === 'fire') keys.s1 = v; else if (a === 'strike') keys.s2 = v; else if (a === 'jump') keys.jump = v; else if (a === 'use') { }
     else if (v) keys.fin = a;                                          // throw / slam / strike: the last one pressed
     else if (keys.fin === a) keys.fin = '';
   };
@@ -204,8 +204,8 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   }
   drawBinds();
   const resetBinds = $('bindreset'); if (resetBinds) resetBinds.onclick = () => { binds = Object.assign({}, DEF); try { localStorage.removeItem('pw.binds'); } catch (e) { } rebinding = null; drawBinds(); };
-  const curInput = () => ({ x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!(keys.g || keys.mg), fin: keys.fin || '', heavy: !!keys.heavy, block: !!keys.block, dash: !!keys.dash, fire: false, jump: !!keys.jump, ax: aim.x, ay: aim.y });
-  const sameInput = (a, b) => ['x', 'y', 'act', 'g', 'fin', 'heavy', 'block', 'dash', 'fire', 'jump', 'ax', 'ay'].every(k => (a[k] == null ? null : a[k]) === (b[k] == null ? null : b[k]));
+  const curInput = () => ({ x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!(keys.g || keys.mg), fin: keys.fin || '', heavy: !!keys.heavy, block: !!keys.block, dash: !!keys.dash, fire: false, s1: !!keys.s1, s2: !!keys.s2, jump: !!keys.jump, ax: aim.x, ay: aim.y });
+  const sameInput = (a, b) => ['x', 'y', 'act', 'g', 'fin', 'heavy', 'block', 'dash', 'fire', 'jump', 's1', 's2', 'ax', 'ay'].every(k => (a[k] == null ? null : a[k]) === (b[k] == null ? null : b[k]));
   let delayQ = [];                                                    // input delay (ms) to feel the parry and clash timing at online lag
 
   /* ---------- menu wiring ---------- */
@@ -319,12 +319,13 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
 
   /* ---------- render ---------- */
   function playerState(p) {                                          // which combat pose to draw when nothing else (swing, grab) is playing
-    if (p.grab || p.swing) return null;
+    if (p.grab || (p.swing && !p.skill)) return null;
     if (p.air) return { kind: 'jump', u: Math.min(1, p.jumpT / (2 * CFG.jump.vz / CFG.jump.grav)) };
     if (p.stunT > 0) return { kind: 'stun' };
     if (p.clashT > 0) return { kind: 'clash', u: 1 - p.clashT / (p.clashMax || 0.34) };
     if (p.parryT > 0) return { kind: 'parry', u: 1 - p.parryT / 0.3 };
     if (p.dash) return { kind: 'dash', u: p.dash.t / CFG.dash.dur };
+    if (p.skill) { const A = CFG.actives[p.skill.id] || { dur: 0.5 }; return { kind: ({ charge: 'charge', secondwind: 'secondwind', whirlwind: 'whirl', hook: 'hookthrow' })[p.skill.id], u: Math.min(1, p.skill.t / A.dur) }; }   // active skills (Animator: Charge, Second wind, Whirlwind, Hook throw)
     if (p.bash) return { kind: 'bash', u: Math.min(1, p.bash.t / CFG.slam.dur) };       // shield slam (Animator: Shield slam)
     if (p.blocking) return { kind: p.shield && !weaponOf(p).twoHanded ? 'shieldup' : 'block', u: p.blockT };   // Animator: Shield raised / Block
     if (p.carry) return { kind: 'carry', u: sim.t };                                    // Animator: Carrying an ally (falls back to the walk)
@@ -388,7 +389,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
           drawFigure({ role: 'p', x: q.x, y: q.y, z: q.carried ? 18 : 0, face: q.face, tier: lk.tier, pHead: lk.head, pBody: lk.body, pLiv: lk.liv, pMetal: lk.metal, two: qw.twoHanded, wkind: qw.kind || 'sword', shield: !!q.shield && !qw.twoHanded, dead: true, deathT: 3, t: sim.t, flash: 0, swing: null, alpha: q.carried ? 0.9 : 0.85, noShadow: !!q.carried });
           continue;
         }
-        drawFigure(Object.assign({ role: 'p', x: q.x, y: q.y, z: q.z || 0, face: q.face, tier: lk.tier, pHead: lk.head, pBody: lk.body, pLiv: lk.liv, pMetal: lk.metal, broken: false, two: qw.twoHanded, wkind: qw.kind || 'sword', shield: !!q.shield && !qw.twoHanded,
+        drawFigure(Object.assign({ role: 'p', x: q.x, y: q.y, z: q.z || 0, face: q.skill && q.skill.id === 'whirlwind' ? (Math.floor(q.skill.t / 0.07) % 2 ? -q.face : q.face) : q.face, tier: lk.tier, pHead: lk.head, pBody: lk.body, pLiv: lk.liv, pMetal: lk.metal, broken: false, two: qw.twoHanded, wkind: qw.kind || 'sword', shield: !!q.shield && !qw.twoHanded,
           swing: q.swing, moving: q.moving, walkT: q.walkT, t: sim.t, flash: q.flash, flashMax: 0.2, hurt: q.hurt, hurtMax: 0.6, st: playerState(q),
           style: q.swing && q.swing.kind && q.swing.kind !== 'light' ? (((mine && !(runui && runui.active)) ? roleStyle : (q.roleStyles || {}))[q.swing.kind] || ({ heavy: 'chop', dash: qw.twoHanded ? 'lunge' : 'cut', counter: 'cut', jump: 'chop' })[q.swing.kind]) : ((q.swing && q.swing.style) || (mine ? look.style : 'cut')) }, M3.grabAtt(sim, qw.twoHanded)));
       } else if (it.kind === 'a') {                                  // a hireling: a fighter on your side
@@ -464,6 +465,14 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     ctx.globalAlpha = 1;
 
     // player hp + swing
+    for (const q of sim.players) if (q.hook) {                          // the grapple hook: a rope out from the hand, a spearhead on the end
+      const hx0 = q.x + q.hook.dir * 12, hy = q.y - 62 - (q.z || 0), tx = q.hook.x;
+      ctx.strokeStyle = '#2a1e14'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(hx0, hy); ctx.lineTo(tx, hy + 2); ctx.stroke();
+      ctx.strokeStyle = '#9a7a4a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hx0, hy); ctx.lineTo(tx, hy + 2); ctx.stroke();
+      ctx.fillStyle = '#14101c'; ctx.beginPath(); ctx.moveTo(tx + q.hook.dir * 9, hy + 2); ctx.lineTo(tx - q.hook.dir * 2, hy - 3); ctx.lineTo(tx - q.hook.dir * 2, hy + 7); ctx.fill();
+      ctx.fillStyle = '#c8ccd4'; ctx.beginPath(); ctx.moveTo(tx + q.hook.dir * 7, hy + 2); ctx.lineTo(tx - q.hook.dir * 1, hy - 1); ctx.lineTo(tx - q.hook.dir * 1, hy + 5); ctx.fill();
+    }
+    for (const q of sim.players) if (q.skill && q.skill.id === 'whirlwind') { ctx.strokeStyle = 'rgba(232,236,244,.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(q.x, q.y - 50, 34, 9, 0, 0, Math.PI * 2 * Math.min(1, q.skill.t / 0.3)); ctx.stroke(); }
     if (runui && runui.active && runui.drawOver) runui.drawOver(ctx);              // the camp's darkness, over the fighters
     if (p.hp > 0 && !p.carry && (sim.mode === 'battle' || sim.mode === 'run') && sim.players.some(q => q !== p && q.hp <= 0 && !q.rescued && !q.carried && Math.abs(q.x - p.x) <= CFG.rescue.reach + 6 && Math.abs(q.y - p.y) <= CFG.laneTol + 6)) label('G: carry them to the edge', p.x, p.y - 140, '#9fd3ff', 9);
     if (p.carry) label('Carry to the edge of the field (G drops)', p.x, p.y - 140, '#9fd3ff', 9);

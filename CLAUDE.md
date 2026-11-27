@@ -8,7 +8,7 @@ Any feature that adds a new pose or motion for a fighter (player, party member, 
 3. **A built-in fallback**: a `STATE_POSE` entry (or a fallback in `M3.statePose`) in `rig/model3d.js`, so the game looks right before anyone animates it; `registerAnim` must file the type as a one-shot (`ONE`) or a loop (`CLOOP`) with a sensible default length.
 4. **Load built-ins**: the type is in the Animator's `Load built-ins` list (with a loop length in `BASE_LOOPS` if it loops), so the built-in can be loaded as keys and edited.
 
-Current state types made this way: idle, walk, hurt, dying, falling, clash, parry, dash, jump, shoot, block, stun, shieldup (shield raised), bash (shield slam), carry (carrying a downed ally), launched (juggled in the air). Attacks: built-in styles can be loaded and replaced via `base`; new attacks are Animator attacks (juggle tag available).
+Current state types made this way: idle, walk, hurt, dying, falling, clash, parry, dash, jump, shoot, block, stun, shieldup (shield raised), bash (shield slam), carry (carrying a downed ally), launched (juggled in the air), charge, secondwind, whirl (whirlwind), hookthrow (grapple hook) — the active skills. Attacks: built-in styles can be loaded and replaced via `base`; new attacks are Animator attacks (juggle tag available).
 
 ## Other standing rules
 - Never anything that costs money: free plans and free tiers only (Cloudflare Worker + Durable Object on the free plan, GitHub Pages/raw).

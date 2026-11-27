@@ -47,7 +47,12 @@ export function initRunUI(env) {
       rows += '<div class="arow' + (dim ? ' dim' : '') + '"><b>' + info.n + '</b><span class="v">' + v + (g ? ' <small>(+' + g + ' from use)</small>' : '') + '</span><span class="d">' + esc(info.d) + '</span>' +
         '<button class="rb" data-a="spend:' + a + '"' + (profile.points > 0 ? '' : ' disabled') + '>+</button></div>';
     }
-    return head('Trainer', goldLine()) +
+    const act = R.ACTIVES, slotOf = k => profile.actives.indexOf(k);
+    let ah = '<div class="sec">Active skills <small>(E and R; cooldowns)</small></div>';
+    for (const k of Object.keys(act)) { const own = profile.owned.actives.includes(k), sl = slotOf(k);
+      ah += '<div class="srow"><span>' + esc(act[k].n) + (sl >= 0 ? ' <small>[' + (sl ? 'R' : 'E') + ']</small>' : '') + '</span><span class="d">' + esc(act[k].d) + '</span>' +
+        (!own ? '<button class="rb" data-a="buy:active:' + k + '">Learn ' + act[k].price + ' G</button>' : '<span class="btnrow" style="margin:0"><button class="rb" data-a="act:0:' + k + '"' + (sl === 0 ? ' disabled' : '') + '>E</button><button class="rb" data-a="act:1:' + k + '"' + (sl === 1 ? ' disabled' : '') + '>R</button></span>') + '</div>'; }
+    return head('Trainer', goldLine()) + ah +
       '<div class="lvl">Level <b>' + profile.level + '</b> &nbsp; XP ' + profile.xp + ' / ' + need + bar(profile.xp, need, 'xp') + '</div>' +
       '<div class="pts">Points to spend: <b>' + profile.points + '</b></div>' + rows +
       '<div class="sum">HP ' + d.maxHp + ' · Stamina ' + d.staminaMax + ' · Damage x' + d.dmgMult.toFixed(2) + ' · Speed x' + d.spdMult.toFixed(2) + ' · Hire slots ' + d.hireCap + '</div>' +
@@ -181,6 +186,9 @@ export function initRunUI(env) {
     if (swap === 'armor') eq += list(p.owned.armor.map(k => opt('equip:armor:' + k, CFG.tiers[k].label, Math.round(CFG.tiers[k].pct * 100) + '% off', p.armor === k)));
     eq += slot('shield', 'SHIELD', sh ? sh.n : 'None', sh ? (wc.twoHanded ? 'stowed: two-handed weapon' : (sh.heavy ? 'blocks heavies' : 'blocks normal hits') + ' · no parry') : 'block key blocks and parries');
     if (swap === 'shield') eq += list([opt('equip:shield:none', 'None', 'block and parry', !p.shield)].concat(p.owned.shields.map(k => opt('equip:shield:' + k, R.SHIELDS[k].n, R.SHIELDS[k].heavy ? 'blocks heavies' : 'light', p.shield === k))));
+    for (const sl of [0, 1]) { const k = p.actives[sl];
+      eq += slot('act' + sl, 'ACTIVE SKILL (' + (sl ? 'R' : 'E') + ')', k ? R.ACTIVES[k].n : 'None', k ? 'cooldown skill' : (p.owned.actives.length ? 'click to choose' : 'learn active skills at the Trainer'));
+      if (swap === 'act' + sl) eq += list([opt('act:' + sl + ':none', 'None', 'empty slot', !k)].concat(p.owned.actives.map(a => opt('act:' + sl + ':' + a, R.ACTIVES[a].n, p.actives.indexOf(a) >= 0 && p.actives[sl] !== a ? 'swaps slots' : '', p.actives[sl] === a)))); }
     eq += slot('skill', 'SKILLS (' + p.skills.length + ' / ' + d.skillSlots + ')', p.skills.length ? p.skills.map(k => R.SKILLS[k].n).join(', ') : 'None', p.owned.skills.length ? 'click to change' : 'learn skills at the Smith');
     if (swap === 'skill') eq += list(p.owned.skills.length ? p.owned.skills.map(k => '<button class="sopt" data-a="skill:' + k + '"><span>' + esc(R.SKILLS[k].n) + '</span><span class="d">' + (p.skills.includes(k) ? 'on: click to take off' : 'off: click to equip') + '</span></button>') : ['<span class="d">No skills learned yet.</span>']);
     const attrs = R.ATTRS.map(a => '<div class="arow2"><b>' + R.ATTR_INFO[a].n + '</b><span class="d">' + esc(R.ATTR_INFO[a].d.split('.')[0]) + '</span><span>' + R.attr(p, a) + ((p.grown[a] || 0) ? ' <small>(+' + p.grown[a] + ')</small>' : '') + '</span><button class="rb" data-a="spend:' + a + '"' + (p.points > 0 ? '' : ' disabled') + ' aria-label="Raise ' + R.ATTR_INFO[a].n + '">+</button></div>').join('');
@@ -273,6 +281,7 @@ export function initRunUI(env) {
     else if (a === 'hire') { const r = R.hire(profile, R.recruits(profile, run.seed)[+x]); note = r.ok ? '' : r.why; save(); }
     else if (a === 'dismiss') { R.dismiss(profile, +x); save(); }
     else if (a === 'reset') { if (!ui.confirmReset) { ui.confirmReset = true; note = 'Press Delete save again to wipe your progress.'; render(); return; } ui.confirmReset = false; localStorage.removeItem(KEY); Object.assign(profile, R.newProfile('Baron')); draft = null; run.me.name = profile.name; run.enterCamp(); rebuild(); live.player.x = 150; open('create'); return; }
+    else if (a === 'act') { R.equipActive(profile, +x, y); swap = null; rebuild(); }
     else if (a === 'swap') { swap = swap === x ? null : x; render(); return; }
     else if (a === 'model') { profile.model = myModel(); note = 'Profile model set: this is how you look in the Book of Swords.'; save(); render(); return; }
     else if (a === 'bk') { bookOpen(x); render(); return; }
@@ -359,6 +368,10 @@ export function initRunUI(env) {
 
   ui.drawFront = c => {
     if (!ui.active) return;
+    { const q = live.player, A = q.actives || [];                  // the two active skill slots, E and R, with their cooldowns
+      if (A[0] || A[1]) for (const sl of [0, 1]) { const k = A[sl]; if (!k) continue; const x = 640 - 112 + sl * 54, y = 360 - 40, cd = (q.acd || [0, 0])[sl], max = (CFG.actives[k] || { cd: 1 }).cd;
+        win(c, x, y, 50, 30); txt(c, sl ? 'R' : 'E', x + 6, y + 13, '#ffe27a', 9); txt(c, R.ACTIVES[k].n.split(' ')[0], x + 25, y + 24, cd > 0 ? '#8a96c0' : '#fff', 7, 'center');
+        if (cd > 0) { c.fillStyle = 'rgba(4,6,42,.55)'; c.fillRect(x + 3, y + 3, 44 * cd / max, 24); txt(c, Math.ceil(cd) + 's', x + 42, y + 13, '#cfd6ff', 8, 'right'); } } }
     { const B = live.enemies.find(e => e.state === 'alive' && e.boss && !e.dummy);                 // a knight or the general on the field: a bar across the top
       if (B && run.phase !== 'camp') { const nm = ((CFG.kinds[B.kind] || {}).name || B.kind).toUpperCase(), x = 200, y = 64, w = 240;
         c.save(); c.textAlign = 'center'; c.font = '10px ' + FONT; c.lineWidth = 3; c.strokeStyle = '#14101c'; c.strokeText(nm, 320, y - 4); c.fillStyle = '#ffb08a'; c.fillText(nm, 320, y - 4);

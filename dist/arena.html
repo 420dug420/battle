@@ -15476,6 +15476,14 @@ void main(){
     // shield held up in front, sword drawn back
     bash: P({ w: 1, py: -0.06, pel: [16, -34, 0], head: [6, 2], hand: [-0.2, 0.3, -0.04], blade: [0, 0.8, -0.55], far: [0.3, 0.44, 0.66], legN: [-46, 0, 54, 0, 0], legF: [36, 0, 34, 0, 0] }),
     // the shield driven forward
+    charge: P({ w: 1, py: -0.1, pel: [30, -20, 0], head: [12, 0], hand: [-0.1, 0.3, 0.2], blade: [0, 0.3, 0.95], far: [0.3, 0.42, 0.4], legN: [-54, 0, 50, 0, 0], legF: [40, 0, 30, 0, 0] }),
+    // shoulder down, running in
+    secondwind: P({ w: 1, py: -0.01, pel: [-8, 6, 0], head: [-16, 0], hand: [-0.3, -0.1, 0.1], blade: [0, -0.6, 0.6], far: [0.24, 0.1, 0.1], legN: [-8, 0, 10, 0, 0], legF: [8, 0, 10, 0, 0] }),
+    // chest out, head back, a breath
+    whirl: P({ w: 1, py: -0.06, pel: [10, -60, 0], head: [4, 0], hand: [0.1, 0.42, 0.5], blade: [0, 0.05, 1], far: [0.34, 0.4, -0.3], legN: [-30, 0, 44, 0, 0], legF: [26, 0, 40, 0, 0] }),
+    // blade held out flat for the spin
+    hookthrow: P({ w: 1, py: -0.03, pel: [14, -30, 0], head: [-2, 0], hand: [-0.2, 0.3, -0.1], blade: [0, 0.8, -0.5], far: [0.2, 0.58, 0.7], legN: [-40, 0, 50, 0, 0], legF: [34, 0, 38, 0, 0] }),
+    // the off hand flung forward with the rope
     shoot: P({ w: 1, py: -0.01, pel: [6, -4, 0], head: [-2, 0], hand: [0, 0.55, 0.62], blade: [0, 0.3, 1], far: [0.1, 0.45, 0.58], legN: [-30, 0, 38, 0, 0], legF: [26, 0, 32, 0, 0] })
   };
   var STATE_TWO = { two: true, grip: 0.12 };
@@ -15878,7 +15886,7 @@ void main(){
         V.push(V[0]);
       }
       ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, c: typ === "grab" ? null : Math.max(1, Math.min(L - 2, def.contact || Math.round(L * 0.4))), V, vm: !!def.vm && V.some(Boolean), dur: 0.5 };
-    } else if (typ === "hurt" || typ === "dying" || typ === "falling" || typ === "clash" || typ === "parry" || typ === "dash" || typ === "jump" || typ === "shoot" || typ === "bash") {
+    } else if (typ === "hurt" || typ === "dying" || typ === "falling" || typ === "clash" || typ === "parry" || typ === "dash" || typ === "jump" || typ === "shoot" || typ === "bash" || typ === "charge" || typ === "secondwind" || typ === "whirl" || typ === "hookthrow") {
       const L = def.len || 60;
       for (const k of ks2) add2(k, k.f);
       if (T[0] > 0) {
@@ -15886,14 +15894,14 @@ void main(){
         T.unshift(0);
       }
       if (T[T.length - 1] < L) {
-        keys.push(typ === "hurt" || typ === "clash" || typ === "parry" || typ === "shoot" || typ === "bash" ? M3.buildPose(ks2[0], two) : keys[keys.length - 1]);
+        keys.push(typ === "hurt" || typ === "clash" || typ === "parry" || typ === "shoot" || typ === "bash" || typ === "secondwind" || typ === "hookthrow" ? M3.buildPose(ks2[0], two) : keys[keys.length - 1]);
         T.push(L);
       }
       if (keys.length < 2) {
         keys.push(keys[0]);
         T.push(L);
       }
-      ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, dur: def.loop || { hurt: 0.3, dying: 0.35, falling: 0.5, clash: 0.34, parry: 0.3, dash: 0.22, jump: 0.6, shoot: 0.25, bash: 0.42 }[typ] };
+      ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, dur: def.loop || { hurt: 0.3, dying: 0.35, falling: 0.5, clash: 0.34, parry: 0.3, dash: 0.22, jump: 0.6, shoot: 0.25, bash: 0.42, charge: 0.45, secondwind: 0.5, whirl: 0.55, hookthrow: 0.6 }[typ] };
     } else {
       const L = def.len || 60;
       for (const k of ks2) add2(k, k.f);
@@ -16025,6 +16033,13 @@ void main(){
     // a high style rank: enemies sometimes balk at swinging and step back
     rescue: { edge: 16, slow: 0.6, reach: 34 },
     slam: { dur: 0.42, hitAt: 0.14, reach: 40, cost: 14, push: 150, max: 2 },
+    actives: {
+      // active skills on E and R (bought at the Trainer). cd: seconds before it can be used again
+      charge: { cd: 8, dur: 0.45, speed: 320, dmg: 2, stun: 0.9, push: 180 },
+      secondwind: { cd: 30, dur: 0.5, at: 0.2, hp: 0.25 },
+      whirlwind: { cd: 10, dur: 0.55, r: 50, dmg: 1.5, ticks: [0.15, 0.38], push: 120 },
+      hook: { cd: 9, dur: 1.2, range: 230, speed: 560, back: 900, pull: 0.25, stun: 1, stand: 30 }
+    },
     // shield slam: attack with the shield raised                          // drag a downed party member to the edge of the field to rescue them
     proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
     // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
@@ -16106,7 +16121,7 @@ void main(){
     switch (c.t) {
       case "input": {
         const tp2 = sim.players[c.p | 0] || sim.player;
-        tp2.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || "", heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, jump: !!c.jump, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay };
+        tp2.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || "", heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, jump: !!c.jump, s1: !!c.s1, s2: !!c.s2, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay };
         break;
       }
       case "manual":
@@ -16132,7 +16147,7 @@ void main(){
         break;
       case "set": {
         const tp2 = sim.players[c.p | 0] || sim.player;
-        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move", "kindMoves", "skills", "chainStyles", "armorPct", "dur", "durMax", "broken", "hp", "maxHp", "san", "chr", "dmgMult", "spdMult", "regenMult", "staminaMax", "stamina", "kindStyles", "juggle", "grace", "shield"]) if (k in c) tp2[k] = c[k];
+        for (const k of ["weapon", "dex", "dmgOverride", "inv", "move", "kindMoves", "skills", "chainStyles", "armorPct", "dur", "durMax", "broken", "hp", "maxHp", "san", "chr", "dmgMult", "spdMult", "regenMult", "staminaMax", "stamina", "kindStyles", "juggle", "grace", "shield", "actives"]) if (k in c) tp2[k] = c[k];
         break;
       }
       case "ally":
@@ -16324,6 +16339,10 @@ void main(){
           juggle: [],
           shield: null,
           bash: null,
+          actives: [null, null],
+          acd: [0, 0],
+          skill: null,
+          hook: null,
           awe: 0,
           grace: 0,
           pend: null,
@@ -16542,15 +16561,20 @@ void main(){
           E[key] = v2;
           return pr2;
         };
-        const pressed = edge(I.act, "act"), gPress = edge(I.g, "g"), heavyP = edge(I.heavy, "heavy"), blockP = edge(I.block, "block"), dashP = edge(I.dash, "dash"), fireP = edge(I.fire, "fire"), jumpP = edge(I.jump, "jump");
+        const pressed = edge(I.act, "act"), gPress = edge(I.g, "g"), heavyP = edge(I.heavy, "heavy"), blockP = edge(I.block, "block"), dashP = edge(I.dash, "dash"), fireP = edge(I.fire, "fire"), jumpP = edge(I.jump, "jump"), s1P = edge(I.s1, "s1"), s2P = edge(I.s2, "s2");
         const fin = I.fin || "", finPress = fin && fin !== E.fin ? fin : "";
         E.fin = fin;
-        this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP };
+        this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP, s1: s1P, s2: s2P };
+        if (pl2.acd) {
+          for (let k = 0; k < pl2.acd.length; k++) if (pl2.acd[k] > 0) pl2.acd[k] = Math.max(0, pl2.acd[k] - dt);
+        }
         if (pl2.hp <= 0 && (this.mode === "battle" || this.mode === "run")) {
           pl2.moving = false;
           pl2.swing = null;
           pl2.blocking = false;
           pl2.dash = null;
+          pl2.skill = null;
+          pl2.hook = null;
           if (pl2.grab) this.endGrab(0);
           continue;
         }
@@ -16716,6 +16740,11 @@ void main(){
       const p = this.player, c = this.cfg, I = this.input, pr2 = this._press || {}, S = c.stamina, D = c.dash;
       p.dashT = Math.min(99, p.dashT + dt);
       if (!I.block) p.blockLock = false;
+      if (p.skill) {
+        this.updateSkill(dt, w);
+        return;
+      }
+      if ((pr2.s1 || pr2.s2) && this.useActive(pr2.s1 ? 0 : 1)) return;
       if (p.air) {
         const J = c.jump;
         p.jumpT += dt;
@@ -17556,6 +17585,121 @@ void main(){
         e.x = this.clampX(e.x + Math.max(-cap, Math.min(cap, ox2[i15])));
         e.y = this.clampY(e.y + Math.max(-cap, Math.min(cap, oy[i15])));
       }
+    }
+    /* ---------- active skills ---------- */
+    useActive(slot) {
+      const p = this.player, id = p.actives && p.actives[slot], A = id && this.cfg.actives[id];
+      if (!A) return false;
+      if (p.acd[slot] > 0) {
+        this.text(p.x, p.y - 140, Math.ceil(p.acd[slot]) + "s", "#9aa4c0", 9);
+        return false;
+      }
+      if (p.swing || p.grab || p.air || p.bash || p.carry || p.stunT > 0) return false;
+      p.skill = { id, t: 0, dur: A.dur, hits: [], tick: 0 };
+      p.acd[slot] = A.cd;
+      p.blocking = false;
+      p.dash = null;
+      p.lunge = null;
+      if (id === "hook") p.hook = { x: p.x + p.face * 14, dir: p.face, d: 0, phase: "out", eId: null, pt: 0 };
+      this.text(p.x, p.y - 140, { charge: "CHARGE!", secondwind: "SECOND WIND", whirlwind: "WHIRLWIND", hook: "HOOK" }[id], "#ffe27a", 10);
+      return true;
+    }
+    updateSkill(dt, w) {
+      const p = this.player, c = this.cfg, k = p.skill, A = c.actives[k.id], t02 = k.t;
+      k.t += dt;
+      const foes = () => this.enemies.filter((e) => e.state === "alive" && !e.fly && !k.hits.includes(e.id));
+      if (k.id === "charge") {
+        p.x = this.clampX(p.x + p.face * A.speed * (p.spdMult || 1) * dt);
+        p.moving = true;
+        p.walkT += dt * 2;
+        for (const e of foes()) if (Math.abs(e.x - p.x) < 22 && Math.abs(e.y - p.y) <= c.laneTol + 4) {
+          k.hits.push(e.id);
+          this.applyHit(e, A.dmg * (p.dmgMult || 1), { kind: "charge", mult: 1 });
+          if (e.state === "alive") {
+            e.atk = null;
+            e.stun = Math.max(e.stun || 0, A.stun);
+            e.down = true;
+            e.kvx = p.face * A.push;
+            e.form = null;
+          }
+        }
+        if (Math.floor(k.t * 20) !== Math.floor(t02 * 20)) this.burst(p.x - p.face * 10, p.y, 3, "#8a7a6a", 50);
+      } else if (k.id === "secondwind") {
+        if (t02 < A.at && k.t >= A.at) {
+          p.stamina = p.staminaMax;
+          const h = Math.round(p.maxHp * A.hp);
+          p.hp = Math.min(p.maxHp, p.hp + h);
+          this.text(p.x, p.y - 120, "+" + h + " HP", "#7be07b", 11);
+          this.burst(p.x, p.y - 50, 12, "#a8f0a0", 90);
+        }
+      } else if (k.id === "whirlwind") {
+        for (const at of A.ticks) if (t02 < at && k.t >= at) {
+          for (const e of this.enemies.filter((e2) => e2.state === "alive" && !e2.fly)) if (Math.abs(e.x - p.x) <= A.r && Math.abs(e.y - p.y) <= c.laneTol * 2) {
+            this.applyHit(e, A.dmg * (p.dmgMult || 1), { kind: "whirlwind", mult: 1 });
+            if (e.state === "alive") {
+              e.atk = null;
+              e.kvx = Math.sign(e.x - p.x || 1) * A.push;
+              e.form = null;
+            }
+          }
+          this.burst(p.x, p.y - 50, 10, "#e8ecf4", 140);
+          this.shake = Math.max(this.shake, 0.06);
+        }
+      } else if (k.id === "hook") {
+        const h = p.hook;
+        if (!h) {
+          p.skill = null;
+          return;
+        }
+        if (h.phase === "out") {
+          const d02 = h.d;
+          h.d = Math.min(A.range, h.d + A.speed * dt);
+          const x02 = p.x + h.dir * (14 + d02), x1 = p.x + h.dir * (14 + h.d);
+          h.x = x1;
+          const hit = this.enemies.filter((e) => e.state === "alive" && !e.fly && Math.abs(e.y - p.y) <= c.laneTol + 4 && e.x - Math.min(x02, x1) >= -8 && e.x - Math.max(x02, x1) <= 8).sort((a, b) => Math.abs(a.x - p.x) - Math.abs(b.x - p.x))[0];
+          if (hit) {
+            h.phase = "pull";
+            h.eId = hit.id;
+            h.pt = 0;
+            h.fx = hit.x;
+            hit.atk = null;
+            hit.stun = Math.max(hit.stun || 0, A.pull + A.stun);
+            hit.form = null;
+            hit.down = false;
+            this.text(hit.x, hit.y - 120, "HOOKED!", "#ffb84a", 11);
+            this.shake = Math.max(this.shake, 0.08);
+          } else if (h.d >= A.range) h.phase = "back";
+        } else if (h.phase === "pull") {
+          const e = this.enemies.find((x) => x.id === h.eId && x.state === "alive");
+          h.pt += dt;
+          const u = Math.min(1, h.pt / A.pull), tx2 = p.x + h.dir * A.stand;
+          if (e) {
+            e.x = this.clampX(h.fx + (tx2 - h.fx) * u * u);
+            e.y += (p.y - e.y) * Math.min(1, dt * 10);
+            h.x = e.x;
+          }
+          if (u >= 1 || !e) {
+            if (e) this.applyHit(e, 1 * (p.dmgMult || 1), { kind: "hook", mult: 1 });
+            p.hook = null;
+            p.skill = null;
+            return;
+          }
+        } else {
+          h.d -= A.back * dt;
+          h.x = p.x + h.dir * (14 + Math.max(0, h.d));
+          if (h.d <= 0) {
+            p.hook = null;
+            p.skill = null;
+            return;
+          }
+        }
+        if (k.t > A.dur + 1) {
+          p.hook = null;
+          p.skill = null;
+        }
+        return;
+      }
+      if (k.t >= k.dur) p.skill = null;
     }
     /* ---------- shield slam: the raised shield driven into whoever is in front ---------- */
     shieldSlam() {
@@ -19032,6 +19176,7 @@ void main(){
   // game/run.js
   var run_exports = {};
   __export(run_exports, {
+    ACTIVES: () => ACTIVES,
     ARMOR_PRICE: () => ARMOR_PRICE,
     ATTRS: () => ATTRS,
     ATTR_INFO: () => ATTR_INFO,
@@ -19057,6 +19202,7 @@ void main(){
     chainFor: () => chainFor,
     derive: () => derive,
     dismiss: () => dismiss,
+    equipActive: () => equipActive,
     equipArmor: () => equipArmor,
     equipShield: () => equipShield,
     equipWeapon: () => equipWeapon,
@@ -19142,7 +19288,8 @@ void main(){
       weapon: "longsword",
       armor: "leather",
       shield: null,
-      owned: { weapons: ["longsword"], armor: ["leather"], shields: [], skills: [] },
+      actives: [null, null],
+      owned: { weapons: ["longsword"], armor: ["leather"], shields: [], skills: [], actives: [] },
       skills: [],
       upgrades: { hp: 0, stamina: 0, damage: 0, slots: 0, chain: 0 },
       styles: { owned: ["cut", "chop"], chain: ["cut", "chop"], roles: { heavy: null, dash: null, counter: null, jump: null } },
@@ -19164,6 +19311,8 @@ void main(){
       const d = newProfile(), p = Object.assign(d, o);
       if (o.created == null) p.created = true;
       if (!p.owned.shields) p.owned.shields = [];
+      if (!p.owned.actives) p.owned.actives = [];
+      if (!Array.isArray(p.actives)) p.actives = [null, null];
       p.upgrades.chain = Math.min(CHAIN_UNLOCKS.length, p.upgrades.chain || 0);
       if (p.shield === void 0) p.shield = null;
       p.upgrades = Object.assign({}, newProfile().upgrades, o.upgrades || {});
@@ -19225,6 +19374,12 @@ void main(){
   }
   var WEAPON_PRICE = { longsword: 0, greatsword: 120, axe: 60, mace: 60, spear: 90 };
   var ARMOR_PRICE = { leather: 0, mail: 150, plate: 400 };
+  var ACTIVES = {
+    charge: { n: "Charge", price: 250, d: "Rush forward, knocking down and hurting whoever is in the way. 8 s cooldown." },
+    secondwind: { n: "Second wind", price: 200, d: "Get your breath back: full stamina and a quarter of your health. 30 s cooldown." },
+    whirlwind: { n: "Whirlwind", price: 300, d: "Spin with the blade out, hitting everyone close on both sides twice. 10 s cooldown." },
+    hook: { n: "Grapple hook", price: 350, d: "Throw a spear on a rope; the first enemy in your lane is hauled to your feet, stunned. 9 s cooldown." }
+  };
   var SHIELDS = {
     buckler: { n: "Buckler", price: 80, cost: 0.8, heavy: false, spd: 0.7, slam: 3, stun: 0.5, d: "Light. Blocks normal hits, not heavies. Quick on your feet." },
     heater: { n: "Heater shield", price: 220, cost: 0.6, heavy: true, spd: 0.55, slam: 4, stun: 0.7, d: "Stops heavies too (at double stamina)." },
@@ -19264,6 +19419,17 @@ void main(){
       if (r.ok) p.owned.armor.push(key);
       return r;
     }
+    if (kind === "active") {
+      if (!ACTIVES[key]) return { ok: false, why: "No such skill." };
+      if (p.owned.actives.includes(key)) return { ok: false, why: "Already learned." };
+      const r = pay(p, ACTIVES[key].price);
+      if (r.ok) {
+        p.owned.actives.push(key);
+        const i15 = p.actives.indexOf(null);
+        if (i15 >= 0) p.actives[i15] = key;
+      }
+      return r;
+    }
     if (kind === "shield") {
       if (!SHIELDS[key]) return { ok: false, why: "No such shield." };
       if (p.owned.shields.includes(key)) return { ok: false, why: "Already owned." };
@@ -19296,6 +19462,19 @@ void main(){
   }
   var equipWeapon = (p, k) => p.owned.weapons.includes(k) ? (p.weapon = k, true) : false;
   var equipArmor = (p, k) => p.owned.armor.includes(k) ? (p.armor = k, true) : false;
+  function equipActive(p, slot, k) {
+    slot = slot | 0;
+    if (slot < 0 || slot > 1) return false;
+    if (!k || k === "none") {
+      p.actives[slot] = null;
+      return true;
+    }
+    if (!p.owned.actives.includes(k)) return false;
+    const o = p.actives.indexOf(k);
+    if (o >= 0) p.actives[o] = p.actives[slot];
+    p.actives[slot] = k;
+    return true;
+  }
   var equipShield = (p, k) => !k || k === "none" ? (p.shield = null, true) : p.owned.shields.includes(k) ? (p.shield = k, true) : false;
   var twoHanded = (w) => !!(CFG.weapons[w] && CFG.weaponClasses[CFG.weapons[w].cls].twoHanded);
   var STYLE_PRICE = { cut: 0, chop: 0, attack2: 40, lunge: 60 };
@@ -19426,6 +19605,7 @@ void main(){
       weapon: p.weapon,
       armor: p.armor,
       shield: p.shield || null,
+      actives: (p.actives || [null, null]).slice(0, 2),
       skills: p.skills.slice(),
       d: { dex: d.dex, maxHp: d.maxHp, staminaMax: d.staminaMax, dmgMult: d.dmgMult, spdMult: d.spdMult, regenMult: d.regenMult },
       styles: { chain: p.styles.chain.slice(0, d.chainSlots), roles: Object.assign({}, p.styles.roles) },
@@ -19614,6 +19794,7 @@ void main(){
         durMax: tier.dur,
         broken: false,
         inv: !inRun,
+        actives: (b.actives || [null, null]).map((k) => ACTIVES[k] ? k : null),
         shield: b.shield && SHIELDS[b.shield] && !twoHanded(b.weapon) ? Object.assign({ key: b.shield }, SHIELDS[b.shield]) : null,
         skills: { riposte: b.skills.includes("riposte"), shove: b.skills.includes("shove"), multi: b.skills.includes("multi") }
       });
@@ -20756,7 +20937,13 @@ void main(){
         const info = ATTR_INFO[a], v2 = attr(profile, a), g = profile.grown[a] || 0, dim = a === "int" || a === "wis" || a === "san";
         rows += '<div class="arow' + (dim ? " dim" : "") + '"><b>' + info.n + '</b><span class="v">' + v2 + (g ? " <small>(+" + g + " from use)</small>" : "") + '</span><span class="d">' + esc(info.d) + '</span><button class="rb" data-a="spend:' + a + '"' + (profile.points > 0 ? "" : " disabled") + ">+</button></div>";
       }
-      return head("Trainer", goldLine()) + '<div class="lvl">Level <b>' + profile.level + "</b> &nbsp; XP " + profile.xp + " / " + need + bar(profile.xp, need, "xp") + '</div><div class="pts">Points to spend: <b>' + profile.points + "</b></div>" + rows + '<div class="sum">HP ' + d.maxHp + " \xB7 Stamina " + d.staminaMax + " \xB7 Damage x" + d.dmgMult.toFixed(2) + " \xB7 Speed x" + d.spdMult.toFixed(2) + " \xB7 Hire slots " + d.hireCap + "</div>" + msg() + '<div class="foot"><button class="rb warn" data-a="reset">Delete save</button></div>';
+      const act = ACTIVES, slotOf = (k) => profile.actives.indexOf(k);
+      let ah2 = '<div class="sec">Active skills <small>(E and R; cooldowns)</small></div>';
+      for (const k of Object.keys(act)) {
+        const own = profile.owned.actives.includes(k), sl2 = slotOf(k);
+        ah2 += '<div class="srow"><span>' + esc(act[k].n) + (sl2 >= 0 ? " <small>[" + (sl2 ? "R" : "E") + "]</small>" : "") + '</span><span class="d">' + esc(act[k].d) + "</span>" + (!own ? '<button class="rb" data-a="buy:active:' + k + '">Learn ' + act[k].price + " G</button>" : '<span class="btnrow" style="margin:0"><button class="rb" data-a="act:0:' + k + '"' + (sl2 === 0 ? " disabled" : "") + '>E</button><button class="rb" data-a="act:1:' + k + '"' + (sl2 === 1 ? " disabled" : "") + ">R</button></span>") + "</div>";
+      }
+      return head("Trainer", goldLine()) + ah2 + '<div class="lvl">Level <b>' + profile.level + "</b> &nbsp; XP " + profile.xp + " / " + need + bar(profile.xp, need, "xp") + '</div><div class="pts">Points to spend: <b>' + profile.points + "</b></div>" + rows + '<div class="sum">HP ' + d.maxHp + " \xB7 Stamina " + d.staminaMax + " \xB7 Damage x" + d.dmgMult.toFixed(2) + " \xB7 Speed x" + d.spdMult.toFixed(2) + " \xB7 Hire slots " + d.hireCap + "</div>" + msg() + '<div class="foot"><button class="rb warn" data-a="reset">Delete save</button></div>';
     }
     function shopPanel() {
       const p = profile;
@@ -20901,6 +21088,11 @@ void main(){
       if (swap === "armor") eq += list(p.owned.armor.map((k) => opt("equip:armor:" + k, CFG.tiers[k].label, Math.round(CFG.tiers[k].pct * 100) + "% off", p.armor === k)));
       eq += slot("shield", "SHIELD", sh2 ? sh2.n : "None", sh2 ? wc.twoHanded ? "stowed: two-handed weapon" : (sh2.heavy ? "blocks heavies" : "blocks normal hits") + " \xB7 no parry" : "block key blocks and parries");
       if (swap === "shield") eq += list([opt("equip:shield:none", "None", "block and parry", !p.shield)].concat(p.owned.shields.map((k) => opt("equip:shield:" + k, SHIELDS[k].n, SHIELDS[k].heavy ? "blocks heavies" : "light", p.shield === k))));
+      for (const sl2 of [0, 1]) {
+        const k = p.actives[sl2];
+        eq += slot("act" + sl2, "ACTIVE SKILL (" + (sl2 ? "R" : "E") + ")", k ? ACTIVES[k].n : "None", k ? "cooldown skill" : p.owned.actives.length ? "click to choose" : "learn active skills at the Trainer");
+        if (swap === "act" + sl2) eq += list([opt("act:" + sl2 + ":none", "None", "empty slot", !k)].concat(p.owned.actives.map((a) => opt("act:" + sl2 + ":" + a, ACTIVES[a].n, p.actives.indexOf(a) >= 0 && p.actives[sl2] !== a ? "swaps slots" : "", p.actives[sl2] === a))));
+      }
       eq += slot("skill", "SKILLS (" + p.skills.length + " / " + d.skillSlots + ")", p.skills.length ? p.skills.map((k) => SKILLS[k].n).join(", ") : "None", p.owned.skills.length ? "click to change" : "learn skills at the Smith");
       if (swap === "skill") eq += list(p.owned.skills.length ? p.owned.skills.map((k) => '<button class="sopt" data-a="skill:' + k + '"><span>' + esc(SKILLS[k].n) + '</span><span class="d">' + (p.skills.includes(k) ? "on: click to take off" : "off: click to equip") + "</span></button>") : ['<span class="d">No skills learned yet.</span>']);
       const attrs = ATTRS.map((a) => '<div class="arow2"><b>' + ATTR_INFO[a].n + '</b><span class="d">' + esc(ATTR_INFO[a].d.split(".")[0]) + "</span><span>" + attr(p, a) + (p.grown[a] || 0 ? " <small>(+" + p.grown[a] + ")</small>" : "") + '</span><button class="rb" data-a="spend:' + a + '"' + (p.points > 0 ? "" : " disabled") + ' aria-label="Raise ' + ATTR_INFO[a].n + '">+</button></div>').join("");
@@ -21090,6 +21282,10 @@ void main(){
         live.player.x = 150;
         open("create");
         return;
+      } else if (a === "act") {
+        equipActive(profile, +x, y);
+        swap = null;
+        rebuild();
       } else if (a === "swap") {
         swap = swap === x ? null : x;
         render();
@@ -21320,6 +21516,22 @@ void main(){
     };
     ui.drawFront = (c) => {
       if (!ui.active) return;
+      {
+        const q = live.player, A = q.actives || [];
+        if (A[0] || A[1]) for (const sl2 of [0, 1]) {
+          const k = A[sl2];
+          if (!k) continue;
+          const x = 640 - 112 + sl2 * 54, y = 360 - 40, cd = (q.acd || [0, 0])[sl2], max = (CFG.actives[k] || { cd: 1 }).cd;
+          win(c, x, y, 50, 30);
+          txt(c, sl2 ? "R" : "E", x + 6, y + 13, "#ffe27a", 9);
+          txt(c, ACTIVES[k].n.split(" ")[0], x + 25, y + 24, cd > 0 ? "#8a96c0" : "#fff", 7, "center");
+          if (cd > 0) {
+            c.fillStyle = "rgba(4,6,42,.55)";
+            c.fillRect(x + 3, y + 3, 44 * cd / max, 24);
+            txt(c, Math.ceil(cd) + "s", x + 42, y + 13, "#cfd6ff", 8, "right");
+          }
+        }
+      }
       {
         const B = live.enemies.find((e) => e.state === "alive" && e.boss && !e.dummy);
         if (B && run.phase !== "camp") {
@@ -31142,7 +31354,7 @@ void main(){
     return out;
   };
   var BOOL = /* @__PURE__ */ new Set(["boss", "carried", "rescued", "broken", "flee", "moving", "dramatic", "down", "held", "dummy", "blocking", "air", "inv", "hit", "whiff", "heavy", "fr"]);
-  var OBJ = /* @__PURE__ */ new Set(["shield", "bash", "jug", "swing", "grab", "dash", "atk", "fly", "look", "roleStyles", "kindMoves"]);
+  var OBJ = /* @__PURE__ */ new Set(["skill", "hook", "shield", "bash", "jug", "swing", "grab", "dash", "atk", "fly", "look", "roleStyles", "kindMoves"]);
   var unpack = (n, keys, extra) => {
     const o = {};
     for (const k of keys.concat(extra || [])) {
@@ -31151,7 +31363,7 @@ void main(){
     }
     return o;
   };
-  var P_KEYS = ["shield", "bash", "carry", "carried", "rescued", "pid", "name", "look", "armorKey", "roleStyles", "weapon", "x", "y", "z", "face", "hp", "maxHp", "stamina", "staminaMax", "moving", "walkT", "flash", "hurt", "blocking", "blockT", "stunT", "clashT", "clashMax", "parryT", "shotT", "air", "jumpT", "chain", "move", "inv", "dex"];
+  var P_KEYS = ["skill", "hook", "acd", "actives", "shield", "bash", "carry", "carried", "rescued", "pid", "name", "look", "armorKey", "roleStyles", "weapon", "x", "y", "z", "face", "hp", "maxHp", "stamina", "staminaMax", "moving", "walkT", "flash", "hurt", "blocking", "blockT", "stunT", "clashT", "clashMax", "parryT", "shotT", "air", "jumpT", "chain", "move", "inv", "dex"];
   var SW_KEYS = ["t", "dur", "dur0", "hitAt", "extra", "move", "target", "hit", "kind", "style", "whiff", "mult"];
   var GR_KEYS = ["eId", "phase", "t", "dur", "hit", "strikes", "holdT"];
   var E_KEYS = ["boss", "jug", "id", "x", "y", "z", "face", "state", "hp", "maxHp", "dur", "durMax", "broken", "wounded", "flee", "tier", "kind", "lookSeed", "moving", "walkT", "flash", "hurt", "deathT", "dramatic", "stun", "down", "held", "clashT", "clashMax", "dummy"];
@@ -31361,7 +31573,7 @@ void main(){
           const i15 = sim.players.findIndex((q) => q.pid === from);
           if (i15 >= 0 && m.i && typeof m.i === "object") {
             const c = m.i, n = (v2) => Math.max(-1, Math.min(1, +v2 || 0)), a = (v2) => v2 == null ? null : isFinite(+v2) ? +v2 : null;
-            applyCmd(sim, { t: "input", p: i15, x: n(c.x), y: n(c.y), act: c.act, g: c.g, fin: typeof c.fin === "string" ? c.fin.slice(0, 20) : "", heavy: c.heavy, block: c.block, dash: c.dash, fire: false, jump: c.jump, ax: a(c.ax), ay: a(c.ay) });
+            applyCmd(sim, { t: "input", p: i15, x: n(c.x), y: n(c.y), act: c.act, g: c.g, fin: typeof c.fin === "string" ? c.fin.slice(0, 20) : "", heavy: c.heavy, block: c.block, dash: c.dash, fire: false, jump: c.jump, s1: !!c.s1, s2: !!c.s2, ax: a(c.ax), ay: a(c.ay) });
           }
           break;
         }
@@ -31417,6 +31629,7 @@ void main(){
       level: num(b.level, 1, 99, 1),
       weapon: str(b.weapon, 20),
       armor: str(b.armor, 20),
+      actives: (Array.isArray(b.actives) ? b.actives : []).slice(0, 2).map((k) => ["charge", "secondwind", "whirlwind", "hook"].includes(k) ? k : null),
       shield: b.shield && ["buckler", "heater", "kite"].includes(b.shield) ? b.shield : null,
       skills: (Array.isArray(b.skills) ? b.skills : []).slice(0, 5).map((x) => str(x, 12)),
       d: { dex: num(d.dex, 5, 99, 5), maxHp: num(d.maxHp, 1, 400, 30), staminaMax: num(d.staminaMax, 10, 500, 100), dmgMult: num(d.dmgMult, 0.1, 5, 1), spdMult: num(d.spdMult, 0.5, 2, 1), regenMult: num(d.regenMult, 0.5, 3, 1) },
@@ -31716,12 +31929,16 @@ void main(){
       const p = sim.player;
       $("status").textContent = fpsTxt + "  \xB7  " + (sim.manual ? "Manual" : "Auto") + "  \xB7  stamina " + Math.round(p.stamina) + "/" + p.staminaMax + (p.blocking ? "  \xB7  blocking" : "") + (p.swing ? "  \xB7  " + (p.swing.kind || "light") : "") + "  \xB7  chain " + p.chain;
     }, playerState = function(p) {
-      if (p.grab || p.swing) return null;
+      if (p.grab || p.swing && !p.skill) return null;
       if (p.air) return { kind: "jump", u: Math.min(1, p.jumpT / (2 * CFG.jump.vz / CFG.jump.grav)) };
       if (p.stunT > 0) return { kind: "stun" };
       if (p.clashT > 0) return { kind: "clash", u: 1 - p.clashT / (p.clashMax || 0.34) };
       if (p.parryT > 0) return { kind: "parry", u: 1 - p.parryT / 0.3 };
       if (p.dash) return { kind: "dash", u: p.dash.t / CFG.dash.dur };
+      if (p.skill) {
+        const A = CFG.actives[p.skill.id] || { dur: 0.5 };
+        return { kind: { charge: "charge", secondwind: "secondwind", whirlwind: "whirl", hook: "hookthrow" }[p.skill.id], u: Math.min(1, p.skill.t / A.dur) };
+      }
       if (p.bash) return { kind: "bash", u: Math.min(1, p.bash.t / CFG.slam.dur) };
       if (p.blocking) return { kind: p.shield && !weaponOf(p).twoHanded ? "shieldup" : "block", u: p.blockT };
       if (p.carry) return { kind: "carry", u: sim.t };
@@ -31829,7 +32046,7 @@ void main(){
             x: q.x,
             y: q.y,
             z: q.z || 0,
-            face: q.face,
+            face: q.skill && q.skill.id === "whirlwind" ? Math.floor(q.skill.t / 0.07) % 2 ? -q.face : q.face : q.face,
             tier: lk2.tier,
             pHead: lk2.head,
             pBody: lk2.body,
@@ -32028,6 +32245,40 @@ void main(){
         label("LEVEL UP!", q.x, y, u * 8 % 1 < 0.5 ? "#ffd84a" : "#fff0a0", Math.round(13 * pop));
       }
       ctx.globalAlpha = 1;
+      for (const q of sim.players) if (q.hook) {
+        const hx0 = q.x + q.hook.dir * 12, hy = q.y - 62 - (q.z || 0), tx2 = q.hook.x;
+        ctx.strokeStyle = "#2a1e14";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(hx0, hy);
+        ctx.lineTo(tx2, hy + 2);
+        ctx.stroke();
+        ctx.strokeStyle = "#9a7a4a";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(hx0, hy);
+        ctx.lineTo(tx2, hy + 2);
+        ctx.stroke();
+        ctx.fillStyle = "#14101c";
+        ctx.beginPath();
+        ctx.moveTo(tx2 + q.hook.dir * 9, hy + 2);
+        ctx.lineTo(tx2 - q.hook.dir * 2, hy - 3);
+        ctx.lineTo(tx2 - q.hook.dir * 2, hy + 7);
+        ctx.fill();
+        ctx.fillStyle = "#c8ccd4";
+        ctx.beginPath();
+        ctx.moveTo(tx2 + q.hook.dir * 7, hy + 2);
+        ctx.lineTo(tx2 - q.hook.dir * 1, hy - 1);
+        ctx.lineTo(tx2 - q.hook.dir * 1, hy + 5);
+        ctx.fill();
+      }
+      for (const q of sim.players) if (q.skill && q.skill.id === "whirlwind") {
+        ctx.strokeStyle = "rgba(232,236,244,.5)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(q.x, q.y - 50, 34, 9, 0, 0, Math.PI * 2 * Math.min(1, q.skill.t / 0.3));
+        ctx.stroke();
+      }
       if (runui && runui.active && runui.drawOver) runui.drawOver(ctx);
       if (p.hp > 0 && !p.carry && (sim.mode === "battle" || sim.mode === "run") && sim.players.some((q) => q !== p && q.hp <= 0 && !q.rescued && !q.carried && Math.abs(q.x - p.x) <= CFG.rescue.reach + 6 && Math.abs(q.y - p.y) <= CFG.laneTol + 6)) label("G: carry them to the edge", p.x, p.y - 140, "#9fd3ff", 9);
       if (p.carry) label("Carry to the edge of the field (G drops)", p.x, p.y - 140, "#9fd3ff", 9);
@@ -32661,7 +32912,7 @@ void main(){
     let hudOn = true;
     const keys = {}, aim = { x: null, y: null };
     const DEF = { up: "KeyW", down: "KeyS", left: "KeyA", right: "KeyD", dash: "ShiftLeft", block: "KeyQ", grab: "KeyG", throw: "KeyF", slam: "KeyV", strike: "KeyR", fire: "KeyE", jump: "Space", use: "KeyT" };
-    const NAMES2 = { up: "Move up", down: "Move down", left: "Move left", right: "Move right", dash: "Dash (stamina)", block: "Block (hold) / parry (tap)", grab: "Grab (hold; middle mouse button too)", throw: "Throw", slam: "Slam", strike: "Strike", fire: "Fire shot (off for now: saved for items and skills)", jump: "Jump (click in the air = jump attack)", use: "Use (walk up to a camp sign)" };
+    const NAMES2 = { up: "Move up", down: "Move down", left: "Move left", right: "Move right", dash: "Dash (stamina)", block: "Block (hold) / parry (tap)", grab: "Grab (hold; middle mouse button too)", throw: "Throw", slam: "Slam", strike: "Active skill 2 (strike while grabbing is left click)", fire: "Active skill 1", jump: "Jump (click in the air = jump attack)", use: "Use (walk up to a camp sign)" };
     let binds = Object.assign({}, DEF);
     try {
       Object.assign(binds, JSON.parse(localStorage.getItem("pw.binds") || "{}"));
@@ -32685,7 +32936,8 @@ void main(){
       else if (a === "dash") keys.dash = v2;
       else if (a === "block") keys.block = v2;
       else if (a === "grab") keys.g = v2;
-      else if (a === "fire") keys.fire = v2;
+      else if (a === "fire") keys.s1 = v2;
+      else if (a === "strike") keys.s2 = v2;
       else if (a === "jump") keys.jump = v2;
       else if (a === "use") {
       } else if (v2) keys.fin = a;
@@ -32769,8 +33021,8 @@ void main(){
       rebinding = null;
       drawBinds();
     };
-    const curInput = () => ({ x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!(keys.g || keys.mg), fin: keys.fin || "", heavy: !!keys.heavy, block: !!keys.block, dash: !!keys.dash, fire: false, jump: !!keys.jump, ax: aim.x, ay: aim.y });
-    const sameInput = (a, b) => ["x", "y", "act", "g", "fin", "heavy", "block", "dash", "fire", "jump", "ax", "ay"].every((k) => (a[k] == null ? null : a[k]) === (b[k] == null ? null : b[k]));
+    const curInput = () => ({ x: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), y: (keys.d ? 1 : 0) - (keys.u ? 1 : 0), act: !!keys.act, g: !!(keys.g || keys.mg), fin: keys.fin || "", heavy: !!keys.heavy, block: !!keys.block, dash: !!keys.dash, fire: false, s1: !!keys.s1, s2: !!keys.s2, jump: !!keys.jump, ax: aim.x, ay: aim.y });
+    const sameInput = (a, b) => ["x", "y", "act", "g", "fin", "heavy", "block", "dash", "fire", "jump", "s1", "s2", "ax", "ay"].every((k) => (a[k] == null ? null : a[k]) === (b[k] == null ? null : b[k]));
     let delayQ = [];
     let paused = false, timeScale = 1;
     const num = (id, d) => {

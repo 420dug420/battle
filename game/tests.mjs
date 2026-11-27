@@ -476,4 +476,19 @@ console.log('PASS shrug off after surviving crit');
   console.log('PASS shields: block only, heavy hold, slam');
 }
 
+// active skills on E and R
+{
+  const mk = id => { const s = new Sim(CFG, 5); applyCmd(s, { t: 'manual', on: true }); applyCmd(s, { t: 'set', actives: [id, null] }); s.player.face = 1; return s; };
+  const press = (s, k) => { applyCmd(s, { t: 'input', x: 0, y: 0, [k]: true }); s.step(1 / 60); applyCmd(s, { t: 'input', x: 0, y: 0 }); };
+  { const s = mk('charge'); const e = s.spawn({ kind: 'soldier', ai: 'stand' }); e.hp = e.maxHp = 50; e.x = s.player.x + 60; e.y = s.player.y; const x0 = s.player.x;
+    press(s, 's1'); for (let i = 0; i < 40; i++) s.step(1 / 60); assert(s.player.x > x0 + 80 && e.hp < 50 && e.down, 'charge rushes and knocks down');
+    assert(s.player.acd[0] > 0, 'on cooldown'); const hp1 = e.hp; press(s, 's1'); for (let i = 0; i < 30; i++) s.step(1 / 60); assert(e.hp === hp1 || !s.player.skill, 'not again while cooling down'); }
+  { const s = mk('secondwind'); s.player.hp = 10; s.player.stamina = 0; press(s, 's1'); for (let i = 0; i < 40; i++) s.step(1 / 60); assert(s.player.hp > 10 && s.player.stamina >= s.player.staminaMax - 1, 'second wind restores'); }
+  { const s = mk('whirlwind'); const a = s.spawn({ kind: 'soldier', ai: 'stand' }), b = s.spawn({ kind: 'soldier', ai: 'stand' }); for (const [e, dx] of [[a, 30], [b, -30]]) { e.hp = e.maxHp = 50; e.x = s.player.x + dx; e.y = s.player.y; }
+    press(s, 's1'); for (let i = 0; i < 40; i++) s.step(1 / 60); assert(a.hp < 50 && b.hp < 50, 'whirlwind hits both sides'); }
+  { const s = mk('hook'); const e = s.spawn({ kind: 'soldier', ai: 'stand' }); e.hp = e.maxHp = 50; e.x = s.player.x + 180; e.y = s.player.y;
+    press(s, 's1'); for (let i = 0; i < 90; i++) s.step(1 / 60); assert(Math.abs(e.x - s.player.x) < 50 && e.stun > 0, 'hook pulls the enemy in and stuns it'); }
+  console.log('PASS actives: charge, second wind, whirlwind, hook, cooldown');
+}
+
 console.log('\nALL SIM TESTS PASSED');

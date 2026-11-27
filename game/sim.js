@@ -70,7 +70,13 @@ export const CFG = {
   morale: { radius: 130, base: 0.75, perSan: 0.07, awe: 0.2 },        // a leader (tank or elite) falls: nearby fodder may break and run
   awe: { hesitate: 0.45, back: 0.5 },                                  // a high style rank: enemies sometimes balk at swinging and step back
   rescue: { edge: 16, slow: 0.6, reach: 34 },
-  slam: { dur: 0.42, hitAt: 0.14, reach: 40, cost: 14, push: 150, max: 2 },   // shield slam: attack with the shield raised                          // drag a downed party member to the edge of the field to rescue them
+  slam: { dur: 0.42, hitAt: 0.14, reach: 40, cost: 14, push: 150, max: 2 },
+  actives: {                                                       // active skills on E and R (bought at the Trainer). cd: seconds before it can be used again
+    charge: { cd: 8, dur: 0.45, speed: 320, dmg: 2, stun: 0.9, push: 180 },
+    secondwind: { cd: 30, dur: 0.5, at: 0.2, hp: 0.25 },
+    whirlwind: { cd: 10, dur: 0.55, r: 50, dmg: 1.5, ticks: [0.15, 0.38], push: 120 },
+    hook: { cd: 9, dur: 1.2, range: 230, speed: 560, back: 900, pull: 0.25, stun: 1.0, stand: 30 },
+  },   // shield slam: attack with the shield raised                          // drag a downed party member to the edge of the field to rescue them
   proj: { speed: 340, dmg: 2, cd: 0.7, range: 280, hitR: 10 },
   // Enemy kinds: fodder swarms and does not clash; soldier is the old default; tank is armored; elite swings heavy every third attack.
   kinds: { fodder: { hp: 5, tier: 'leather', clash: false }, soldier: { clash: true }, tank: { hp: 14, tier: 'plate', clash: true },
@@ -123,14 +129,14 @@ const NOT_STATE = ['cfg', 'rng', 'fxRng', 'moves', 'fx', 'texts', 'textOut', 'fe
 // every outside change (input, spawns, settings) goes through here, live and in replays, so a replay repeats the fight exactly
 export function applyCmd(sim, c) {
   switch (c.t) {
-    case 'input': { const tp = sim.players[c.p | 0] || sim.player; tp.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || '', heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, jump: !!c.jump, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay }; break; }
+    case 'input': { const tp = sim.players[c.p | 0] || sim.player; tp.input = { x: c.x, y: c.y, act: !!c.act, g: !!c.g, fin: c.fin || '', heavy: !!c.heavy, block: !!c.block, dash: !!c.dash, fire: !!c.fire, jump: !!c.jump, s1: !!c.s1, s2: !!c.s2, ax: c.ax == null ? null : c.ax, ay: c.ay == null ? null : c.ay }; break; }
     case 'manual': sim.manual = !!c.on; break;
     case 'spawn': for (const o of c.list) sim.spawn(Object.assign({}, o, { index: sim.enemies.filter(e => e.state === 'alive').length % 5 })); if (c.say) sim.say('info', c.say); break;
     case 'clear': sim.clearEnemies(); sim.say('info', 'Arena cleared.'); break;
     case 'heal': sim.healAll(); break;
     case 'repair': sim.repairAll(); break;
     case 'resetp': sim.resetPlayer(); sim.say('info', 'Player reset.'); break;
-    case 'set': { const tp = sim.players[c.p | 0] || sim.player; for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'kindMoves', 'skills', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr', 'dmgMult', 'spdMult', 'regenMult', 'staminaMax', 'stamina', 'kindStyles', 'juggle', 'grace', 'shield']) if (k in c) tp[k] = c[k]; break; }
+    case 'set': { const tp = sim.players[c.p | 0] || sim.player; for (const k of ['weapon', 'dex', 'dmgOverride', 'inv', 'move', 'kindMoves', 'skills', 'chainStyles', 'armorPct', 'dur', 'durMax', 'broken', 'hp', 'maxHp', 'san', 'chr', 'dmgMult', 'spdMult', 'regenMult', 'staminaMax', 'stamina', 'kindStyles', 'juggle', 'grace', 'shield', 'actives']) if (k in c) tp[k] = c[k]; break; }
     case 'ally': sim.spawnAlly(c.o); break;
     case 'mode': sim.mode = c.mode; break;
     case 'cfg': { const d = JSON.parse(JSON.stringify(c.cfg)); for (const k in d) sim.cfg[k] = d[k]; break; }
@@ -217,7 +223,7 @@ export class Sim {
       swing: null, chain: 0, cooldown: 0, moved: false, flash: 0, hurt: 0, walkT: 0, moving: false,
       armorPct: 0, dur: 0, durMax: 0, broken: false, chainStyles: null, san: 5, chr: 5,
       stamina: c.stamina.max, staminaMax: c.stamina.max, stamRegenT: 0, blocking: false, blockT: 0, stunT: 0, freeze: 0, dash: null, dashT: 99, kvx: 0, projCd: 0, counter: null, clashT: 0, clashMax: 0, z: 0, vz: 0, air: false, jumpT: 0, dmgMult: 1, spdMult: 1, regenMult: 1,
-      skills: { riposte: false, shove: false, multi: false }, kindMoves: {}, kindStyles: {}, juggle: [], shield: null, bash: null, awe: 0, grace: 0, pend: null, carry: null, carried: false, rescued: false,   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
+      skills: { riposte: false, shove: false, multi: false }, kindMoves: {}, kindStyles: {}, juggle: [], shield: null, bash: null, actives: [null, null], acd: [0, 0], skill: null, hook: null, awe: 0, grace: 0, pend: null, carry: null, carried: false, rescued: false,   // worn armor as one pool (campaign gear); chainStyles: [{ style, move }] played in order
     };
     })();
     p.i = i; p.pid = pid; p.name = ''; p.look = null; p.input = { x: 0, y: 0, act: false, g: false, fin: '', heavy: false, block: false, dash: false, fire: false, jump: false, ax: null, ay: null };
@@ -312,10 +318,11 @@ export class Sim {
     for (const pl of this.players) {
       this.useP(pl);
       const I = pl.input, E = pl.ed, edge = (now, key) => { const v = !!now, pr = v && !E[key]; E[key] = v; return pr; };   // a press is the moment the key goes down
-      const pressed = edge(I.act, 'act'), gPress = edge(I.g, 'g'), heavyP = edge(I.heavy, 'heavy'), blockP = edge(I.block, 'block'), dashP = edge(I.dash, 'dash'), fireP = edge(I.fire, 'fire'), jumpP = edge(I.jump, 'jump');
+      const pressed = edge(I.act, 'act'), gPress = edge(I.g, 'g'), heavyP = edge(I.heavy, 'heavy'), blockP = edge(I.block, 'block'), dashP = edge(I.dash, 'dash'), fireP = edge(I.fire, 'fire'), jumpP = edge(I.jump, 'jump'), s1P = edge(I.s1, 's1'), s2P = edge(I.s2, 's2');
       const fin = I.fin || '', finPress = fin && fin !== E.fin ? fin : ''; E.fin = fin;
-      this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP };
-      if (pl.hp <= 0 && (this.mode === 'battle' || this.mode === 'run')) { pl.moving = false; pl.swing = null; pl.blocking = false; pl.dash = null; if (pl.grab) this.endGrab(0); continue; }   // a downed fighter takes no part
+      this._press = { act: pressed, g: gPress, fin: finPress, heavy: heavyP, block: blockP, dash: dashP, fire: fireP, jump: jumpP, s1: s1P, s2: s2P };
+      if (pl.acd) for (let k = 0; k < pl.acd.length; k++) if (pl.acd[k] > 0) pl.acd[k] = Math.max(0, pl.acd[k] - dt);
+      if (pl.hp <= 0 && (this.mode === 'battle' || this.mode === 'run')) { pl.moving = false; pl.swing = null; pl.blocking = false; pl.dash = null; pl.skill = null; pl.hook = null; if (pl.grab) this.endGrab(0); continue; }   // a downed fighter takes no part
       if (this.carryStep(pl, dt)) continue;
       this.checkClash();
       const x0 = pl.x, y0 = pl.y;
@@ -420,6 +427,8 @@ export class Sim {
     const p = this.player, c = this.cfg, I = this.input, pr = this._press || {}, S = c.stamina, D = c.dash;
     p.dashT = Math.min(99, p.dashT + dt);
     if (!I.block) p.blockLock = false;
+    if (p.skill) { this.updateSkill(dt, w); return; }
+    if ((pr.s1 || pr.s2) && this.useActive(pr.s1 ? 0 : 1)) return;
     if (p.air) {                                                      // airborne: gravity, full steering, no dash, block or grab
       const J = c.jump; p.jumpT += dt; p.vz -= J.grav * dt; p.z += p.vz * dt;
       if (p.z <= 0) { p.z = 0; p.vz = 0; p.air = false; this.burst(p.x, p.y, 4, '#8a7a6a', 50); }
@@ -873,6 +882,54 @@ export class Sim {
       if (!ox[i] && !oy[i]) continue; const e = list[i];
       e.x = this.clampX(e.x + Math.max(-cap, Math.min(cap, ox[i]))); e.y = this.clampY(e.y + Math.max(-cap, Math.min(cap, oy[i])));
     }
+  }
+  /* ---------- active skills ---------- */
+  useActive(slot) {
+    const p = this.player, id = p.actives && p.actives[slot], A = id && this.cfg.actives[id];
+    if (!A) return false;
+    if (p.acd[slot] > 0) { this.text(p.x, p.y - 140, Math.ceil(p.acd[slot]) + 's', '#9aa4c0', 9); return false; }
+    if (p.swing || p.grab || p.air || p.bash || p.carry || p.stunT > 0) return false;
+    p.skill = { id, t: 0, dur: A.dur, hits: [], tick: 0 }; p.acd[slot] = A.cd; p.blocking = false; p.dash = null; p.lunge = null;
+    if (id === 'hook') p.hook = { x: p.x + p.face * 14, dir: p.face, d: 0, phase: 'out', eId: null, pt: 0 };
+    this.text(p.x, p.y - 140, ({ charge: 'CHARGE!', secondwind: 'SECOND WIND', whirlwind: 'WHIRLWIND', hook: 'HOOK' })[id], '#ffe27a', 10);
+    return true;
+  }
+  updateSkill(dt, w) {
+    const p = this.player, c = this.cfg, k = p.skill, A = c.actives[k.id], t0 = k.t; k.t += dt;
+    const foes = () => this.enemies.filter(e => e.state === 'alive' && !e.fly && !k.hits.includes(e.id));
+    if (k.id === 'charge') {                                        // a rush that bowls over whoever is in the way
+      p.x = this.clampX(p.x + p.face * A.speed * (p.spdMult || 1) * dt); p.moving = true; p.walkT += dt * 2;
+      for (const e of foes()) if (Math.abs(e.x - p.x) < 22 && Math.abs(e.y - p.y) <= c.laneTol + 4) {
+        k.hits.push(e.id); this.applyHit(e, A.dmg * (p.dmgMult || 1), { kind: 'charge', mult: 1 });
+        if (e.state === 'alive') { e.atk = null; e.stun = Math.max(e.stun || 0, A.stun); e.down = true; e.kvx = p.face * A.push; e.form = null; }
+      }
+      if (Math.floor(k.t * 20) !== Math.floor(t0 * 20)) this.burst(p.x - p.face * 10, p.y, 3, '#8a7a6a', 50);
+    } else if (k.id === 'secondwind') {                            // a breath: stamina back and some health
+      if (t0 < A.at && k.t >= A.at) { p.stamina = p.staminaMax; const h = Math.round(p.maxHp * A.hp); p.hp = Math.min(p.maxHp, p.hp + h); this.text(p.x, p.y - 120, '+' + h + ' HP', '#7be07b', 11); this.burst(p.x, p.y - 50, 12, '#a8f0a0', 90); }
+    } else if (k.id === 'whirlwind') {                             // a spin that hits everyone close, both sides
+      for (const at of A.ticks) if (t0 < at && k.t >= at) {
+        for (const e of this.enemies.filter(e => e.state === 'alive' && !e.fly)) if (Math.abs(e.x - p.x) <= A.r && Math.abs(e.y - p.y) <= c.laneTol * 2) {
+          this.applyHit(e, A.dmg * (p.dmgMult || 1), { kind: 'whirlwind', mult: 1 }); if (e.state === 'alive') { e.atk = null; e.kvx = Math.sign(e.x - p.x || 1) * A.push; e.form = null; }
+        }
+        this.burst(p.x, p.y - 50, 10, '#e8ecf4', 140); this.shake = Math.max(this.shake, 0.06);
+      }
+    } else if (k.id === 'hook') {                                  // a spear on a rope: out, catch the first enemy in the lane, haul it in
+      const h = p.hook; if (!h) { p.skill = null; return; }
+      if (h.phase === 'out') {
+        const d0 = h.d; h.d = Math.min(A.range, h.d + A.speed * dt); const x0 = p.x + h.dir * (14 + d0), x1 = p.x + h.dir * (14 + h.d); h.x = x1;
+        const hit = this.enemies.filter(e => e.state === 'alive' && !e.fly && Math.abs(e.y - p.y) <= c.laneTol + 4 && (e.x - Math.min(x0, x1)) >= -8 && (e.x - Math.max(x0, x1)) <= 8).sort((a, b) => Math.abs(a.x - p.x) - Math.abs(b.x - p.x))[0];
+        if (hit) { h.phase = 'pull'; h.eId = hit.id; h.pt = 0; h.fx = hit.x; hit.atk = null; hit.stun = Math.max(hit.stun || 0, A.pull + A.stun); hit.form = null; hit.down = false; this.text(hit.x, hit.y - 120, 'HOOKED!', '#ffb84a', 11); this.shake = Math.max(this.shake, 0.08); }
+        else if (h.d >= A.range) h.phase = 'back';
+      } else if (h.phase === 'pull') {
+        const e = this.enemies.find(x => x.id === h.eId && x.state === 'alive'); h.pt += dt;
+        const u = Math.min(1, h.pt / A.pull), tx = p.x + h.dir * A.stand;
+        if (e) { e.x = this.clampX(h.fx + (tx - h.fx) * u * u); e.y += (p.y - e.y) * Math.min(1, dt * 10); h.x = e.x; }
+        if (u >= 1 || !e) { if (e) this.applyHit(e, 1 * (p.dmgMult || 1), { kind: 'hook', mult: 1 }); p.hook = null; p.skill = null; return; }
+      } else { h.d -= A.back * dt; h.x = p.x + h.dir * (14 + Math.max(0, h.d)); if (h.d <= 0) { p.hook = null; p.skill = null; return; } }
+      if (k.t > A.dur + 1) { p.hook = null; p.skill = null; }
+      return;
+    }
+    if (k.t >= k.dur) p.skill = null;
   }
   /* ---------- shield slam: the raised shield driven into whoever is in front ---------- */
   shieldSlam() {
