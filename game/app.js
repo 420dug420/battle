@@ -92,7 +92,8 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       setTimeout(step, 250);
     })();
   }
-  const enemyLook = e => e._look || (e._look = M3.enemyLook(e.tier, e.lookSeed));
+  const BOSS_LOOK = { knight: { head: 'greathelm', body: 'komtur', metal: 'silver', liv: 'white' }, general: { head: 'crested', body: 'deco', metal: 'gilded', liv: 'red' } };   // the battlefield's heavies each have one fixed look
+  const enemyLook = e => e._look || (e._look = BOSS_LOOK[e.kind] || M3.enemyLook(e.tier, e.lookSeed));
   const withLook = (e, f) => { const l = enemyLook(e); f.pHead = l.head; f.pBody = l.body; f.pLiv = l.liv; f.pMetal = l.metal; return f; };
   /* figures that are only standing or walking are drawn at 12 frames a second and reused in between: each fresh 3D frame
      costs a read back from the graphics card, which was most of the frame time in busy fights. Swings, hits, grabs and deaths stay full rate. */

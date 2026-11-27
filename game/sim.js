@@ -1095,6 +1095,13 @@ export class Sim {
       const dx = p.x - 40 - a.x; if (Math.abs(dx) > 40) { a.x = this.clampX(a.x + Math.sign(dx) * spd * dt); a.face = Math.sign(dx); a.moving = true; a.walkT += dt; }
       return;
     }
+    if (this.holdLine && Math.abs(tgt.x - a.x) > 130) {             // a battle line: hold a rank just ahead of the nearest fighter until the enemy comes to you
+      const side = Math.sign(tgt.x - p.x) || 1, k = this.allies.indexOf(a), B = this.cfg.band, sx = this.clampX(p.x + side * (34 + (k % 2) * 18)), sy = B.top + 10 + ((k * 37) % Math.max(1, B.bottom - B.top - 20));
+      const mx = sx - a.x, my = sy - a.y; a.face = side;
+      if (Math.abs(mx) > 6) { a.x = this.clampX(a.x + Math.sign(mx) * Math.min(Math.abs(mx), spd * dt)); a.moving = true; }
+      if (Math.abs(my) > 4) { a.y = this.clampY(a.y + Math.sign(my) * Math.min(Math.abs(my), spd * 0.7 * dt)); a.moving = true; }
+      if (a.moving) a.walkT += dt; return;
+    }
     const dx = tgt.x - a.x, dy = tgt.y - a.y; a.face = dx >= 0 ? 1 : -1;
     if (Math.abs(dy) > c.laneTol * 0.5) { a.y = this.clampY(a.y + Math.sign(dy) * spd * 0.7 * dt); a.moving = true; }
     if (Math.abs(dx) > w.reach * 0.8) { a.x = this.clampX(a.x + Math.sign(dx) * spd * dt); a.moving = true; }

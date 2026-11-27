@@ -300,7 +300,7 @@ export class Run {
   }
   applyMap(inRun) {                                                       // a map can widen the field and pull the camera back
     const sim = this.sim, M = MAPS[this.map] || {}, z = inRun ? (M.zoom || 1) : 1;
-    sim.bounds = { left: CFG.arena.left, right: Math.round(CFG.W / z - (CFG.W - CFG.arena.right)) }; sim.formX = null;
+    sim.bounds = { left: CFG.arena.left, right: Math.round(CFG.W / z - (CFG.W - CFG.arena.right)) }; sim.formX = null; sim.holdLine = !!(inRun && M.line);
     sim.view = z < 1 ? { z, oy: Math.round(CFG.H - (CFG.band.bottom + 34) * z) } : null;
   }
   enterCamp() {

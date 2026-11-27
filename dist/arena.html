@@ -18050,6 +18050,21 @@ void main(){
         }
         return;
       }
+      if (this.holdLine && Math.abs(tgt.x - a.x) > 130) {
+        const side = Math.sign(tgt.x - p.x) || 1, k = this.allies.indexOf(a), B = this.cfg.band, sx2 = this.clampX(p.x + side * (34 + k % 2 * 18)), sy = B.top + 10 + k * 37 % Math.max(1, B.bottom - B.top - 20);
+        const mx = sx2 - a.x, my = sy - a.y;
+        a.face = side;
+        if (Math.abs(mx) > 6) {
+          a.x = this.clampX(a.x + Math.sign(mx) * Math.min(Math.abs(mx), spd * dt));
+          a.moving = true;
+        }
+        if (Math.abs(my) > 4) {
+          a.y = this.clampY(a.y + Math.sign(my) * Math.min(Math.abs(my), spd * 0.7 * dt));
+          a.moving = true;
+        }
+        if (a.moving) a.walkT += dt;
+        return;
+      }
       const dx2 = tgt.x - a.x, dy = tgt.y - a.y;
       a.face = dx2 >= 0 ? 1 : -1;
       if (Math.abs(dy) > c.laneTol * 0.5) {
@@ -19810,6 +19825,7 @@ void main(){
       const sim = this.sim, M = MAPS[this.map] || {}, z2 = inRun ? M.zoom || 1 : 1;
       sim.bounds = { left: CFG.arena.left, right: Math.round(CFG.W / z2 - (CFG.W - CFG.arena.right)) };
       sim.formX = null;
+      sim.holdLine = !!(inRun && M.line);
       sim.view = z2 < 1 ? { z: z2, oy: Math.round(CFG.H - (CFG.band.bottom + 34) * z2) } : null;
     }
     enterCamp() {
@@ -32968,7 +32984,8 @@ void main(){
     })();
     const oc = document.createElement("canvas"), sil = document.createElement("canvas");
     const warm = { q: [], on: false };
-    const enemyLook = (e) => e._look || (e._look = model3d_default.enemyLook(e.tier, e.lookSeed));
+    const BOSS_LOOK = { knight: { head: "greathelm", body: "komtur", metal: "silver", liv: "white" }, general: { head: "crested", body: "deco", metal: "gilded", liv: "red" } };
+    const enemyLook = (e) => e._look || (e._look = BOSS_LOOK[e.kind] || model3d_default.enemyLook(e.tier, e.lookSeed));
     const withLook = (e, f) => {
       const l = enemyLook(e);
       f.pHead = l.head;
