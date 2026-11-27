@@ -15899,8 +15899,11 @@ $('basel').onclick=()=>{M.clearCustom();let added=0,kept=0;
   reg();save();renderList();draw();note('Loaded '+added+' built-in animations'+(kept?' ('+kept+' already in the list, left as they are)':'')+'. Edit any of them; export, then load the file in the game and the edited one replaces the built-in.')};
 $('new').onclick=()=>{const a=mkAnim($('newtype').value,cur()?cur().load:'1s');if(EQABLE(a)){for(const x of lib.anims)if(SLOTK(x)===SLOTK(a))x.eq=false;a.eq=true}lib.anims.push(a);select(a.id)};
 $('eqk').onclick=()=>{const a=cur();if(!a||!EQABLE(a)){note('Attacks are picked in the game itself. This is for idle, walk, damaged and the other stances.');return}for(const x of lib.anims)if(SLOTK(x)===SLOTK(a))x.eq=false;a.eq=true;reg();save();renderList();draw();note('"'+a.name+'" is now the one the game uses ('+(a.load==='2'?'2H':'1H')+'). End → idle stance uses it too.')};
-$('dup').onclick=()=>{const a=clone(cur());a.id=uid();a.name+=' copy';lib.anims.push(a);select(a.id)};
-$('del').onclick=()=>{const a=cur();if(!confirm('Delete "'+a.name+'"?'))return;try{const g=JSON.parse(localStorage.getItem('pwgone')||'[]');g.push(a.id);localStorage.setItem('pwgone',JSON.stringify(g))}catch(e){}lib.anims=lib.anims.filter(x=>x!==a);if(!lib.anims.length)lib.anims.push(mkAnim('attack'));select(lib.anims[0].id)};
+$('dup').onclick=()=>{const a=clone(cur());a.id=uid();a.name+=' copy';a.eq=false;delete a.base;lib.anims.push(a);select(a.id)};
+let delArm=null;
+$('del').onclick=()=>{const a=cur();if(!a)return;   // pop-up dialogs are blocked inside the artifact frame, so the button asks for a second click instead
+  if(delArm!==a.id){delArm=a.id;$('del').textContent='Click again to delete';note('Click Delete again to delete "'+a.name+'".');clearTimeout($('del')._t);$('del')._t=setTimeout(()=>{delArm=null;$('del').textContent='Delete'},3000);return}
+  delArm=null;clearTimeout($('del')._t);$('del').textContent='Delete';note('Deleted "'+a.name+'".');try{const g=JSON.parse(localStorage.getItem('pwgone')||'[]');g.push(a.id);localStorage.setItem('pwgone',JSON.stringify(g))}catch(e){}lib.anims=lib.anims.filter(x=>x!==a);if(!lib.anims.length)lib.anims.push(mkAnim('attack'));select(lib.anims[0].id)};
 for(const[id,lab,mn,mx,st,t]of HBSL){const r=document.createElement('div');r.className='sl';r.id='hr_'+id;r.innerHTML='<span>'+lab+'</span><input type="range" id="hs_'+id+'" min="'+mn+'" max="'+mx+'" step="'+st+'"><span id="hv_'+id+'"></span>';$('hbsl').appendChild(r);
   $('hs_'+id).oninput=e=>{hitOf(cur())[id]=+e.target.value;$('hv_'+id).textContent=(+e.target.value).toFixed(2);save();draw()}}
 $('hbtype').onchange=e=>{hitOf(cur()).shape=e.target.value;save();draw()};$('hbshow').onchange=()=>draw();
@@ -15911,7 +15914,7 @@ async function copyText(t,ok){try{await navigator.clipboard.writeText(t);note(ok
 $('copyall').onclick=()=>copyText(JSON.stringify(exportLib()),'Copied the whole library ('+lib.anims.length+' animations). Paste it to Claude, or into the game test.');
 $('copy1').onclick=()=>copyText(JSON.stringify(exportAnim(cur())),'Copied this animation.');
 function importText(t,merge){try{const o=JSON.parse(t);const arr=o.anims||[o];const out=[];
-  for(const x of arr){if(!x.keys)continue;const a=mkAnim(x.type||'attack',x.load||(x.two?'2':x.shield===false?'1':'1s'),x.name);a.id=x.id||a.id;a.contact=x.contact||36;a.loop=x.loop||a.loop;if(x.hit)a.hit=Object.assign({},x.hit);if(x.vm)a.vm=true;if(x.role)a.role=x.role;if(x.juggle)a.juggle=true;if(x.base)a.base=x.base;a.keys=x.keys.map(k=>Object.assign({},DEF0,k));out.push(a)}
+  for(const x of arr){if(!x.keys)continue;const a=mkAnim(x.type||'attack',x.load||(x.two?'2':x.shield===false?'1':'1s'),x.name);a.id=x.id||a.id;a.contact=x.contact||36;a.loop=x.loop||a.loop;if(x.hit)a.hit=Object.assign({},x.hit);if(x.vm)a.vm=true;if(x.role)a.role=x.role;if(x.juggle)a.juggle=true;if(x.base)a.base=x.base;if(x.eq)a.eq=true;a.keys=x.keys.map(k=>Object.assign({},DEF0,k));out.push(a)}
   if(!out.length)throw 0;
   if(merge){for(const a of out){const i=lib.anims.findIndex(z=>z.id===a.id);if(i>=0)lib.anims[i]=a;else lib.anims.push(a)}}else lib.anims=out;
   select(out[0].id);note('Loaded '+out.length+' animation'+(out.length>1?'s':'')+'.')}catch(e){note('That is not a valid animation file.')}}
