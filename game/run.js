@@ -169,7 +169,8 @@ export const allySpec = (h, p) => { const d = derive(p), s = d.hireStrength * (1
 
 /* ---------- waves ---------- */
 export function wavePlan(n) {                          // the kinds of the n-th wave, in the order they arrive
-  const total = 6 + 3 * n, elites = n >= 5 ? Math.floor(n / 5) : 0, tanks = n >= 3 ? Math.floor(n / 3) : 0, soldiers = n >= 2 ? Math.floor(total * 0.25) : 0;
+  const ramp = [0.33, 0.5, 0.7, 0.85][n - 1] || 1;                 // the first waves are a tutorial: wave 1 is 3 fodder
+  const total = Math.round((6 + 3 * n) * ramp), elites = n >= 5 ? Math.floor(n / 5) : 0, tanks = n >= 3 ? Math.floor(n / 3) : 0, soldiers = n >= 2 ? Math.floor(total * 0.25) : 0;
   const list = [];
   for (let i = 0; i < total; i++) list.push('fodder');
   for (let i = 0; i < soldiers; i++) list[Math.floor((i + 0.5) * total / (soldiers + 1))] = 'soldier';
@@ -321,7 +322,7 @@ export class Run {
     }
     if (this.phase === 'wave') {
       this.spawnT -= dt;
-      const cap = R.maxAlive + this.wave * R.maxAlivePerWave + 4 * (this.members.length - 1);
+      const cap = Math.min(R.maxAlive + this.wave * R.maxAlivePerWave, 3 + 2 * (this.wave - 1)) + 4 * (this.members.length - 1);       // 3 at a time on wave 1, building to the full cap by wave 7
       if (this.queue.length && this.spawnT <= 0 && this.alive() < cap) { this.spawnOne(); this.spawnT = R.spawnGap; }
       if (!this.queue.length && this.alive() === 0) this.clearWave();
     } else if (this.phase === 'between') {

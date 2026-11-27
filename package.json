@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node game/tests.mjs && node game/run-tests.mjs && node campaign/tests.mjs",
+    "test": "node game/tests.mjs && node game/run-tests.mjs && node campaign/tests.mjs && node game/party-tests.mjs",
     "server:dev": "cd server && wrangler dev --local --port 8799",
     "server:test": "node server/test-room.mjs",
     "server:deploy": "cd server && wrangler deploy"

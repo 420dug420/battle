@@ -193,7 +193,7 @@ export function initRunUI(env) {
     else if (a === 'skill') { const r = R.toggleSkill(profile, x); note = r.ok ? '' : r.why; rebuild(); }
     else if (a === 'hire') { const r = R.hire(profile, R.recruits(profile, run.seed)[+x]); note = r.ok ? '' : r.why; save(); }
     else if (a === 'dismiss') { R.dismiss(profile, +x); save(); }
-    else if (a === 'reset') { if (!ui.confirmReset) { ui.confirmReset = true; note = 'Press Delete save again to wipe your progress.'; render(); return; } ui.confirmReset = false; localStorage.removeItem(KEY); Object.assign(profile, R.newProfile('Baron')); run.enterCamp(); rebuild(); note = 'Save deleted.'; }
+    else if (a === 'reset') { if (!ui.confirmReset) { ui.confirmReset = true; note = 'Press Delete save again to wipe your progress.'; render(); return; } ui.confirmReset = false; localStorage.removeItem(KEY); Object.assign(profile, R.newProfile('Baron')); draft = null; run.me.name = profile.name; run.enterCamp(); rebuild(); live.player.x = 150; open('create'); return; }
     else if (a === 'create') { if (!draft) return; profile.name = (draft.name || '').trim().slice(0, 16) || 'Baron'; profile.look = { head: draft.head, body: draft.body, liv: draft.liv, metal: draft.metal }; profile.created = true; draft = null; run.me.name = profile.name; live.player.x = 330; rebuild(); close(); return; }
     else if (a === 'unready') { run.unready(run.me.pid); }
     else if (a === 'depart') { save(); const multi = partyOf().length > 1 || run.isGuest; run.depart(x); if (multi && run.phase === 'camp') { note = run.atCart() ? 'Ready. Waiting for the others.' : 'Stand at the cart first.'; render(); return; } close(); env.readLook(); return; }
