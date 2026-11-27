@@ -646,12 +646,16 @@ const STATE_POSE = {
   clash:  P({ w: 1, py: -0.035, pel: [-14, -26, 3], head: [-8, 0], hand: [-0.1, 0.55, 0.2], blade: [0, 0.8, 0.35], far: [0.3, 0.35, 0.3], legN: [-24, 0, 36, 0, 0], legF: [22, 0, 30, 0, 0] }),
   dash:   P({ w: 1, py: -0.09, pel: [24, -12, 0], head: [8, 0], hand: [-0.2, 0.18, 0.05], blade: [0, 0.05, 1], far: [0.2, 0.1, 0.1], legN: [-52, 0, 62, 0, 0], legF: [42, 0, 50, 0, 0] }),
   jump:   P({ w: 1, py: -0.05, pel: [10, -6, 0], head: [-6, 0], hand: [-0.05, 0.6, 0.3], blade: [0, 0.4, 0.8], far: [0.3, 0.55, 0.45], legN: [-62, 0, 78, 0, 0], legF: [30, 0, 70, 0, 0] }),
+  shieldup: P({ w: 1, py: -0.04, pel: [8, -30, 0], head: [4, 4], hand: [-0.16, 0.34, 0.02], blade: [0, 0.85, -0.45], far: [0.3, 0.46, 0.46], legN: [-34, 0, 48, 0, 0], legF: [30, 0, 42, 0, 0] }),     // shield held up in front, sword drawn back
+  bash:   P({ w: 1, py: -0.06, pel: [16, -34, 0], head: [6, 2], hand: [-0.2, 0.3, -0.04], blade: [0, 0.8, -0.55], far: [0.3, 0.44, 0.66], legN: [-46, 0, 54, 0, 0], legF: [36, 0, 34, 0, 0] }),       // the shield driven forward
   shoot:  P({ w: 1, py: -0.01, pel: [6, -4, 0], head: [-2, 0], hand: [0, 0.55, 0.62], blade: [0, 0.3, 1], far: [0.1, 0.45, 0.58], legN: [-30, 0, 38, 0, 0], legF: [26, 0, 32, 0, 0] }),
 };
 const STATE_TWO = { two: true, grip: 0.12 };
 const env = u => u < 0.25 ? u / 0.25 : Math.max(0, 1 - (u - 0.25) / 0.75);        // quick snap in, slower recovery
 M3.statePose = function (f) {
   const st = f.st, two = f.two ? 2 : 1, k = st.kind, u = Math.max(0, Math.min(1, st.u || 0));
+  if (k === 'launched') { const LL = CLOOP['launched' + two]; if (LL) return loopSample(LL, st.u || 0); return sample(KEYS.wounded, ((f.t || 0) * 2.2) % 2, true); }   // juggled: flailing in the air
+  if (k === 'carry') { const LC = CLOOP['carry' + two]; return LC ? loopSample(LC, st.u || 0) : null; }                                         // carrying a downed ally: plain walk unless one is made
   if (k === 'stun') { const LS = CLOOP['stun' + two]; return LS ? loopSample(LS, f.t || 0) : sample(KEYS.wounded, ((f.t || 0) * 1.5) % 2, true); }
   const C = ONE[k + two];
   if (C) return sampleT(C.keys, C.T, u * C.len);                                  // an animation made in the Animator
@@ -659,7 +663,7 @@ M3.statePose = function (f) {
   let a = STATE_POSE[k]; if (!a) return null;
   if (f.two) a = Object.assign({}, a, STATE_TWO, { hand: [0, a.hand[1] - 0.2, a.hand[2] - 0.05] });
   const idle = f.two ? KEYS.idleTwo[0] : KEYS.idle1[0];
-  if (k === 'block' || k === 'dash') return lerpP(idle, a, Math.min(1, (k === 'block' ? (st.u || 0) * 14 : u * 6) + 0.2));
+  if (k === 'block' || k === 'shieldup' || k === 'dash') return lerpP(idle, a, Math.min(1, (k !== 'dash' ? (st.u || 0) * 14 : u * 6) + 0.2));
   return lerpP(idle, a, env(u));
 };
 
@@ -889,19 +893,19 @@ M3.registerAnim = function (def) {
     if (T[T.length - 1] < L - 1) add2(ks[ks.length - 1], L - 1);
     if (keys.length < 2) { keys.push(keys[0]); T.push(L - 1); V.push(V[0]); }
     ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, c: typ === 'grab' ? null : Math.max(1, Math.min(L - 2, def.contact || Math.round(L * 0.4))), V, vm: !!def.vm && V.some(Boolean), dur: 0.5 };
-  } else if (typ === 'hurt' || typ === 'dying' || typ === 'falling' || typ === 'clash' || typ === 'parry' || typ === 'dash' || typ === 'jump' || typ === 'shoot') {
+  } else if (typ === 'hurt' || typ === 'dying' || typ === 'falling' || typ === 'clash' || typ === 'parry' || typ === 'dash' || typ === 'jump' || typ === 'shoot' || typ === 'bash') {
     const L = def.len || 60;
     for (const k of ks) add(k, k.f);
     if (T[0] > 0) { keys.unshift(M3.buildPose(ks[0], two)); T.unshift(0); }
-    if (T[T.length - 1] < L) { keys.push(typ === 'hurt' || typ === 'clash' || typ === 'parry' || typ === 'shoot' ? M3.buildPose(ks[0], two) : keys[keys.length - 1]); T.push(L); }   // a flinch returns to its first pose; a death holds its last
+    if (T[T.length - 1] < L) { keys.push(typ === 'hurt' || typ === 'clash' || typ === 'parry' || typ === 'shoot' || typ === 'bash' ? M3.buildPose(ks[0], two) : keys[keys.length - 1]); T.push(L); }   // a flinch returns to its first pose; a death holds its last
     if (keys.length < 2) { keys.push(keys[0]); T.push(L); }
-    ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, dur: def.loop || ({ hurt: 0.3, dying: 0.35, falling: 0.5, clash: 0.34, parry: 0.3, dash: 0.22, jump: 0.6, shoot: 0.25 })[typ] };
+    ONE[typ + (two ? 2 : 1)] = { keys, T, len: L, dur: def.loop || ({ hurt: 0.3, dying: 0.35, falling: 0.5, clash: 0.34, parry: 0.3, dash: 0.22, jump: 0.6, shoot: 0.25, bash: 0.42 })[typ] };
   } else {
     const L = def.len || 60;
     for (const k of ks) add(k, k.f);
     if (T[0] > 0) { keys.unshift(M3.buildPose(ks[0], two)); T.unshift(0); }
     keys.push(M3.buildPose(ks[0], two)); T.push(L);
-    CLOOP[typ + (two ? 2 : 1)] = { keys, T, len: L, period: def.loop || (typ === 'idle' ? 3 : 0.55) };
+    CLOOP[typ + (two ? 2 : 1)] = { keys, T, len: L, period: def.loop || ({ idle: 3, shieldup: 1.2, launched: 1, block: 1.2, stun: 1.333 })[typ] || 0.55 };
   }
   return true;
 };

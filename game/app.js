@@ -322,8 +322,9 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     if (p.clashT > 0) return { kind: 'clash', u: 1 - p.clashT / (p.clashMax || 0.34) };
     if (p.parryT > 0) return { kind: 'parry', u: 1 - p.parryT / 0.3 };
     if (p.dash) return { kind: 'dash', u: p.dash.t / CFG.dash.dur };
-    if (p.bash) return { kind: 'parry', u: Math.min(1, p.bash.t / CFG.slam.dur) };      // the slam: a shove forward with the shield
-    if (p.blocking) return { kind: 'block', u: p.blockT };
+    if (p.bash) return { kind: 'bash', u: Math.min(1, p.bash.t / CFG.slam.dur) };       // shield slam (Animator: Shield slam)
+    if (p.blocking) return { kind: p.shield && !weaponOf(p).twoHanded ? 'shieldup' : 'block', u: p.blockT };   // Animator: Shield raised / Block
+    if (p.carry) return { kind: 'carry', u: sim.t };                                    // Animator: Carrying an ally (falls back to the walk)
     if (p.shotT > 0) return { kind: 'shoot', u: 1 - p.shotT / 0.25 };
     return null;
   }
@@ -382,7 +383,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
           }
           const aDur = e.atk && e.atk.dur || CFG.enemy.atkDur, aHit = e.atk && e.atk.hitAt || CFG.enemy.atkHitAt;
           const atk = e.atk ? { t: e.atk.t, dur: aDur, dur0: aDur, hitAt: aHit, extra: 0 } : null;
-          const est = e.jug ? { kind: 'stun' } : e.atk ? null : e.clashT > 0 ? { kind: 'clash', u: 1 - e.clashT / (e.clashMax || 0.34) } : (e.stun > 0 && !e.down && !e.held && !e.fly) ? { kind: 'stun' } : null;
+          const est = e.jug ? { kind: 'launched', u: sim.t } : e.atk ? null : e.clashT > 0 ? { kind: 'clash', u: 1 - e.clashT / (e.clashMax || 0.34) } : (e.stun > 0 && !e.down && !e.held && !e.fly) ? { kind: 'stun' } : null;
           const gvw = M3.grabVic(sim, e, w.twoHanded), fe = { role: 'e', x: e.x, y: e.y, z: e.z, face: e.face, tier: e.tier, broken: e.broken, shield: true,
             swing: atk, st: est, style: e.atk && e.atk.heavy ? 'chop' : undefined, woundedPose: e.wounded > 0, moving: e.moving, walkT: e.walkT, t: sim.t, flash: e.flash, flashMax: 0.12, hurt: e.hurt, hurtMax: 0.6 };
           if (gvw) { Object.assign(fe, gvw.fields); fe.x += gvw.dx; fe.swing = null; }
