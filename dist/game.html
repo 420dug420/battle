@@ -16094,6 +16094,7 @@ void main(){
       this.enemies = [];
       this.fx = [];
       this.texts = [];
+      this.lvlFx = [];
       this.routed = 0;
       this.log = [];
       this.logVer = 0;
@@ -17726,6 +17727,12 @@ void main(){
         this.fx.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 40, life: 0.35 + r() * 0.3, max: 0.65, col, size: r() < 0.3 ? 3 : 2 });
       }
     }
+    levelFx(q) {
+      if (!this.lvlFx) this.lvlFx = [];
+      this.lvlFx.push({ pid: q.pid, t: 0, max: 1.8 });
+      this.burst(q.x, q.y - 60, 14, "#ffd84a", 120);
+    }
+    // LEVEL UP! rising over the fighter's head (drawn by the page)
     text(x, y, text, col, size) {
       const t = { x, y, text, col, size: size || 10, life: 0.9, max: 0.9 };
       this.texts.push(t);
@@ -17743,6 +17750,10 @@ void main(){
       for (const t of this.texts) {
         t.life -= dt;
         t.y -= 14 * dt;
+      }
+      if (this.lvlFx && this.lvlFx.length) {
+        for (const L of this.lvlFx) L.t += dt;
+        this.lvlFx = this.lvlFx.filter((L) => L.t < L.max);
       }
       this.texts = this.texts.filter((t) => t.life > 0);
     }

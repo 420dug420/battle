@@ -357,7 +357,7 @@ export class Run {
   }
   giveXp(m, n) {
     m.xpGain += n; if (!m.p) return;
-    const up = addXp(m.p, n); if (up) { m.levelUps += up; this.say(m.name + ' reached level ' + m.p.level + '.'); const q = this.pl(m); if (q) this.sim.text(q.x, q.y - 120, 'LEVEL UP', '#ffe27a', 12); }
+    const up = addXp(m.p, n); if (up) { m.levelUps += up; this.say(m.name + ' reached level ' + m.p.level + '.'); const q = this.pl(m); if (q) this.sim.levelFx(q); }
   }
   onHit(m, move) {
     const R = RUNCFG.rank, g = this.train(m, move);

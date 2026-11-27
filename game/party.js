@@ -29,7 +29,7 @@ export function packSnap(sim, run, tick, texts) {
     enemies: sim.enemies.map(e => Object.assign(pickR(e, E_KEYS, r1), { jug: JUG(e.jug), atk: e.atk ? pickR(e.atk, ['t', 'dur', 'hitAt', 'heavy', 'hit'], r2) : null, fly: e.fly ? { vx: r1(e.fly.vx || 0), vz: r1(e.fly.vz || 0), fr: !!e.fly.fr } : null })),
     allies: sim.allies.map(a => Object.assign(pickR(a, A_KEYS, r1), { atk: a.atk ? { t: r2(a.atk.t) } : null })),
     proj: sim.proj.map(q => ({ x: r1(q.x), y: r1(q.y), vx: r1(q.vx), vy: r1(q.vy) })),
-    texts: texts || [],
+    texts: texts || [], lvl: (sim.lvlFx || []).map(L => ({ pid: L.pid, t: r2(L.t), max: L.max })),
     run: { phase: run.phase, wave: run.wave, left: run.queue.length + run.alive(), banner: run.banner, msgs: run.msgs.slice(-3), voteIn: run.phase === 'vote' ? Math.max(0, r1(run.voteAt - sim.t)) : 0, runN: run.runN || 0,
       members: run.members.map(m => ({ pid: m.pid, name: m.name, level: m.build.level, gold: m.gold, rank: r1(m.rank.score), tier: run.tierOf(m), ready: m.ready, vote: m.vote, down: m.down, acked: m.acked, atCart: run.atCart(m), pay: run.leavePayOf(m) })) },
   };
@@ -46,6 +46,7 @@ export function applySnap(sim, m, myPid) {
   const oe = new Map(sim.enemies.map(e => [e.id, e])); sim.enemies = (m.enemies || []).slice(0, 80).map(n => { const v = unpack(n, E_KEYS, ['atk', 'fly']), e = oe.get(v.id) || {}; return Object.assign(e, v); });   // keeps client-only fields (cached look)
   const oa = new Map(sim.allies.map(a => [a.id, a])); sim.allies = (m.allies || []).slice(0, 20).map(n => { const v = unpack(n, A_KEYS, ['atk']), a = oa.get(v.id) || {}; return Object.assign(a, v); });
   sim.proj = (m.proj || []).slice(0, 60).map(q => ({ x: +q.x || 0, y: +q.y || 0, vx: +q.vx || 0, vy: +q.vy || 0 }));
+  sim.lvlFx = (m.lvl || []).slice(0, 10).map(L => ({ pid: String(L.pid), t: +L.t || 0, max: Math.min(3, +L.max || 1.8) }));
   for (const t of (m.texts || []).slice(0, 20)) sim.texts.push({ x: +t.x || 0, y: +t.y || 0, text: String(t.text || '').slice(0, 24), col: String(t.col || '#fff').slice(0, 16), size: +t.size || 10, life: 0.9, max: 0.9 });
 }
 

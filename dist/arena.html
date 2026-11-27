@@ -16225,6 +16225,7 @@ void main(){
       this.enemies = [];
       this.fx = [];
       this.texts = [];
+      this.lvlFx = [];
       this.routed = 0;
       this.log = [];
       this.logVer = 0;
@@ -17857,6 +17858,12 @@ void main(){
         this.fx.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 40, life: 0.35 + r() * 0.3, max: 0.65, col, size: r() < 0.3 ? 3 : 2 });
       }
     }
+    levelFx(q) {
+      if (!this.lvlFx) this.lvlFx = [];
+      this.lvlFx.push({ pid: q.pid, t: 0, max: 1.8 });
+      this.burst(q.x, q.y - 60, 14, "#ffd84a", 120);
+    }
+    // LEVEL UP! rising over the fighter's head (drawn by the page)
     text(x, y, text, col, size) {
       const t = { x, y, text, col, size: size || 10, life: 0.9, max: 0.9 };
       this.texts.push(t);
@@ -17874,6 +17881,10 @@ void main(){
       for (const t of this.texts) {
         t.life -= dt;
         t.y -= 14 * dt;
+      }
+      if (this.lvlFx && this.lvlFx.length) {
+        for (const L of this.lvlFx) L.t += dt;
+        this.lvlFx = this.lvlFx.filter((L) => L.t < L.max);
       }
       this.texts = this.texts.filter((t) => t.life > 0);
     }
@@ -19732,7 +19743,7 @@ void main(){
         m.levelUps += up2;
         this.say(m.name + " reached level " + m.p.level + ".");
         const q = this.pl(m);
-        if (q) this.sim.text(q.x, q.y - 120, "LEVEL UP", "#ffe27a", 12);
+        if (q) this.sim.levelFx(q);
       }
     }
     onHit(m, move) {
@@ -30717,6 +30728,7 @@ void main(){
       allies: sim.allies.map((a) => Object.assign(pickR(a, A_KEYS, r1), { atk: a.atk ? { t: r2(a.atk.t) } : null })),
       proj: sim.proj.map((q) => ({ x: r1(q.x), y: r1(q.y), vx: r1(q.vx), vy: r1(q.vy) })),
       texts: texts || [],
+      lvl: (sim.lvlFx || []).map((L) => ({ pid: L.pid, t: r2(L.t), max: L.max })),
       run: {
         phase: run.phase,
         wave: run.wave,
@@ -30753,6 +30765,7 @@ void main(){
       return Object.assign(a, v2);
     });
     sim.proj = (m.proj || []).slice(0, 60).map((q) => ({ x: +q.x || 0, y: +q.y || 0, vx: +q.vx || 0, vy: +q.vy || 0 }));
+    sim.lvlFx = (m.lvl || []).slice(0, 10).map((L) => ({ pid: String(L.pid), t: +L.t || 0, max: Math.min(3, +L.max || 1.8) }));
     for (const t of (m.texts || []).slice(0, 20)) sim.texts.push({ x: +t.x || 0, y: +t.y || 0, text: String(t.text || "").slice(0, 24), col: String(t.col || "#fff").slice(0, 16), size: +t.size || 10, life: 0.9, max: 0.9 });
   }
   var GuestRun = class {
@@ -31491,6 +31504,20 @@ void main(){
       for (const t of sim.texts) {
         ctx.globalAlpha = Math.min(1, t.life / 0.3);
         label(t.text, t.x, t.y, t.col, t.size + 2);
+      }
+      for (const L of sim.lvlFx || []) {
+        const q = sim.players.find((o) => o.pid === L.pid);
+        if (!q || q.rescued) continue;
+        const u = Math.min(1, L.t / L.max), a = u < 0.12 ? u / 0.12 : u > 0.72 ? Math.max(0, (1 - u) / 0.28) : 1, pop = u < 0.14 ? 1 + (0.14 - u) * 3 : 1;
+        for (let i15 = 0; i15 < 12; i15++) {
+          const k = (u * 1.4 + i15 / 12) % 1, mx = q.x + Math.sin(i15 * 2.399 + u * 6) * (10 + 10 * k), my = q.y - 40 - k * 90;
+          ctx.globalAlpha = a * (1 - k);
+          ctx.fillStyle = i15 % 3 ? "#ffd84a" : "#fff4b0";
+          ctx.fillRect(Math.round(mx), Math.round(my), i15 % 4 ? 1 : 2, i15 % 4 ? 1 : 2);
+        }
+        const y = q.y - 138 - u * 34 - (q.z || 0);
+        ctx.globalAlpha = a;
+        label("LEVEL UP!", q.x, y, u * 8 % 1 < 0.5 ? "#ffd84a" : "#fff0a0", Math.round(13 * pop));
       }
       ctx.globalAlpha = 1;
       if (runui && runui.active && runui.drawOver) runui.drawOver(ctx);

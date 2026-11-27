@@ -424,6 +424,14 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     for (const f of sim.fx) { ctx.globalAlpha = Math.max(0, f.life / f.max); ctx.fillStyle = f.col; ctx.fillRect(Math.round(f.x), Math.round(f.y), f.size, f.size); }
     ctx.globalAlpha = 1;
     for (const t of sim.texts) { ctx.globalAlpha = Math.min(1, t.life / 0.3); label(t.text, t.x, t.y, t.col, t.size + 2); }
+    for (const L of sim.lvlFx || []) {                                 // LEVEL UP!: golden, popping in, rising above the head, with motes drifting up
+      const q = sim.players.find(o => o.pid === L.pid); if (!q || q.rescued) continue;
+      const u = Math.min(1, L.t / L.max), a = u < 0.12 ? u / 0.12 : u > 0.72 ? Math.max(0, (1 - u) / 0.28) : 1, pop = u < 0.14 ? 1 + (0.14 - u) * 3 : 1;
+      for (let i = 0; i < 12; i++) { const k = (u * 1.4 + i / 12) % 1, mx = q.x + Math.sin(i * 2.399 + u * 6) * (10 + 10 * k), my = q.y - 40 - k * 90;
+        ctx.globalAlpha = a * (1 - k); ctx.fillStyle = i % 3 ? '#ffd84a' : '#fff4b0'; ctx.fillRect(Math.round(mx), Math.round(my), i % 4 ? 1 : 2, i % 4 ? 1 : 2); }
+      const y = q.y - 138 - u * 34 - (q.z || 0);
+      ctx.globalAlpha = a; label('LEVEL UP!', q.x, y, u * 8 % 1 < 0.5 ? '#ffd84a' : '#fff0a0', Math.round(13 * pop));
+    }
     ctx.globalAlpha = 1;
 
     // player hp + swing

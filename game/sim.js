@@ -200,7 +200,7 @@ export class Sim {
     this.feed = []; this.t = 0; this.nextId = 1; this.shake = 0; this.manual = this.manual || false; this.proj = [];
     this.players = [this.mkPlayer(0, null)]; this.player = this.players[0]; this.credit = null;
     this.mode = this.mode || 'arena'; this.outcome = null; this.spawned = 0; this.allies = []; this.fallen = [];   // mode 'battle': a downed player loses the fight instead of being restored
-    this.enemies = []; this.fx = []; this.texts = []; this.routed = 0;
+    this.enemies = []; this.fx = []; this.texts = []; this.lvlFx = []; this.routed = 0;
     this.log = []; this.logVer = 0; this.lastHit = null;
     this.moves = this.moves || {};                                // baked weapon paths by move id; a move without one uses the reach rule
     this.lastClash = null;
@@ -1036,11 +1036,13 @@ export class Sim {
       this.fx.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 40, life: 0.35 + r() * 0.3, max: 0.65, col, size: r() < 0.3 ? 3 : 2 });
     }
   }
+  levelFx(q) { if (!this.lvlFx) this.lvlFx = []; this.lvlFx.push({ pid: q.pid, t: 0, max: 1.8 }); this.burst(q.x, q.y - 60, 14, '#ffd84a', 120); }   // LEVEL UP! rising over the fighter's head (drawn by the page)
   text(x, y, text, col, size) { const t = { x, y, text, col, size: size || 10, life: 0.9, max: 0.9 }; this.texts.push(t); if (this.textOut) this.textOut.push(Object.assign({}, t)); }   // textOut: a server collects new texts to send
   updateFx(dt) {
     for (const f of this.fx) { f.life -= dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 520 * dt; }
     this.fx = this.fx.filter(f => f.life > 0);
     for (const t of this.texts) { t.life -= dt; t.y -= 14 * dt; }
+    if (this.lvlFx && this.lvlFx.length) { for (const L of this.lvlFx) L.t += dt; this.lvlFx = this.lvlFx.filter(L => L.t < L.max); }
     this.texts = this.texts.filter(t => t.life > 0);
   }
 }
