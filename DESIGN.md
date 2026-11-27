@@ -41,3 +41,11 @@ Persistent world map (later), daily faction war (later), mounted combat (not now
 
 ## Rule
 Every new pose or motion ships with its Animator setup (see CLAUDE.md).
+
+## Overnight build (2026-11-27): choices made without asking
+- Active skills: Charge 250 G (8 s), Second wind 200 G (30 s, +25% HP, full stamina), Whirlwind 300 G (10 s, two hits around you), Grapple hook 350 G (9 s, pulls one enemy in, stuns 1 s). Learned at the Trainer; buying one fills an empty E/R slot; swap in Tab.
+- Skills cannot start mid-swing, while grabbing, in the air, slamming, carrying or stunned.
+- Living camp: the first two hirelings spar near the Hire board, the next two sit by the fire, at most four shown. Up to three other players from the Book of Swords (most recently seen) wander the right side as pale ghosts with "(away)"; refreshed at most every 5 minutes.
+- Battlefield: the knight has a fixed greathelm look, the general a crested helm and gilded armor. On line maps hirelings hold a rank just ahead of the nearest player until an enemy is within 130 px.
+- Difficulty check (crude bot that can't parry, leather armor): level 1 solo dies on wave 3; level 6 with 2 hirelings dies on waves 5-7; level 10 with 3 hirelings reaches waves 8-10. Left as is (hard, as asked).
+- Backdrops: Training Fields is now a dead moor under a black sun with a far city of spires, gallows and skulls on pikes. Battlefield is a storm with a castle burning on the hill and the enemy host on the ridge. All original pixel art.
