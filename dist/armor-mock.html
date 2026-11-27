@@ -15283,6 +15283,7 @@ void main(){
       HT.locomotion.ph = (f.walkT || 0) * 12;
       const wp2 = HT.locomotion.ph;
       p = P({ hand: [f.two ? -0.14 : -0.2, (f.two ? 0.16 : 0.3) + 0.025 * Math.sin(wp2 * 2 - 0.6), (f.two ? 0.26 : 0.32) + 0.04 * Math.sin(wp2 - 0.4)], blade: [0, (f.two ? 0.55 : 0.2) + 0.18 * Math.sin(wp2 * 2 - 1.2), 1], far: [0.22, 0.12 + 0.03 * Math.sin(wp2 * 2), 0.14 - 0.1 * Math.sin(wp2)], two: !!f.two, grip: 0.12 });
+      M3.lastP = p;
       applyRun(rig, p);
       groundLock(rig);
       return rig;
@@ -15427,7 +15428,7 @@ void main(){
       rz: q.rz || 0,
       pel: [q.pp || 0, q.py == null ? -30 : q.py, 0],
       head: [q.hp || 0, q.hw || 0],
-      hand: [0, q.hy || 0, q.hz || 0],
+      hand: [q.hx || 0, q.hy || 0, q.hz || 0],
       blade: [Math.cos(e) * Math.sin(az), Math.sin(e), Math.cos(e) * Math.cos(az)],
       broll: q.br || 0,
       legN: [q.nh == null ? -50 : q.nh, 0, q.nk == null ? 60 : q.nk, 0, 0],
@@ -15444,6 +15445,7 @@ void main(){
   };
   M3.paramsFromP = function(p) {
     const b = p.blade, o = {
+      hx: p.hand[0] || 0,
       hy: p.hand[1],
       hz: p.hand[2],
       ba: Math.atan2(b[1], Math.hypot(b[0], b[2])) / D2R,
@@ -15464,6 +15466,36 @@ void main(){
       o.fy = p.farW[1];
       o.fz = p.farW[2];
     }
+    return o;
+  };
+  M3.captureParams = function(rig) {
+    const p = M3.lastP;
+    if (!p || !rig) return null;
+    const q = rig.pelvis.quaternion, R = (r) => r / D2R, o = M3.paramsFromP(p);
+    o.nh = R(rig.legN.hg.rotation.x);
+    o.nk = R(rig.legN.kg.rotation.x);
+    o.fh = R(rig.legF.hg.rotation.x);
+    o.fk = R(rig.legF.kg.rotation.x);
+    o.pp = R(rig.pelvis.rotation.x);
+    o.py = R(rig.pelvis.rotation.y);
+    o.hp = R(rig.headG.rotation.x);
+    o.hw = R(rig.headG.rotation.y);
+    if (!p.w) {
+      const h = new V3(...p.hand).sub(rig.near.sg.position).applyQuaternion(q);
+      o.hx = h.x;
+      o.hy = h.y;
+      o.hz = h.z;
+      const b = new V3(...p.blade).normalize().applyQuaternion(q);
+      o.ba = Math.atan2(b.y, Math.hypot(b.x, b.z)) / D2R;
+      o.bx = Math.atan2(b.x, b.z) / D2R;
+    }
+    if (!p.two && !(p.fwOn > 0.5)) {
+      const w = new V3(...p.far).sub(rig.far.sg.position).applyQuaternion(q);
+      o.fx = w.x;
+      o.fy = w.y;
+      o.fz = w.z;
+    }
+    for (const k in o) o[k] = Math.round(o[k] * 1e3) / 1e3;
     return o;
   };
   M3.poseCustom = function(role, f, q) {
@@ -15496,7 +15528,13 @@ void main(){
       tipLen: Math.abs(rig.sword._tipY) + 0.02
     };
   };
+  var BASE_ORIG = {};
   M3.clearCustom = function() {
+    for (const k in BASE_ORIG) {
+      KEYS[k] = BASE_ORIG[k].k;
+      KT[k] = BASE_ORIG[k].t;
+      delete BASE_ORIG[k];
+    }
     for (const k of Object.keys(KT)) if (k.slice(0, 2) === "c_" || k.slice(0, 6) === "custom") {
       delete KT[k];
       delete KEYS[k];
@@ -15525,6 +15563,12 @@ void main(){
       const id = "c_" + (def.id || "x");
       KEYS[id] = keys;
       KT[id] = { t: T, c: Math.max(1, Math.min(END - 1, def.contact || 36)), lead: ks2[0].f > 0 ? ks2[0].f : null, two, hit: def.hit || null };
+      if (def.base) {
+        const sf2 = two ? "2" : "1", bk = KT[def.base + sf2] || BASE_ORIG[def.base + sf2] ? def.base + sf2 : def.base;
+        if (!BASE_ORIG[bk] && KT[bk]) BASE_ORIG[bk] = { k: KEYS[bk], t: KT[bk] };
+        KEYS[bk] = keys;
+        KT[bk] = Object.assign({}, KT[id], { lead: null });
+      }
     } else if (typ === "grab" || typ === "throw" || typ === "slam" || typ === "strike") {
       const L = def.len || 90, V = [];
       const add2 = (k, t) => {

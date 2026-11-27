@@ -222,7 +222,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       '<div class="rrow"><span>Two-hit kill on 9 HP, no armor</span><b class="' + (killsIn2 ? 'ok' : 'bad') + '">' + (killsIn2 ? 'yes' : 'no') + '</b></div>';
   }
   const look = { tier: 'leather', head: '', body: '', liv: '', metal: '', style: 'cut' };
-  let roleStyle = {}, libStyles = [];                                               // custom attacks the Animator marked as heavy, dash or counter
+  let roleStyle = {}, libStyles = [], baseJuggle = [];                                               // custom attacks the Animator marked as heavy, dash or counter
   function readLook() {
     const w = live.weaponInfo(), sel = $('atkstyle'), lg = sel.querySelector('option[value=lunge]');
     if (lg) { lg.disabled = !w.twoHanded; if (!w.twoHanded && sel.value === 'lunge') sel.value = 'chop'; }
@@ -245,7 +245,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       for (const r of ['heavy', 'dash', 'counter', 'jump']) { const id = pr.styles.roles[r]; if (fits(id)) { km[r] = bk(id); ks[r] = id; } }
     }
     for (const r of ['heavy', 'dash', 'counter', 'jump']) if (!ks[r] && roleStyle[r] && !(runui && runui.active)) ks[r] = roleStyle[r];
-    const jl = libStyles.filter(x => x.juggle).map(x => x.id);
+    const jl = libStyles.filter(x => x.juggle).map(x => x.id).concat(baseJuggle);
     if (JSON.stringify(km) !== JSON.stringify(live.player.kindMoves)) cmd({ t: 'set', kindMoves: km });
     if (JSON.stringify(ks) !== JSON.stringify(live.player.kindStyles) || JSON.stringify(jl) !== JSON.stringify(live.player.juggle)) cmd({ t: 'set', kindStyles: ks, juggle: jl });
     netSync();
@@ -544,7 +544,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     if (m.p) return; const b = m.build, aw = CFG.weapons[b.weapon]; if (!aw) return;
     const two = CFG.weaponClasses[aw.cls].twoHanded, wk = aw.kind || 'sword', rs = resolveStyles(b.styles, BASE_STYLES.concat(libStyles), two ? 2 : 1);
     const bk = st => { const k = M3.moveKey(st, two), id = k + '|' + wk; if (!live.moves[id]) { const mv = M3.bakeMove(k, { two, wkind: wk }); if (mv) cmd({ t: 'move', id, data: mv }); } return live.moves[id] ? id : null; };
-    cmd({ t: 'set', p: i, juggle: libStyles.filter(x => x.juggle).map(x => x.id), kindStyles: Object.assign({}, rs.roles), chainStyles: rs.chain.map(id => ({ style: id, move: bk(id) })), kindMoves: { heavy: bk(rs.roles.heavy || 'chop'), dash: bk(rs.roles.dash || (two ? 'lunge' : 'cut')), counter: bk(rs.roles.counter || 'cut'), jump: bk(rs.roles.jump || 'chop') }, move: bk('cut') });
+    cmd({ t: 'set', p: i, juggle: libStyles.filter(x => x.juggle).map(x => x.id).concat(baseJuggle), kindStyles: Object.assign({}, rs.roles), chainStyles: rs.chain.map(id => ({ style: id, move: bk(id) })), kindMoves: { heavy: bk(rs.roles.heavy || 'chop'), dash: bk(rs.roles.dash || (two ? 'lunge' : 'cut')), counter: bk(rs.roles.counter || 'cut'), jump: bk(rs.roles.jump || 'chop') }, move: bk('cut') });
   }
   function partyEnd(why) {
     if (!party) return; const was = party; party = null; live.textOut = null;
@@ -658,13 +658,14 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     try {
       const o = JSON.parse(txt), user = o.anims || [o];
       const arr = BUILTIN_ANIMS.filter(b => !user.some(u => u.id === b.id)).concat(user);
-      M3.clearCustom(); for (const k in sim.moves) if (k.slice(0, 2) === 'c_') delete sim.moves[k];
+      M3.clearCustom(); for (const k in sim.moves) if (k !== CFG.enemy.move) delete sim.moves[k];        // built-ins may have been replaced: every move is baked again
       const sel = $('atkstyle'); sel.querySelectorAll('option[data-custom]').forEach(x => x.remove());
-      const info = []; let first = null; roleStyle = {}; libStyles = [];
+      const info = []; let first = null; roleStyle = {}; libStyles = []; baseJuggle = [];
       for (const x of arr) {
         if (!x.keys || !x.keys.length) continue;
         const two = x.load ? x.load === '2' : !!x.two, typ = x.type || 'attack';
-        if (!M3.registerAnim({ id: x.id || 'legacy', type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit, vm: x.vm })) continue;
+        if (!M3.registerAnim({ base: typ === 'attack' && typeof x.base === 'string' ? x.base.slice(0, 20) : undefined, id: x.id || 'legacy', type: typ, two, contact: x.contact, loop: x.loop, len: x.len, end: x.end, keys: x.keys, hit: x.hit, vm: x.vm })) continue;
+        if (typ === 'attack' && x.base) { if (x.juggle && !baseJuggle.includes(x.base)) baseJuggle.push(x.base); info.push((x.name || x.base) + ' [replaces built-in ' + x.base + (two ? ', 2H' : ', 1H') + ']'); continue; }
         if (typ === 'attack') libStyles.push({ id: 'c_' + (x.id || 'legacy'), name: (x.name || 'Custom') + (x.juggle ? ' [juggle]' : ''), hands: two ? 2 : 1, custom: true, juggle: !!x.juggle });
         if (typ === 'attack' && x.role) { roleStyle[x.role] = 'c_' + (x.id || 'legacy'); info.push((x.name || 'attack') + ' [' + x.role + ' attack]'); continue; }
         if (typ === 'attack') {
@@ -678,6 +679,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       $('customjson').value = txt;
       $('custommsg').textContent = 'Loaded: ' + info.join(', ') + '. Idle, walk, damaged, dying and falling animations apply to every 1H or 2H fighter automatically. Attacks appear in the Attack style list.';
       if (first && !quiet) sel.value = first;
+      if (sim.moves && !quiet) { const m = M3.bakeMove('cut1', { role: 'e', two: false, wkind: 'sword', shield: true }); if (m) cmd({ t: 'move', id: CFG.enemy.move, data: m }); }   // the enemy swing path follows an edited cut
       if (typeof readLook === 'function') try { readLook(); } catch (e) { }
       if (!quiet) sim.say('info', 'Animation library loaded (' + info.length + ').');
       return first;

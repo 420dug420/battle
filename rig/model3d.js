@@ -719,7 +719,7 @@ M3.pose = function (role, f) {
     // legs from the humantest run; the weapon hand rides forward
     HT.locomotion.wW = 0; HT.locomotion.wR = 1; HT.character.walk = 2; HT.locomotion.ph = (f.walkT || 0) * 12;
     const wp = HT.locomotion.ph; p = P({ hand: [f.two ? -0.14 : -0.2, (f.two ? 0.16 : 0.3) + 0.025 * Math.sin(wp * 2 - 0.6), (f.two ? 0.26 : 0.32) + 0.04 * Math.sin(wp - 0.4)], blade: [0, (f.two ? 0.55 : 0.2) + 0.18 * Math.sin(wp * 2 - 1.2), 1], far: [0.22, 0.12 + 0.03 * Math.sin(wp * 2), 0.14 - 0.1 * Math.sin(wp)], two: !!f.two, grip: 0.12 });
-    applyRun(rig, p); groundLock(rig); return rig;
+    M3.lastP = p; applyRun(rig, p); groundLock(rig); return rig;
   } else {
     { const ci = CLOOP['idle' + (f.two ? 2 : 1)]; p = ci ? loopSample(ci, f.t || 0) : sample(f.two ? KEYS.idleTwo : KEYS.idle, (f.t * 0.8) % 4, true); }
   }
@@ -826,15 +826,29 @@ function idleLead(f) { const ci = CLOOP['idle' + (f.two ? 2 : 1)]; return ci ? c
 M3.buildPose = function (q, two) {
   const e = (q.ba || 0) * D2R, az = (q.bx || 0) * D2R;
   const o = { w: 1, rz: q.rz || 0, pel: [q.pp || 0, q.py == null ? -30 : q.py, 0], head: [q.hp || 0, q.hw || 0],
-    hand: [0, q.hy || 0, q.hz || 0], blade: [Math.cos(e) * Math.sin(az), Math.sin(e), Math.cos(e) * Math.cos(az)], broll: q.br || 0,
+    hand: [q.hx || 0, q.hy || 0, q.hz || 0], blade: [Math.cos(e) * Math.sin(az), Math.sin(e), Math.cos(e) * Math.cos(az)], broll: q.br || 0,
     legN: [q.nh == null ? -50 : q.nh, 0, q.nk == null ? 60 : q.nk, 0, 0], legF: [q.fh == null ? 35 : q.fh, 0, q.fk == null ? 20 : q.fk, 0, 0] };
   if (two) { o.two = true; o.grip = 0.12; } else { o.fwOn = 1; o.farW = [q.fx == null ? 0.1 : q.fx, q.fy == null ? -0.05 : q.fy, q.fz == null ? 0.3 : q.fz]; }
   return P(o);
 };
 M3.paramsFromP = function (p) {
-  const b = p.blade, o = { hy: p.hand[1], hz: p.hand[2], ba: Math.atan2(b[1], Math.hypot(b[0], b[2])) / D2R, bx: Math.atan2(b[0], b[2]) / D2R, br: p.broll || 0,
+  const b = p.blade, o = { hx: p.hand[0] || 0, hy: p.hand[1], hz: p.hand[2], ba: Math.atan2(b[1], Math.hypot(b[0], b[2])) / D2R, bx: Math.atan2(b[0], b[2]) / D2R, br: p.broll || 0,
     pp: p.pel[0], py: p.pel[1], hp: p.head[0], hw: p.head[1], rz: p.rz || 0, nh: p.legN[0], nk: p.legN[2], fh: p.legF[0], fk: p.legF[2] };
   if (p.fwOn > 0.5) { o.fx = p.farW[0]; o.fy = p.farW[1]; o.fz = p.farW[2]; }
+  return o;
+};
+/* the pose a rig is showing right now, as Animator key params: lets a built-in animation (drafted in code, or the run's legs) be loaded as keys and edited */
+M3.captureParams = function (rig) {
+  const p = M3.lastP; if (!p || !rig) return null;
+  const q = rig.pelvis.quaternion, R = r => r / D2R, o = M3.paramsFromP(p);
+  o.nh = R(rig.legN.hg.rotation.x); o.nk = R(rig.legN.kg.rotation.x); o.fh = R(rig.legF.hg.rotation.x); o.fk = R(rig.legF.kg.rotation.x);
+  o.pp = R(rig.pelvis.rotation.x); o.py = R(rig.pelvis.rotation.y); o.hp = R(rig.headG.rotation.x); o.hw = R(rig.headG.rotation.y);
+  if (!p.w) {                                                         // a built-in pose places the hand and blade in the body's frame; Animator keys are relative to the shoulder and pelvis
+    const h = new V3(...p.hand).sub(rig.near.sg.position).applyQuaternion(q); o.hx = h.x; o.hy = h.y; o.hz = h.z;
+    const b = new V3(...p.blade).normalize().applyQuaternion(q); o.ba = Math.atan2(b.y, Math.hypot(b.x, b.z)) / D2R; o.bx = Math.atan2(b.x, b.z) / D2R;
+  }
+  if (!p.two && !(p.fwOn > 0.5)) { const w = new V3(...p.far).sub(rig.far.sg.position).applyQuaternion(q); o.fx = w.x; o.fy = w.y; o.fz = w.z; }
+  for (const k in o) o[k] = Math.round(o[k] * 1000) / 1000;
   return o;
 };
 M3.poseCustom = function (role, f, q) {
@@ -847,7 +861,8 @@ M3.joints = function (rig) {
   return { hand: sc(rig.near.wg), shoulder: sc(rig.near.sg), pelvis: sc(rig.pelvis), head: sc(rig.headG), ankN: sc(rig.legN.ag), ankF: sc(rig.legF.ag),
     kneeN: sc(rig.legN.kg), kneeF: sc(rig.legF.kg), farHand: sc(rig.far.wg), farShoulder: sc(rig.far.sg), tipLen: Math.abs(rig.sword._tipY) + 0.02 };
 };
-M3.clearCustom = function () { for (const k of Object.keys(KT)) if (k.slice(0, 2) === 'c_' || k.slice(0, 6) === 'custom') { delete KT[k]; delete KEYS[k]; } for (const k of Object.keys(CLOOP)) delete CLOOP[k]; for (const k of Object.keys(ONE)) delete ONE[k]; };
+const BASE_ORIG = {};
+M3.clearCustom = function () { for (const k in BASE_ORIG) { KEYS[k] = BASE_ORIG[k].k; KT[k] = BASE_ORIG[k].t; delete BASE_ORIG[k]; } for (const k of Object.keys(KT)) if (k.slice(0, 2) === 'c_' || k.slice(0, 6) === 'custom') { delete KT[k]; delete KEYS[k]; } for (const k of Object.keys(CLOOP)) delete CLOOP[k]; for (const k of Object.keys(ONE)) delete ONE[k]; };
 /* def = { id, type: attack|idle|walk|hurt|dying|falling, two, contact, loop (seconds), len (frames in a loop), end, keys:[{ f, ...params }] } */
 M3.registerAnim = function (def) {
   const ks = (def.keys || []).slice().sort((a, b) => a.f - b.f); if (!ks.length) return false;
@@ -861,6 +876,11 @@ M3.registerAnim = function (def) {
     if (keys.length < 2) { keys.push(keys[0]); T.push(END); }
     const id = 'c_' + (def.id || 'x');
     KEYS[id] = keys; KT[id] = { t: T, c: Math.max(1, Math.min(END - 1, def.contact || 36)), lead: ks[0].f > 0 ? ks[0].f : null, two: two, hit: def.hit || null };
+    if (def.base) {                                                   // an edited built-in attack: it takes the built-in's place for this grip
+      const sf = two ? '2' : '1', bk = KT[def.base + sf] || (BASE_ORIG[def.base + sf]) ? def.base + sf : def.base;
+      if (!BASE_ORIG[bk] && KT[bk]) BASE_ORIG[bk] = { k: KEYS[bk], t: KT[bk] };
+      KEYS[bk] = keys; KT[bk] = Object.assign({}, KT[id], { lead: null });
+    }
   } else if (typ === 'grab' || typ === 'throw' || typ === 'slam' || typ === 'strike') {
     const L = def.len || 90, V = [];
     const add2 = (k, t) => { if (T.length && t <= T[T.length - 1]) return; keys.push(M3.buildPose(k, two)); T.push(t); V.push(k.vz == null ? null : { dz: k.vz, lift: k.vy || 0, rot: (k.vr || 0) * D2R }); };

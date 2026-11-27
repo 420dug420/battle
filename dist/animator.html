@@ -27,7 +27,7 @@ input[type=range]{width:100%}.leg{display:inline-block;width:10px;height:10px;bo
 <button id="sync" class="pri" style="width:100%;margin:2px 0 4px">⇪ Sync to Claude</button><div class="hint" id="syncmsg">Press this when you want me to have your animations. Then just tell me which to load.</div>
 <h2>Library</h2>
 <div id="alist"></div>
-<div class="row" style="margin-top:6px"><select id="newtype" style="width:auto"><option value="attack">Attack</option><option value="idle">Idle loop</option><option value="walk">Walk loop</option><option value="hurt">Damaged</option><option value="dying">Dying</option><option value="falling">Falling</option><option value="grab">Grab (reach + hold)</option><option value="throw">Throw (right click while holding)</option><option value="slam">Slam (V while holding)</option><option value="strike">Hold-and-strike (left click while holding)</option><option value="clash">Clash (both fighters bounce)</option><option value="parry">Parry (perfect block)</option><option value="dash">Dash</option><option value="jump">Jump</option><option value="shoot">Shoot / cast</option><option value="block">Block (held loop)</option><option value="stun">Stunned (loop)</option></select><button id="new" class="go sm">+ New</button><button id="dup" class="sm">Duplicate</button><button id="del" class="sm">Delete</button></div>
+<div class="row" style="margin-top:6px"><select id="newtype" style="width:auto"><option value="attack">Attack</option><option value="idle">Idle loop</option><option value="walk">Walk loop</option><option value="hurt">Damaged</option><option value="dying">Dying</option><option value="falling">Falling</option><option value="grab">Grab (reach + hold)</option><option value="throw">Throw (right click while holding)</option><option value="slam">Slam (V while holding)</option><option value="strike">Hold-and-strike (left click while holding)</option><option value="clash">Clash (both fighters bounce)</option><option value="parry">Parry (perfect block)</option><option value="dash">Dash</option><option value="jump">Jump</option><option value="shoot">Shoot / cast</option><option value="block">Block (held loop)</option><option value="stun">Stunned (loop)</option></select><button id="new" class="go sm">+ New</button><button id="basel" class="sm" title="Adds the game's built-in animations (idle, walk, attacks, damaged, dying...) as keys you can edit. An edited one replaces the built-in in the game.">Load built-ins</button><button id="dup" class="sm">Duplicate</button><button id="del" class="sm">Delete</button></div>
 <h2>This animation</h2>
 <label>Name</label><input type="text" id="name">
 <div id="rolebox"><label>Used in the game as</label><select id="role"><option value="light">Light attack (left click)</option><option value="heavy">Heavy attack (right click)</option><option value="dash">Dash attack</option><option value="jump">Jump attack (attack while in the air)</option><option value="counter">Counter (after a parry or riposte)</option></select><label style="margin-left:10px"><input type="checkbox" id="juggle"> Juggle (launches; hits on an airborne enemy pop it up again)</label></div>
@@ -15347,6 +15347,7 @@ void main(){
       HT.locomotion.ph = (f.walkT || 0) * 12;
       const wp2 = HT.locomotion.ph;
       p = P({ hand: [f.two ? -0.14 : -0.2, (f.two ? 0.16 : 0.3) + 0.025 * Math.sin(wp2 * 2 - 0.6), (f.two ? 0.26 : 0.32) + 0.04 * Math.sin(wp2 - 0.4)], blade: [0, (f.two ? 0.55 : 0.2) + 0.18 * Math.sin(wp2 * 2 - 1.2), 1], far: [0.22, 0.12 + 0.03 * Math.sin(wp2 * 2), 0.14 - 0.1 * Math.sin(wp2)], two: !!f.two, grip: 0.12 });
+      M3.lastP = p;
       applyRun(rig, p);
       groundLock(rig);
       return rig;
@@ -15491,7 +15492,7 @@ void main(){
       rz: q.rz || 0,
       pel: [q.pp || 0, q.py == null ? -30 : q.py, 0],
       head: [q.hp || 0, q.hw || 0],
-      hand: [0, q.hy || 0, q.hz || 0],
+      hand: [q.hx || 0, q.hy || 0, q.hz || 0],
       blade: [Math.cos(e) * Math.sin(az), Math.sin(e), Math.cos(e) * Math.cos(az)],
       broll: q.br || 0,
       legN: [q.nh == null ? -50 : q.nh, 0, q.nk == null ? 60 : q.nk, 0, 0],
@@ -15508,6 +15509,7 @@ void main(){
   };
   M3.paramsFromP = function(p) {
     const b = p.blade, o = {
+      hx: p.hand[0] || 0,
       hy: p.hand[1],
       hz: p.hand[2],
       ba: Math.atan2(b[1], Math.hypot(b[0], b[2])) / D2R,
@@ -15528,6 +15530,36 @@ void main(){
       o.fy = p.farW[1];
       o.fz = p.farW[2];
     }
+    return o;
+  };
+  M3.captureParams = function(rig) {
+    const p = M3.lastP;
+    if (!p || !rig) return null;
+    const q = rig.pelvis.quaternion, R = (r) => r / D2R, o = M3.paramsFromP(p);
+    o.nh = R(rig.legN.hg.rotation.x);
+    o.nk = R(rig.legN.kg.rotation.x);
+    o.fh = R(rig.legF.hg.rotation.x);
+    o.fk = R(rig.legF.kg.rotation.x);
+    o.pp = R(rig.pelvis.rotation.x);
+    o.py = R(rig.pelvis.rotation.y);
+    o.hp = R(rig.headG.rotation.x);
+    o.hw = R(rig.headG.rotation.y);
+    if (!p.w) {
+      const h = new V3(...p.hand).sub(rig.near.sg.position).applyQuaternion(q);
+      o.hx = h.x;
+      o.hy = h.y;
+      o.hz = h.z;
+      const b = new V3(...p.blade).normalize().applyQuaternion(q);
+      o.ba = Math.atan2(b.y, Math.hypot(b.x, b.z)) / D2R;
+      o.bx = Math.atan2(b.x, b.z) / D2R;
+    }
+    if (!p.two && !(p.fwOn > 0.5)) {
+      const w = new V3(...p.far).sub(rig.far.sg.position).applyQuaternion(q);
+      o.fx = w.x;
+      o.fy = w.y;
+      o.fz = w.z;
+    }
+    for (const k in o) o[k] = Math.round(o[k] * 1e3) / 1e3;
     return o;
   };
   M3.poseCustom = function(role, f, q) {
@@ -15560,7 +15592,13 @@ void main(){
       tipLen: Math.abs(rig.sword._tipY) + 0.02
     };
   };
+  var BASE_ORIG = {};
   M3.clearCustom = function() {
+    for (const k in BASE_ORIG) {
+      KEYS[k] = BASE_ORIG[k].k;
+      KT[k] = BASE_ORIG[k].t;
+      delete BASE_ORIG[k];
+    }
     for (const k of Object.keys(KT)) if (k.slice(0, 2) === "c_" || k.slice(0, 6) === "custom") {
       delete KT[k];
       delete KEYS[k];
@@ -15589,6 +15627,12 @@ void main(){
       const id = "c_" + (def.id || "x");
       KEYS[id] = keys;
       KT[id] = { t: T, c: Math.max(1, Math.min(END - 1, def.contact || 36)), lead: ks2[0].f > 0 ? ks2[0].f : null, two, hit: def.hit || null };
+      if (def.base) {
+        const sf2 = two ? "2" : "1", bk = KT[def.base + sf2] || BASE_ORIG[def.base + sf2] ? def.base + sf2 : def.base;
+        if (!BASE_ORIG[bk] && KT[bk]) BASE_ORIG[bk] = { k: KEYS[bk], t: KT[bk] };
+        KEYS[bk] = keys;
+        KT[bk] = Object.assign({}, KT[id], { lead: null });
+      }
     } else if (typ === "grab" || typ === "throw" || typ === "slam" || typ === "strike") {
       const L = def.len || 90, V = [];
       const add2 = (k, t) => {
@@ -15657,7 +15701,7 @@ void main(){
 <script>
 const $=id=>document.getElementById(id),M=window.Model3D,PXU=54,D2R=Math.PI/180;
 const stage=$('stage'),ctx=stage.getContext('2d'),ov=$('ov'),oc=ov.getContext('2d');
-const DEF0={hy:-0.1,hz:0.4,ba:20,bx:0,br:0,pp:10,py:-30,hp:0,hw:0,rz:0,nh:-50,nk:60,fh:35,fk:20,fx:0.1,fy:-0.05,fz:0.3};
+const DEF0={hx:0,hy:-0.1,hz:0.4,ba:20,bx:0,br:0,pp:10,py:-30,hp:0,hw:0,rz:0,nh:-50,nk:60,fh:35,fk:20,fx:0.1,fy:-0.05,fz:0.3};
 const DEFL=Object.assign({},DEF0,{hy:0.25,hz:0.3,ba:70,pp:4,nh:-30,nk:35,fh:25,fk:25});
 const SL=[['ba','Sword up/down',-180,180,1],['bx','Sword turn to screen',-180,180,1],['br','Blade roll',-180,180,1],['hy','Hand up/down',-0.6,0.8,0.01],['hz','Hand forward',-0.6,0.8,0.01],
  ['fx','Shield arm out',-0.4,0.5,0.01,1],['fy','Shield arm up/down',-0.5,0.5,0.01,1],['fz','Shield arm forward',-0.4,0.55,0.01,1],
@@ -15674,13 +15718,13 @@ function cur(){return lib.anims.find(a=>a.id===lib.sel)}
 const ONESHOT=['hurt','dying','falling','clash','parry','dash','jump','shoot'],GRABT=['grab','throw','slam','strike'],isGrab=a=>GRABT.includes(a.type),isAtk=a=>a.type==='attack'||isGrab(a),isLoop=a=>!isAtk(a),NF=a=>isLoop(a)?60:90,twoOf=a=>a.load==='2',shieldOf=a=>a.load==='1s';
 function dur(){return +$('dur').value/10}
 function reg(){M.clearCustom();const c=cur();for(const a of lib.anims)if(a!==c&&a.keys.length)M.registerAnim(regDef(a));if(c&&c.keys.length)M.registerAnim(regDef(c));save()}
-function regDef(a){return{id:a.id,type:a.type,two:twoOf(a),contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,keys:a.keys,vm:!!a.vm}}
-function fobjBase(){const a=cur();return{role:'p',tier:$('tier').value,two:twoOf(a),shield:shieldOf(a),face:1,broken:false,tabard:'#c2413b',helm:'#98a2ae',moving:false,walkT:0,flash:0,flashMax:.2,t:0}}
+function regDef(a){return{base:a.type==='attack'?a.base:undefined,id:a.id,type:a.type,two:twoOf(a),contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,keys:a.keys,vm:!!a.vm}}
+function fobjBase(a0){const a=a0||cur();return{role:'p',tier:$('tier').value,two:twoOf(a),shield:shieldOf(a),face:1,broken:false,tabard:'#c2413b',helm:'#98a2ae',moving:false,walkT:0,flash:0,flashMax:.2,t:0}}
 function gv0(a,fr){const n=NF(a),c=Math.max(1,a.contact||36),hu=0.4;if(a.type==='grab')return{kind:'grab',u:fr/(n-1),hu};
   return{kind:a.type,hu,u:fr<c?hu*fr/c:hu+(1-hu)*(fr-c)/Math.max(1,n-1-c)}}
 function vdef(a,fr){const g=gv0(a,fr),d=M.victimDefault(g.kind,g.u,g.hu);return{vz:d.dz,vy:d.lift,vr:d.rot/D2R}}
 function keyAt(f){return cur().keys.find(k=>k.f===f)}
-function figureAt(fr){const a=cur(),f=fobjBase(),n=NF(a);
+function figureAt(fr,a0){const a=a0||cur(),f=fobjBase(a),n=NF(a);
   if(a.type==='attack'){if(!a.keys.length)return M.poseCustom('p',f,DEF0);f.style='c_'+a.id;const d=dur(),h=d*a.contact/(n-1);f.swing={t:fr/(n-1)*d,dur:d,dur0:d,hitAt:h,extra:0};return M.pose('p',f)}
   if(isGrab(a)){if(!a.keys.length)return M.poseCustom('p',f,DEF0);const g=gv0(a,fr);f.gx={kind:g.kind,u:g.u,hu:g.hu};return M.pose('p',f)}
   if(a.type==='idle'){f.t=fr/n*a.loop;return M.pose('p',f)}
@@ -15739,7 +15783,7 @@ function drawHit(a,j,d,Z,W){const hb=hitOf(a);if(!$('hbshow').checked||hb.shape=
   else{oc.beginPath();oc.arc(j.pelvis[0]*Z,j.pelvis[1]*Z,hb.r*PXU*Z,0,7);oc.fill();oc.stroke()}
   oc.restore()}
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]);
-function exportAnim(a){return{id:a.id,name:a.name,type:a.type,load:a.load,contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,hit:a.type==='attack'?clone(hitOf(a)):undefined,role:a.type==='attack'&&a.role?a.role:undefined,juggle:a.type==='attack'&&a.juggle?true:undefined,vm:isGrab(a)&&a.vm?true:undefined,keys:a.keys.map(k=>{const o={f:k.f};for(const key in DEF0)o[key]=+(+(k[key]==null?DEF0[key]:k[key])).toFixed(3);if(isGrab(a)&&k.vz!=null){o.vz=+(+k.vz).toFixed(3);o.vy=+(+k.vy).toFixed(3);o.vr=+(+k.vr).toFixed(1)}return o})}}
+function exportAnim(a){return{id:a.id,name:a.name,type:a.type,load:a.load,contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,hit:a.type==='attack'?clone(hitOf(a)):undefined,role:a.type==='attack'&&a.role?a.role:undefined,juggle:a.type==='attack'&&a.juggle?true:undefined,base:a.base||undefined,vm:isGrab(a)&&a.vm?true:undefined,keys:a.keys.map(k=>{const o={f:k.f};for(const key in DEF0)o[key]=+(+(k[key]==null?DEF0[key]:k[key])).toFixed(3);if(isGrab(a)&&k.vz!=null){o.vz=+(+k.vz).toFixed(3);o.vy=+(+k.vy).toFixed(3);o.vr=+(+k.vr).toFixed(1)}return o})}}
 function exportLib(){return{v:2,anims:lib.anims.map(exportAnim)}}
 function renderTL(a,n){const tl=$('tl');tl.innerHTML='';const w=tl.clientWidth,X=f=>f/(n-1)*(w-12)+6;
   for(const k of a.keys){const d=document.createElement('div');d.className='k'+(k.f===frame?' sel':'');d.style.left=X(k.f)+'px';d.title='frame '+(k.f+1);d.onclick=()=>{setPlay(false);go(k.f)};tl.appendChild(d)}
@@ -15747,7 +15791,7 @@ function renderTL(a,n){const tl=$('tl');tl.innerHTML='';const w=tl.clientWidth,X
   if(a.type==='attack'){const hb=hitOf(a);if(hb.shape!=='none'){const b=document.createElement('div');b.className='hbbar';b.style.left=X(hb.f0)+'px';b.style.width=Math.max(3,X(hb.f1)-X(hb.f0))+'px';b.title='hitbox active: frames '+(hb.f0+1)+' to '+(hb.f1+1);tl.appendChild(b)}const c=document.createElement('div');c.className='ct';c.style.left=X(a.contact)+'px';c.title='hit lands';tl.appendChild(c)}
   const p=document.createElement('div');p.className='ph';p.style.left=X(frame)+'px';tl.appendChild(p)}
 function renderList(){const L=$('alist');L.innerHTML='';for(const a of lib.anims){const d=document.createElement('div');d.className='ai'+(a.id===lib.sel?' sel':'');
-  d.innerHTML='<span>'+esc(a.name)+'</span><small>'+a.type+(a.role?' ('+a.role+')':'')+(a.juggle?' [juggle]':'')+' · '+(a.load==='2'?'2H':a.load==='1s'?'1H+shield':'1H')+'</small>';d.onclick=()=>select(a.id);L.appendChild(d)}}
+  d.innerHTML='<span>'+esc(a.name)+'</span><small>'+a.type+(a.role?' ('+a.role+')':'')+(a.juggle?' [juggle]':'')+(a.base?' · built-in':'')+' · '+(a.load==='2'?'2H':a.load==='1s'?'1H+shield':'1H')+'</small>';d.onclick=()=>select(a.id);L.appendChild(d)}}
 function select(id){lib.sel=id;const a=cur();setPlay(false);$('name').value=a.name;$('role').value=a.role||'light';$('juggle').checked=!!a.juggle;$('rolebox').style.display=a.type==='attack'?'':'none';$('load').value=a.load;$('loop').value=Math.round(a.loop*10);$('lv').textContent=a.loop.toFixed(1);frame=a.keys.length?a.keys[0].f:0;renderList();reg();draw()}
 function go(f){frame=Math.max(0,Math.min(NF(cur())-1,f));draw()}
 for(const[id,lab,mn,mx,st,sh,vv]of SL){const r=document.createElement('div');r.className='sl';if(sh)r.dataset.sh=1;if(vv)r.dataset.v=1;r.innerHTML='<span>'+lab+'</span><input type="range" id="s_'+id+'" min="'+mn+'" max="'+mx+'" step="'+st+'"><span id="v_'+id+'"></span>';$('sliders').appendChild(r);
@@ -15807,6 +15851,25 @@ $('name').oninput=e=>{cur().name=e.target.value;renderList();save();draw()};
 $('role').onchange=e=>{cur().role=e.target.value==='light'?undefined:e.target.value;save();renderList()};
 $('juggle').onchange=e=>{cur().juggle=e.target.checked?true:undefined;save();renderList()};
 $('load').onchange=e=>{cur().load=e.target.value;renderList();reg();draw()};
+/* the game's built-in animations, sampled into keys: edit one and it replaces the built-in in the game (attacks by their base style, the rest by type) */
+const BASE_LOOPS={idle:5,walk:0.55,block:1.2,stun:1.333},BASE_ATK=[['cut','Cut'],['chop','Chop'],['lunge','Lunge'],['attack2','Thrust']];
+function sampleBase(a,style){const n=NF(a),step=isLoop(a)?5:6,keys=[],d=dur();
+  for(let fr=0;;fr=Math.min(n-1,fr+step)){const f=fobjBase(a);
+    if(a.type==='attack'){f.style=style;f.swing={t:fr/(n-1)*d,dur:d,dur0:d,hitAt:d*36/(n-1),extra:0};M.pose('p',f)}
+    else if(a.type==='hurt'){f.flashMax=1;f.flash=Math.max(0.001,1-fr/(n-1));M.pose('p',f)}
+    else figureAt(fr,a);
+    const rig=M.getRig('p',f),k=M.captureParams(rig);if(k){k.f=fr;keys.push(Object.assign({},DEF0,k))}
+    if(fr>=n-1)break}
+  return keys}
+$('basel').onclick=()=>{M.clearCustom();let added=0,kept=0;
+  for(const load of['1s','2']){const two=load==='2',tag=two?' (2H)':' (1H)';
+    const want=[];for(const t of['idle','walk','hurt','falling','clash','parry','dash','jump','shoot','block','stun'])want.push([t,t,null]);
+    for(const [st,nm] of BASE_ATK){if(st==='attack2'&&!two&&!M.moveKey)continue;want.push(['attack',nm,st])}
+    for(const [type,nm,st] of want){const base=st||type;
+      if(lib.anims.some(x=>x.base===base&&x.type===type&&x.load===load)){kept++;continue}
+      const a=mkAnim(type,load,'Built-in '+(type==='attack'?nm.toLowerCase():nm)+tag);a.base=base;if(BASE_LOOPS[type])a.loop=BASE_LOOPS[type];if(type==='attack')a.contact=36;
+      a.keys=sampleBase(a,st);if(a.keys.length){lib.anims.push(a);added++}}}
+  reg();save();renderList();draw();note('Loaded '+added+' built-in animations'+(kept?' ('+kept+' already in the list, left as they are)':'')+'. Edit any of them; export, then load the file in the game and the edited one replaces the built-in.')};
 $('new').onclick=()=>{const a=mkAnim($('newtype').value,cur()?cur().load:'1s');lib.anims.push(a);select(a.id)};
 $('dup').onclick=()=>{const a=clone(cur());a.id=uid();a.name+=' copy';lib.anims.push(a);select(a.id)};
 $('del').onclick=()=>{const a=cur();if(!confirm('Delete "'+a.name+'"?'))return;try{const g=JSON.parse(localStorage.getItem('pwgone')||'[]');g.push(a.id);localStorage.setItem('pwgone',JSON.stringify(g))}catch(e){}lib.anims=lib.anims.filter(x=>x!==a);if(!lib.anims.length)lib.anims.push(mkAnim('attack'));select(lib.anims[0].id)};
@@ -15820,7 +15883,7 @@ async function copyText(t,ok){try{await navigator.clipboard.writeText(t);note(ok
 $('copyall').onclick=()=>copyText(JSON.stringify(exportLib()),'Copied the whole library ('+lib.anims.length+' animations). Paste it to Claude, or into the game test.');
 $('copy1').onclick=()=>copyText(JSON.stringify(exportAnim(cur())),'Copied this animation.');
 function importText(t,merge){try{const o=JSON.parse(t);const arr=o.anims||[o];const out=[];
-  for(const x of arr){if(!x.keys)continue;const a=mkAnim(x.type||'attack',x.load||(x.two?'2':x.shield===false?'1':'1s'),x.name);a.id=x.id||a.id;a.contact=x.contact||36;a.loop=x.loop||a.loop;if(x.hit)a.hit=Object.assign({},x.hit);if(x.vm)a.vm=true;if(x.role)a.role=x.role;if(x.juggle)a.juggle=true;a.keys=x.keys.map(k=>Object.assign({},DEF0,k));out.push(a)}
+  for(const x of arr){if(!x.keys)continue;const a=mkAnim(x.type||'attack',x.load||(x.two?'2':x.shield===false?'1':'1s'),x.name);a.id=x.id||a.id;a.contact=x.contact||36;a.loop=x.loop||a.loop;if(x.hit)a.hit=Object.assign({},x.hit);if(x.vm)a.vm=true;if(x.role)a.role=x.role;if(x.juggle)a.juggle=true;if(x.base)a.base=x.base;a.keys=x.keys.map(k=>Object.assign({},DEF0,k));out.push(a)}
   if(!out.length)throw 0;
   if(merge){for(const a of out){const i=lib.anims.findIndex(z=>z.id===a.id);if(i>=0)lib.anims[i]=a;else lib.anims.push(a)}}else lib.anims=out;
   select(out[0].id);note('Loaded '+out.length+' animation'+(out.length>1?'s':'')+'.')}catch(e){note('That is not a valid animation file.')}}
