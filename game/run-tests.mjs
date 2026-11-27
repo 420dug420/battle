@@ -109,7 +109,7 @@ const killAll = r => { for (const e of r.sim.enemies) if (e.state === 'alive') r
 {
   const p = R.newProfile(); const all = [{ id: 'cut', hands: 0 }, { id: 'chop', hands: 0 }, { id: 'attack2', hands: 0 }, { id: 'lunge', hands: 2 }, { id: 'c_a', hands: 1 }, { id: 'c_b', hands: 2 }];
   assert.deepStrictEqual(R.chainFor(p, all, 1), ['cut', 'chop'], 'a new profile has a two-hit chain');
-  assert(!R.setChain(p, 2, 'cut').ok, 'a third slot is locked'); p.gold = 5000; assert(!R.buy(p, 'chainslot', 'x').ok, 'slot 3 needs level 5'); assert(!R.buy(p, 'upgrade', 'chain').ok, 'not sold at the Smith'); p.level = 5; assert(R.buy(p, 'chainslot', 'x').ok && p.gold === 4400, 'level 5 + 600 G opens slot 3'); assert.strictEqual(R.derive(p).chainSlots, 3);
+  assert(!R.setChain(p, 2, 'cut').ok, 'a third slot is locked'); p.gold = 5000; assert(!R.buy(p, 'chainslot', 'x').ok, 'slot 4 needs level 12'); assert(!R.buy(p, 'upgrade', 'chain').ok, 'not sold at the Smith'); p.level = 3; assert.strictEqual(R.derive(p).chainSlots, 3, 'slot 3 is free at level 3'); p.gold = 4400;
   { const t = R.newProfile(); t.gold = 1e6; t.level = 99; for (let i = 0; i < 6; i++) R.buy(t, 'chainslot', 'x'); assert.strictEqual(R.derive(t).chainSlots, 5, 'five slots at most'); }
   assert(!R.setChain(p, 2, 'attack2').ok, 'cannot slot an unlearned style'); assert(R.learnStyle(p, 'attack2', all).ok && p.gold === 4360, 'learning costs gold'); assert(R.setChain(p, 2, 'attack2').ok);
   assert.deepStrictEqual(R.chainFor(p, all, 1), ['cut', 'chop', 'attack2']); assert(R.learnStyle(p, 'c_b', all).ok); R.setChain(p, 0, 'c_b');

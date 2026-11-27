@@ -72,7 +72,7 @@ export function derive(p) {
     hireCap: Math.min(R.maxHirelings, 1 + Math.max(0, Math.floor((ldr - b) / R.ldr.perSlot))),
     hireStrength: 1 + R.ldr.strength * (ldr - b),
     hireDiscount: Math.min(R.chr.maxDiscount, Math.max(0, R.chr.discount * (chr - b))),
-    skillSlots: 1 + p.upgrades.slots, chainSlots: RUNCFG.chainBase + Math.min(CHAIN_UNLOCKS.length, p.upgrades.chain || 0),
+    skillSlots: 1 + p.upgrades.slots, chainSlots: RUNCFG.chainBase + (p.level >= CHAIN_FREE_AT ? 1 : 0) + Math.min(CHAIN_UNLOCKS.length, p.upgrades.chain || 0),
   };
 }
 
@@ -102,8 +102,9 @@ export const SKILLS = {
 export const UPGRADES = { hp: { n: 'Toughness', d: '+4 max HP per rank.', base: 40, max: 10 }, stamina: { n: 'Endurance', d: '+10 max stamina per rank.', base: 40, max: 10 },
   damage: { n: 'Whetstone', d: '+5% damage per rank.', base: 60, max: 10 }, slots: { n: 'Skill slot', d: 'Equip one more skill.', base: 150, max: 2 },
   chain: { n: 'Combo slot', d: 'One more attack in your light-attack chain.', base: 0, max: 3, hidden: true } };     // bought at the Style station: see CHAIN_UNLOCKS
-/* combo chain: 2 slots to start, 5 at most. Each extra slot needs a milestone level and a lot of gold */
-export const CHAIN_UNLOCKS = [{ level: 5, price: 600 }, { level: 12, price: 1500 }, { level: 20, price: 3500 }];
+/* combo chain: 2 slots to start, a 3rd free at level 3, then 2 more bought at milestone levels (5 at most) */
+export const CHAIN_FREE_AT = 3;
+export const CHAIN_UNLOCKS = [{ level: 12, price: 1500 }, { level: 20, price: 3500 }];
 export const nextChainUnlock = p => CHAIN_UNLOCKS[Math.min(CHAIN_UNLOCKS.length, p.upgrades.chain || 0)] || null;
 export const upgradePrice = (p, k) => Math.round(UPGRADES[k].base * Math.pow(1.6, p.upgrades[k]));
 function pay(p, n) { if (p.gold < n) return { ok: false, why: 'Not enough gold.' }; p.gold -= n; return { ok: true }; }
@@ -112,7 +113,7 @@ export function buy(p, kind, key) {
   if (kind === 'armor') { if (p.owned.armor.includes(key)) return { ok: false, why: 'Already owned.' }; const r = pay(p, ARMOR_PRICE[key]); if (r.ok) p.owned.armor.push(key); return r; }
   if (kind === 'shield') { if (!SHIELDS[key]) return { ok: false, why: 'No such shield.' }; if (p.owned.shields.includes(key)) return { ok: false, why: 'Already owned.' }; const r = pay(p, SHIELDS[key].price); if (r.ok) p.owned.shields.push(key); return r; }
   if (kind === 'skill') { if (p.owned.skills.includes(key)) return { ok: false, why: 'Already learned.' }; const r = pay(p, SKILLS[key].price); if (r.ok) p.owned.skills.push(key); return r; }
-  if (kind === 'chainslot') { const u = nextChainUnlock(p); if (!u) return { ok: false, why: 'All 5 combo slots are open.' }; if (p.level < u.level) return { ok: false, why: 'Reach level ' + u.level + ' first.' }; const r = pay(p, u.price); if (r.ok) p.upgrades.chain = (p.upgrades.chain || 0) + 1; return r; }
+  if (kind === 'chainslot') { const u = nextChainUnlock(p); if (!u) return { ok: false, why: 'All combo slots you can buy are open.' }; if (p.level < u.level) return { ok: false, why: 'Reach level ' + u.level + ' first.' }; const r = pay(p, u.price); if (r.ok) p.upgrades.chain = (p.upgrades.chain || 0) + 1; return r; }
   if (kind === 'upgrade') { if (UPGRADES[key] && UPGRADES[key].hidden) return { ok: false, why: 'Not sold here.' }; if (p.upgrades[key] >= UPGRADES[key].max) return { ok: false, why: 'Maxed.' }; const r = pay(p, upgradePrice(p, key)); if (r.ok) p.upgrades[key]++; return r; }
   return { ok: false, why: 'Unknown item.' };
 }
