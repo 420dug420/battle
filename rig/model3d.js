@@ -393,8 +393,9 @@ const RANK_POOLS = {
   special: { heads: ['crested', 'spire', 'blackhelm', 'greathelm', 'domed'], bodies: ['spire', 'warlord', 'deco', 'plate'], metals: ['gilded', 'black', 'silver', 'bronze'] }
 };
 M3.rankPools = RANK_POOLS;
+M3.ENEMY_VARIANTS = 5;                                       // each armor tier has only this many enemy faces: every new look costs a rig build (a stall), and 5 can be built ahead in camp
 M3.enemyLook = function (tier, seed) {
-  const pool = RANK_POOLS[tier] || RANK_POOLS.leather; let a = (seed >>> 0) || 1;
+  const pool = RANK_POOLS[tier] || RANK_POOLS.leather; let a = ((((seed >>> 0) % M3.ENEMY_VARIANTS) + 1) * 2654435761) >>> 0 || 1;
   const pick = list => { a = (Math.imul(a, 1664525) + 1013904223) >>> 0; return list[(a >>> 8) % list.length]; };
   const livs = Object.keys(LIVERIES);
   return { head: pick(pool.heads), body: pick(pool.bodies), metal: pick(pool.metals), liv: pick(livs) };

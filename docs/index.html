@@ -15134,9 +15134,10 @@ void main(){
     special: { heads: ["crested", "spire", "blackhelm", "greathelm", "domed"], bodies: ["spire", "warlord", "deco", "plate"], metals: ["gilded", "black", "silver", "bronze"] }
   };
   M3.rankPools = RANK_POOLS;
+  M3.ENEMY_VARIANTS = 5;
   M3.enemyLook = function(tier, seed) {
     const pool = RANK_POOLS[tier] || RANK_POOLS.leather;
-    let a = seed >>> 0 || 1;
+    let a = ((seed >>> 0) % M3.ENEMY_VARIANTS + 1) * 2654435761 >>> 0 || 1;
     const pick = (list) => {
       a = Math.imul(a, 1664525) + 1013904223 >>> 0;
       return list[(a >>> 8) % list.length];
@@ -30447,6 +30448,23 @@ void main(){
         o.fillRect(0, 0, S, H);
         o.globalCompositeOperation = "source-over";
       }
+    }, prewarmEnemies = function() {
+      if (warm.on) return;
+      warm.on = true;
+      for (const [tier, broken] of [["leather", false], ["leather", true], ["mail", false], ["plate", false], ["mail", true], ["plate", true]]) for (let v2 = 0; v2 < model3d_default.ENEMY_VARIANTS; v2++) warm.q.push({ tier, seed: v2, broken });
+      (function step() {
+        if (!warm.q.length) {
+          warm.on = false;
+          return;
+        }
+        if (!(runui && runui.inCamp()) || runui.modal) return void setTimeout(step, 400);
+        const j = warm.q.shift(), l = model3d_default.enemyLook(j.tier, j.seed);
+        try {
+          model3d_default.getRig("e", { tier: j.tier, broken: j.broken, shield: true, pHead: l.head, pBody: l.body, pLiv: l.liv, pMetal: l.metal });
+        } catch (e) {
+        }
+        setTimeout(step, 250);
+      })();
     }, drawFigure = function(f) {
       const rig = model3d_default.pose(f.role, f);
       if (!rig) return;
@@ -31318,6 +31336,7 @@ void main(){
       } catch (e) {
       }
       setMode(mode);
+      prewarmEnemies();
       requestAnimationFrame(frame);
     };
     const $ = (id) => document.getElementById(id);
@@ -31438,6 +31457,7 @@ void main(){
       R2("#3d322f", 0, 336, 640, 24);
     })();
     const oc = document.createElement("canvas"), sil = document.createElement("canvas");
+    const warm = { q: [], on: false };
     const enemyLook = (e) => e._look || (e._look = model3d_default.enemyLook(e.tier, e.lookSeed));
     const withLook = (e, f) => {
       const l = enemyLook(e);

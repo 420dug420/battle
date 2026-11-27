@@ -77,6 +77,19 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     s.globalCompositeOperation = 'source-in'; s.fillStyle = '#000'; s.fillRect(0, 0, S, H);
     if (flash) { o.globalCompositeOperation = 'source-atop'; o.fillStyle = 'rgba(255,255,255,.72)'; o.fillRect(0, 0, S, H); o.globalCompositeOperation = 'source-over'; }
   }
+  /* build the enemy rigs ahead, a few hundred ms apart, only while in camp: building one costs a visible stall, which used to land in the middle of a fight */
+  const warm = { q: [], on: false };
+  function prewarmEnemies() {
+    if (warm.on) return; warm.on = true;
+    for (const [tier, broken] of [['leather', false], ['leather', true], ['mail', false], ['plate', false], ['mail', true], ['plate', true]]) for (let v = 0; v < M3.ENEMY_VARIANTS; v++) warm.q.push({ tier, seed: v, broken });      // the broken look (armor break) is its own rig too
+    (function step() {
+      if (!warm.q.length) { warm.on = false; return; }
+      if (!(runui && runui.inCamp()) || runui.modal) return void setTimeout(step, 400);        // not while fighting or with a menu open
+      const j = warm.q.shift(), l = M3.enemyLook(j.tier, j.seed);
+      try { M3.getRig('e', { tier: j.tier, broken: j.broken, shield: true, pHead: l.head, pBody: l.body, pLiv: l.liv, pMetal: l.metal }); } catch (e) { }
+      setTimeout(step, 250);
+    })();
+  }
   const enemyLook = e => e._look || (e._look = M3.enemyLook(e.tier, e.lookSeed));
   const withLook = (e, f) => { const l = enemyLook(e); f.pHead = l.head; f.pBody = l.body; f.pLiv = l.liv; f.pMetal = l.metal; return f; };
   function drawFigure(f) {
@@ -667,6 +680,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     $('mRun').onclick = () => setMode('run'); $('mTest').onclick = () => setMode('test');
     let mode = 'run'; try { mode = localStorage.getItem('pw.mode') || 'run'; } catch (e) { }
     setMode(mode);
+    prewarmEnemies();
     requestAnimationFrame(frame);
   }
   try { window.claude && window.claude.hot && window.claude.hot.snapshot && window.claude.hot.snapshot(() => { const o = {}; IDS.forEach(id => o[id] = $(id).value); o.inv = $('inv').checked; o.dbg = $('dbg').checked; ['manual', 'skripo', 'skshove'].forEach(id => o[id] = $(id).checked); return o; }); } catch (e) { }
