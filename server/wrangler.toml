@@ -13,3 +13,8 @@ new_sqlite_classes = ["PartyRoom"]
 
 [vars]
 DISCORD_CLIENT_ID = "1575635299189653668"      # public app id. The client secret is a Cloudflare secret, never in this file.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "project-war"
+database_id = "8cfe8027-14b7-4e81-9404-3b56aef642ca"     # free plan D1

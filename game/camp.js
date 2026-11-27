@@ -194,12 +194,18 @@ export function drawCampOver(c, t, W, H) {
 }
 
 /* ---------- station props, drawn on the ground line at (x, base), at the scale of the fighters ---------- */
-export const STATION_TOP = { stats: 84, shop: 64, style: 76, hire: 74, cart: 64 };
+export const STATION_TOP = { book: 50, stats: 84, shop: 64, style: 76, hire: 74, cart: 64 };
 export function drawStation(c, id, x, base, near, t) {
   c.save(); c.translate(Math.round(x), base);
   shadow(c, 2, 1, id === 'cart' ? 54 : 32);
   const post = (px, top, h, col) => { R(c, OUT, px - 1, -top, 4, h + 1); R(c, col || '#5a4028', px, -top, 2, h); R(c, shade(col || '#5a4028', 1.3), px, -top, 1, h); };
-  if (id === 'stats') {                                           // the trainer: a war banner and a straw-bound sparring pell
+  if (id === 'book') {                                            // the Book of Swords: a heavy book open on a lectern, a candle beside it
+    post(-2, 40, 40, '#4a3424'); R(c, OUT, -12, -2, 26, 3); R(c, '#4a3424', -11, -1, 24, 1);
+    for (let i = 0; i < 26; i++) { const yy = -44 + Math.round(Math.abs(i - 13) * -0.15); R(c, OUT, -13 + i, yy - 1, 1, 9); R(c, i < 13 ? '#e6dcc0' : '#d8ceb0', -13 + i, yy, 1, 7); }
+    R(c, '#5a1a1a', -14, -36, 28, 2); R(c, '#8a2a2a', -1, -45, 2, 10); for (let k = 0; k < 4; k++) { R(c, '#8a7a5a', -10, -42 + k * 2, 8, 1); R(c, '#8a7a5a', 3, -42 + k * 2, 8, 1); }
+    box(c, 16, -14, 4, 14, '#e8e0c8'); const fl = Math.sin(t * 13) > 0 ? 1 : 0; R(c, '#ffb84a', 17, -18 - fl, 2, 3); R(c, '#fff0b0', 17, -17 - fl, 1, 1);
+    c.save(); c.globalCompositeOperation = 'lighter'; const g = c.createRadialGradient(18, -18, 1, 18, -18, 22); g.addColorStop(0, 'rgba(255,190,90,.35)'); g.addColorStop(1, 'rgba(255,190,90,0)'); c.fillStyle = g; c.fillRect(-4, -40, 44, 44); c.restore();
+  } else if (id === 'stats') {                                           // the trainer: a war banner and a straw-bound sparring pell
     post(-24, 84, 84); R(c, OUT, -26, -86, 8, 3); R(c, '#8a7a3a', -25, -85, 6, 1);
     for (let y = 0; y < 40; y++) { const w = Math.round(Math.sin(t * 2.4 + y * 0.18) * 1.2); R(c, OUT, -21 + w, -80 + y, 26, 1); R(c, y < 3 ? '#8a2a2a' : '#6e2222', -20 + w, -80 + y, 24, 1); R(c, '#4a1616', -20 + w + 20, -80 + y, 4, 1); }
     for (let i = 0; i < 5; i++) R(c, '#6e2222', -20 + i * 5 + Math.round(Math.sin(t * 2.4 + 7) * 1.2), -40, 3, 3 + (i % 2) * 2);

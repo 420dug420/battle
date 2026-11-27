@@ -36,13 +36,18 @@ export const RUNCFG = {
 /* ---------- profile ---------- */
 export function newProfile(name) {
   return {
-    v: 1, created: false, look: null, name: name || 'Baron', gold: RUNCFG.startGold, xp: 0, level: 1, points: 0,
+    v: 1, created: false, look: null, model: null, bestRank: 0, firstSeen: 0, name: name || 'Baron', gold: RUNCFG.startGold, xp: 0, level: 1, points: 0,
     attrs: Object.fromEntries(ATTRS.map(a => [a, RUNCFG.base])), grown: { str: 0, dex: 0, agi: 0, con: 0 }, use: { str: 0, dex: 0, agi: 0, con: 0 },
     weapon: 'longsword', armor: 'leather', shield: null, owned: { weapons: ['longsword'], armor: ['leather'], shields: [], skills: [] }, skills: [],
     upgrades: { hp: 0, stamina: 0, damage: 0, slots: 0, chain: 0 }, styles: { owned: ['cut', 'chop'], chain: ['cut', 'chop'], roles: { heavy: null, dash: null, counter: null, jump: null } }, hirelings: [], nextHid: 1, runs: 0, best: 0,
   };
 }
 export const toJSON = p => JSON.stringify(p);
+/* what other players see in the Book of Swords: no inventory, gold or gear lists */
+export function publicProfile(p) {
+  const m = p.model || { look: p.look || null, tier: p.armor, weapon: p.weapon, shield: p.shield || null };
+  return { name: p.name, level: p.level, model: m, attrs: Object.fromEntries(ATTRS.map(a => [a, attr(p, a)])), runs: p.runs || 0, best: p.best || 0, bestRank: p.bestRank || 0, weapon: p.weapon, firstSeen: p.firstSeen || 0 };
+}
 export function fromJSON(txt) {
   try {
     const o = JSON.parse(txt); if (!o || o.v !== 1) return null; const d = newProfile(), p = Object.assign(d, o); if (o.created == null) p.created = true; if (!p.owned.shields) p.owned.shields = []; p.upgrades.chain = Math.min(CHAIN_UNLOCKS.length, p.upgrades.chain || 0); if (p.shield === undefined) p.shield = null;      // saves from before character creation count as made
@@ -297,7 +302,7 @@ export class Run {
     const sim = this.sim; this.map = map || 'fields'; this.wave = 0;
     sim.clearEnemies(); sim.mode = 'run'; sim.manual = true; sim.proj = []; this.result = null;
     this.members.forEach((m, k) => {
-      if (m.p) m.p.runs++; m.gold = 0; m.kills = 0; m.xpGain = 0; m.levelUps = 0; m.uses = {}; m.hireXp = 0; m.rank = { score: 0, last: '', idle: 0, tier: 0 }; m.result = null; m.vote = null; m.ready = false; m.down = false;
+      if (m.p) m.p.runs++; m.gold = 0; m.kills = 0; m.xpGain = 0; m.levelUps = 0; m.uses = {}; m.hireXp = 0; m.rank = { score: 0, last: '', idle: 0, tier: 0 }; m.peak = 0; m.result = null; m.vote = null; m.ready = false; m.down = false;
       const q = this.pl(m); q.x = 170 - k * 26; q.y = 282; q.swing = null; q.grab = null; this.applyBuild(true, m);
     });
     this.spawnAllies(); this.say('The run begins.'); this.startWave(1);
@@ -323,7 +328,7 @@ export class Run {
       for (const m of this.members) if (m.ready && !this.atCart(m)) m.ready = false;       // walking away takes the ready back
       return;
     }
-    for (const m of this.members) { const q = this.pl(m); if (q) { const t = this.tierOf(m); q.awe = t >= 4 ? 1 : t >= 3 ? 0.5 : 0; } }   // a high style rank makes enemies balk
+    for (const m of this.members) { const q = this.pl(m), t = this.tierOf(m); m.peak = Math.max(m.peak || 0, t); if (q) q.awe = t >= 4 ? 1 : t >= 3 ? 0.5 : 0; }   // a high style rank makes enemies balk
     for (const f of feed) {
       const who = f.pid != null ? [this.byPid(f.pid)].filter(Boolean) : (f.t === 'kill' ? this.members : [this.me]);
       if (f.t === 'kill') { for (const m of who) this.onKill(m, f, who.length); }
@@ -403,13 +408,13 @@ export class Run {
     if (this.phase !== 'vote') return;
     const leave = this.members.filter(m => m.vote === 'leave').length, stay = this.members.length - leave;
     if (leave > stay) {
-      for (const m of this.members) { const g = this.leavePayOf(m); if (m.p) { m.p.gold += g; m.p.best = Math.max(m.p.best, this.wave); } m.result = { kind: 'left', wave: this.wave, gold: g, kills: m.kills, xp: m.xpGain, levels: m.levelUps, uses: m.uses, hireXp: m.hireXp }; m.acked = false; }
+      for (const m of this.members) { const g = this.leavePayOf(m); if (m.p) { m.p.gold += g; m.p.best = Math.max(m.p.best, this.wave); m.p.bestRank = Math.max(m.p.bestRank || 0, m.peak || 0); } m.result = { kind: 'left', wave: this.wave, gold: g, kills: m.kills, xp: m.xpGain, levels: m.levelUps, uses: m.uses, hireXp: m.hireXp }; m.acked = false; }
       this.phase = 'left'; this.ackAt = this.sim.t + RUNCFG.ackSecs;
     } else { this.say(this.members.length > 1 ? 'The party presses on.' : ''); this.phase = 'between'; this.timer = RUNCFG.between; }
   }
   die() {
     this.phase = 'dead'; this.ackAt = this.sim.t + RUNCFG.ackSecs;
-    for (const m of this.members) { if (m.p) m.p.best = Math.max(m.p.best, this.wave - 1); m.result = { kind: 'dead', wave: this.wave, lost: m.gold, kills: m.kills, xp: m.xpGain, levels: m.levelUps, uses: m.uses, hireXp: m.hireXp }; m.gold = 0; m.acked = false; }   // the run's gold is gone; gear, levels and unlocks stay
+    for (const m of this.members) { if (m.p) { m.p.best = Math.max(m.p.best, this.wave - 1); m.p.bestRank = Math.max(m.p.bestRank || 0, m.peak || 0); } m.result = { kind: 'dead', wave: this.wave, lost: m.gold, kills: m.kills, xp: m.xpGain, levels: m.levelUps, uses: m.uses, hireXp: m.hireXp }; m.gold = 0; m.acked = false; }   // the run's gold is gone; gear, levels and unlocks stay
   }
   ack(pid) { const m = this.byPid(pid); if (!m) return; m.acked = true; if (this.members.every(o => o.acked)) this.enterCamp(); }
   returnToCamp() { if (this.phase === 'dead' || this.phase === 'left') this.ack(this.me.pid); }

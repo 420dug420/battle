@@ -7,6 +7,7 @@ import { CFG, Sim, applyCmd, SIM_VERSION, fitsWindow, minDexForWindow, moveTau, 
 import BUILTIN_ANIMS from './anims.json';
 import { initRunUI } from './runui.js';
 import { initDiscord } from './discord.js';
+import { makeCloud } from './cloud.js';
 import { PartyHost, GuestRun, applySnap } from './party.js';
 import { buildOf, resolveStyles } from './run.js';
 const DISCORD_CLIENT_ID = typeof __DISCORD_CLIENT_ID__ === 'string' ? __DISCORD_CLIENT_ID__ : '';
@@ -16,6 +17,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   const cv = $('stage');
   let ctx = cv.getContext('2d');
   const live = new Sim(CFG);
+  const cloud = makeCloud();
   let runui = null;                                      // the camp and run layer (game/runui.js), set up at boot
   let sim = live;                                       // what is drawn: the live fight, or a replay while one plays
   window.PW = { get sim() { return sim; }, get runui() { return runui; }, live, M3, CFG, get rec() { return rec; },     // console and test handle
@@ -330,6 +332,26 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   }
   const lookOf = q => ({ tier: q.armorKey || 'leather', head: (q.look && q.look.head) || '', body: (q.look && q.look.body) || '', liv: (q.look && q.look.liv) || '', metal: (q.look && q.look.metal) || '', style: 'cut' });
   const weaponOf = q => { const aw = CFG.weapons[q.weapon] || CFG.weapons.longsword, c = CFG.weaponClasses[aw.cls]; return { twoHanded: c.twoHanded, kind: aw.kind, reach: c.reach }; };
+  /* a fighter drawn on its own for menus: 'face' is a close crop of the head, 'full' the whole figure (cached by look) */
+  const PORTRAITS = new Map();
+  function portrait(o, mode) {
+    o = o || {}; const lk = o.look || {}, key = JSON.stringify([mode, lk, o.tier, o.weapon, o.shield]); if (PORTRAITS.has(key)) return PORTRAITS.get(key);
+    const aw = CFG.weapons[o.weapon] || CFG.weapons.longsword, two = CFG.weaponClasses[aw.cls].twoHanded;
+    const f = { role: 'p', tier: CFG.tiers[o.tier] ? o.tier : 'leather', pHead: lk.head || '', pBody: lk.body || '', pLiv: lk.liv || '', pMetal: lk.metal || '', two, wkind: aw.kind || 'sword', shield: !!o.shield && !two, face: 1, t: 1.2, flash: 0, swing: null, moving: false };
+    let url = null;
+    try {
+      const rig = M3.pose('p', f); if (!rig) return null; const cv = M3.render(rig), J = M3.joints(rig), c = document.createElement('canvas'), g = c.getContext('2d');
+      if (mode === 'face') { const w = 28, h = 26, x = Math.round(J.head[0] - w / 2), y = Math.round(J.head[1] - h * 0.62); c.width = w; c.height = h; g.drawImage(cv, x, y, w, h, 0, 0, w, h); }
+      else {
+        const t = document.createElement('canvas'); t.width = cv.width; t.height = cv.height; const tg = t.getContext('2d'); tg.drawImage(cv, 0, 0);
+        const d = tg.getImageData(0, 0, t.width, t.height).data; let x0 = t.width, y0 = t.height, x1 = 0, y1 = 0;
+        for (let y = 0; y < t.height; y++) for (let x = 0; x < t.width; x++) if (d[(y * t.width + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        if (x1 < x0) return null; c.width = x1 - x0 + 3; c.height = y1 - y0 + 3; g.drawImage(t, x0 - 1, y0 - 1, c.width, c.height, 0, 0, c.width, c.height);
+      }
+      url = c.toDataURL();
+    } catch (e) { url = null; }
+    PORTRAITS.set(key, url); return url;
+  }
   function render() {
     ctx.imageSmoothingEnabled = false; hudBegin(); hudOn = !(pb && pb.zoom);
     ctx.save();
@@ -721,7 +743,7 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
     cmd({ t: 'say', text: 'Manual combat: mouse aims and attacks, Q blocks, Shift dashes, G or middle click grabs.' });
     cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] });
     const clearKeys = () => { for (const k in keys) keys[k] = k === 'fin' ? '' : false; };
-    runui = initRunUI({ $, live, FONT, readLook, lookOptions: tiers => { const pools = (tiers || ['leather', 'mail', 'plate']).map(t => M3.rankPools[t]).filter(Boolean), ok = (k, v) => !v || pools.some(p => p[k].includes(v));      // only the head, body and metal pieces of the armor tiers you may use
+    runui = initRunUI({ $, live, FONT, readLook, portrait, cloud: () => cloud, lookOptions: tiers => { const pools = (tiers || ['leather', 'mail', 'plate']).map(t => M3.rankPools[t]).filter(Boolean), ok = (k, v) => !v || pools.some(p => p[k].includes(v));      // only the head, body and metal pieces of the armor tiers you may use
       return Object.fromEntries([['head', 'lkhead', 'heads'], ['body', 'lkbody', 'bodies'], ['liv', 'lkliv', null], ['metal', 'lkmetal', 'metals']].map(([k, id, pk]) => [k, [...$(id).options].filter(o => !pk || ok(pk, o.value)).map(o => ({ v: o.value, l: o.textContent }))])); }, styles: () => BASE_STYLES.concat(libStyles), hands: () => live.weaponInfo().twoHanded ? 2 : 1, stopRec: () => { rec = null; snaps = []; }, clearKeys, focusStage: () => cv.focus(),
       afterLeave: () => { cmd({ t: 'set', chainStyles: null }); startRec(); cmd({ t: 'manual', on: true }); cmd({ t: 'spawn', list: [{ tier: 'leather', dur: CFG.tiers.leather.dur, ai: 'stand' }] }); applySettings(); } });
     // Discord Activity: when this page runs inside Discord, sign in, use the instance as the room, and keep the Rich Presence line current
@@ -729,6 +751,8 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
       if (!d) return; window.PW.discord = d;
       $('netroom').value = d.roomName; $('netbase').value = d.wsBase;
       sim.say('info', 'Discord: signed in as ' + d.name + '.'); if (!party) netConnect();
+      if (d.token) { cloud.setToken(d.token); cloud.load().then(r => { if (r && r.save) runui.loadSave(r.save); else runui.saveNow(); }).catch(() => sim.say('info', 'Save server unreachable: playing on this device\'s save.')); }
+      addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') cloud.flush(true); });
       setInterval(() => { const r = runui.run; d.setPresence(r.phase === 'camp' ? 'In camp' : r.phase === 'dead' ? 'Fell in the field' : 'Wave ' + r.wave, runui.profile.name + ' · Lv ' + runui.profile.level, performance.now() / 1000); }, 2000);
     });
     const setMode = m => {

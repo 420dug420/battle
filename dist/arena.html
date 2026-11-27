@@ -86,6 +86,35 @@ canvas.prev { width: 100%; height: auto; image-rendering: pixelated; border: 1px
 /* camp and run windows: the old Final Fantasy look, blue gradient and a white frame */
 #runui { position: absolute; left: 0; top: 0; right: 0; aspect-ratio: 16 / 9; pointer-events: none; }
 #runui .rback.r-create { justify-content: flex-end; background: transparent; padding-right: 12px; } .rpanel.p-create { width: min(46%, 300px); }
+
+.rpanel.p-sheet, .rpanel.p-book { width: min(97%, 1080px); }
+#runui .sheet { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.35fr) minmax(0, 0.9fr); gap: 14px; }
+#runui .scol { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+#runui .who { display: flex; gap: 10px; align-items: center; }
+#runui .face { width: 84px; height: 78px; border: 2px solid #f2f4ff; box-shadow: 0 0 0 2px #04062a; border-radius: 4px; background: #1a2430; overflow: hidden; display: flex; align-items: center; justify-content: center; flex: none; }
+#runui .nm { font-size: 18px; font-weight: 700; } #runui .lv { color: #ffe27a; }
+#runui .lvup { padding: 5px 8px; border: 1px solid #ffd84a; background: rgba(255,216,74,.12); border-radius: 4px; color: #ffe27a; }
+#runui .arow2 { display: grid; grid-template-columns: 38px minmax(0, 1fr) 46px 34px; gap: 6px; align-items: center; }
+#runui .arow2 .d { font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#runui .eqgrid { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 10px; align-items: start; }
+#runui .eqcol { display: flex; flex-direction: column; gap: 5px; }
+#runui .slot { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 1px; padding: 6px 9px; border: 2px solid #8a96e6; border-radius: 4px; background: transparent; color: #f2f4ff; font: inherit; cursor: pointer; }
+#runui .slot:hover, #runui .slot.on { border-color: #ffe27a; background: rgba(255,226,122,.12); }
+#runui .slot small { font-size: 10px; color: #cfd6ff; } #runui .slot b { font-size: 15px; font-weight: 600; } #runui .slot .d { font-size: 11px; }
+#runui .swaplist { margin: -2px 0 3px 14px; padding: 6px; border: 2px solid #f2f4ff; border-radius: 4px; background: #0a1260; display: flex; flex-direction: column; gap: 3px; }
+#runui .swaplist small { font-size: 10px; color: #cfd6ff; }
+#runui .sopt { display: flex; justify-content: space-between; gap: 8px; padding: 5px 7px; border: 1px solid #8a96e6; border-radius: 3px; background: transparent; color: #f2f4ff; font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+#runui .sopt:hover:not(:disabled) { background: rgba(255,226,122,.14); } #runui .sopt:disabled { opacity: .75; cursor: default; } #runui .sopt:disabled .d { color: #ffe27a; }
+#runui .model { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+#runui .mbox { height: 190px; border: 2px solid #8a96e6; border-radius: 4px; background: radial-gradient(circle at 50% 80%, #2a2016, #0c1016 75%); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; box-sizing: border-box; }
+#runui .kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 3px; column-gap: 8px; } #runui .kv span { color: #cfd6ff; }
+#runui .chips { display: flex; gap: 4px; flex-wrap: wrap; } #runui .chip { padding: 2px 7px; border: 1px solid #8a96e6; border-radius: 3px; font-size: 12px; } #runui .chip.lock { border-style: dashed; color: #8a96e6; }
+#runui .bookg { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 14px; }
+#runui .blist { display: flex; flex-direction: column; gap: 4px; max-height: 360px; overflow-y: auto; }
+#runui .brow { display: grid; grid-template-columns: minmax(0, 1fr) 46px 64px 62px; gap: 6px; align-items: center; padding: 6px 8px; border: 1px solid #8a96e6; border-radius: 4px; background: transparent; color: #f2f4ff; font: inherit; text-align: left; cursor: pointer; }
+#runui .brow.hd { border: 0; font-size: 10px; color: #cfd6ff; cursor: default; padding: 0 9px; } #runui .brow.on, #runui .brow:not(.hd):hover { border-color: #ffe27a; background: rgba(255,226,122,.12); }
+#runui .bpage { display: flex; flex-direction: column; gap: 10px; padding: 10px; border: 2px solid #f2f4ff; border-radius: 4px; background: rgba(4,6,42,.5); min-width: 0; }
+#runui .bpage .eqgrid { grid-template-columns: 140px minmax(0, 1fr); }
 #runui .rback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(2, 4, 30, .45); pointer-events: auto; }
 .ff { background: linear-gradient(#3550d0, #0a1260); border: 2px solid #f2f4ff; box-shadow: 0 0 0 2px #04062a, inset 0 0 0 2px rgba(120, 140, 235, .8); border-radius: 6px; color: #fff; font-family: var(--display); }
 .rpanel { width: min(86%, 620px); max-height: 92%; overflow-y: auto; padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; text-shadow: 1px 1px 0 #000; }
@@ -18998,6 +19027,7 @@ void main(){
     learnStyle: () => learnStyle,
     newProfile: () => newProfile,
     nextChainUnlock: () => nextChainUnlock,
+    publicProfile: () => publicProfile,
     recruits: () => recruits,
     resolveStyles: () => resolveStyles,
     setChain: () => setChain,
@@ -19059,6 +19089,9 @@ void main(){
       v: 1,
       created: false,
       look: null,
+      model: null,
+      bestRank: 0,
+      firstSeen: 0,
       name: name || "Baron",
       gold: RUNCFG.startGold,
       xp: 0,
@@ -19081,6 +19114,10 @@ void main(){
     };
   }
   var toJSON = (p) => JSON.stringify(p);
+  function publicProfile(p) {
+    const m = p.model || { look: p.look || null, tier: p.armor, weapon: p.weapon, shield: p.shield || null };
+    return { name: p.name, level: p.level, model: m, attrs: Object.fromEntries(ATTRS.map((a) => [a, attr(p, a)])), runs: p.runs || 0, best: p.best || 0, bestRank: p.bestRank || 0, weapon: p.weapon, firstSeen: p.firstSeen || 0 };
+  }
   function fromJSON(txt) {
     try {
       const o = JSON.parse(txt);
@@ -19613,6 +19650,7 @@ void main(){
         m.uses = {};
         m.hireXp = 0;
         m.rank = { score: 0, last: "", idle: 0, tier: 0 };
+        m.peak = 0;
         m.result = null;
         m.vote = null;
         m.ready = false;
@@ -19672,11 +19710,9 @@ void main(){
         return;
       }
       for (const m of this.members) {
-        const q = this.pl(m);
-        if (q) {
-          const t = this.tierOf(m);
-          q.awe = t >= 4 ? 1 : t >= 3 ? 0.5 : 0;
-        }
+        const q = this.pl(m), t = this.tierOf(m);
+        m.peak = Math.max(m.peak || 0, t);
+        if (q) q.awe = t >= 4 ? 1 : t >= 3 ? 0.5 : 0;
       }
       for (const f of feed) {
         const who = f.pid != null ? [this.byPid(f.pid)].filter(Boolean) : f.t === "kill" ? this.members : [this.me];
@@ -19844,6 +19880,7 @@ void main(){
           if (m.p) {
             m.p.gold += g;
             m.p.best = Math.max(m.p.best, this.wave);
+            m.p.bestRank = Math.max(m.p.bestRank || 0, m.peak || 0);
           }
           m.result = { kind: "left", wave: this.wave, gold: g, kills: m.kills, xp: m.xpGain, levels: m.levelUps, uses: m.uses, hireXp: m.hireXp };
           m.acked = false;
@@ -19860,7 +19897,10 @@ void main(){
       this.phase = "dead";
       this.ackAt = this.sim.t + RUNCFG.ackSecs;
       for (const m of this.members) {
-        if (m.p) m.p.best = Math.max(m.p.best, this.wave - 1);
+        if (m.p) {
+          m.p.best = Math.max(m.p.best, this.wave - 1);
+          m.p.bestRank = Math.max(m.p.bestRank || 0, m.peak || 0);
+        }
         m.result = { kind: "dead", wave: this.wave, lost: m.gold, kills: m.kills, xp: m.xpGain, levels: m.levelUps, uses: m.uses, hireXp: m.hireXp };
         m.gold = 0;
         m.acked = false;
@@ -20299,7 +20339,7 @@ void main(){
     c.fillStyle = g;
     c.fillRect(0, 0, W2, H);
   }
-  var STATION_TOP = { stats: 84, shop: 64, style: 76, hire: 74, cart: 64 };
+  var STATION_TOP = { book: 50, stats: 84, shop: 64, style: 76, hire: 74, cart: 64 };
   function drawStation(c, id, x, base, near, t) {
     c.save();
     c.translate(Math.round(x), base);
@@ -20309,7 +20349,34 @@ void main(){
       R(c, col || "#5a4028", px, -top, 2, h);
       R(c, shade2(col || "#5a4028", 1.3), px, -top, 1, h);
     };
-    if (id === "stats") {
+    if (id === "book") {
+      post(-2, 40, 40, "#4a3424");
+      R(c, OUT, -12, -2, 26, 3);
+      R(c, "#4a3424", -11, -1, 24, 1);
+      for (let i15 = 0; i15 < 26; i15++) {
+        const yy = -44 + Math.round(Math.abs(i15 - 13) * -0.15);
+        R(c, OUT, -13 + i15, yy - 1, 1, 9);
+        R(c, i15 < 13 ? "#e6dcc0" : "#d8ceb0", -13 + i15, yy, 1, 7);
+      }
+      R(c, "#5a1a1a", -14, -36, 28, 2);
+      R(c, "#8a2a2a", -1, -45, 2, 10);
+      for (let k = 0; k < 4; k++) {
+        R(c, "#8a7a5a", -10, -42 + k * 2, 8, 1);
+        R(c, "#8a7a5a", 3, -42 + k * 2, 8, 1);
+      }
+      box2(c, 16, -14, 4, 14, "#e8e0c8");
+      const fl = Math.sin(t * 13) > 0 ? 1 : 0;
+      R(c, "#ffb84a", 17, -18 - fl, 2, 3);
+      R(c, "#fff0b0", 17, -17 - fl, 1, 1);
+      c.save();
+      c.globalCompositeOperation = "lighter";
+      const g = c.createRadialGradient(18, -18, 1, 18, -18, 22);
+      g.addColorStop(0, "rgba(255,190,90,.35)");
+      g.addColorStop(1, "rgba(255,190,90,0)");
+      c.fillStyle = g;
+      c.fillRect(-4, -40, 44, 44);
+      c.restore();
+    } else if (id === "stats") {
       post(-24, 84, 84);
       R(c, OUT, -26, -86, 8, 3);
       R(c, "#8a7a3a", -25, -85, 6, 1);
@@ -20486,6 +20553,7 @@ void main(){
   var KEY = "pw.run.profile";
   var STATIONS = [
     // where things are in camp (sim x); the dummy stands at 120
+    { id: "book", x: 62, name: "Book of Swords", hint: "the log of every fighter" },
     { id: "stats", x: 200, name: "Trainer", hint: "spend attribute points" },
     { id: "shop", x: 275, name: "Smith", hint: "weapons, armor, upgrades, skills" },
     { id: "style", x: 400, name: "Style", hint: "attack styles, combo chain, skills" },
@@ -20504,10 +20572,13 @@ void main(){
     if (!profile) profile = newProfile("Baron");
     let run = new Run(live, profile, Date.now() >>> 0 || 1);
     const save = () => {
+      const t = toJSON(profile);
       try {
-        localStorage.setItem(KEY, toJSON(profile));
+        localStorage.setItem(KEY, t);
       } catch (e) {
       }
+      const cl2 = env2.cloud && env2.cloud();
+      if (cl2 && profile.created) cl2.put(t, publicProfile(profile));
     };
     let wasPhase = "camp";
     const ui = { active: false, modal: null, run, profile, setRun: (r) => {
@@ -20666,6 +20737,83 @@ void main(){
       const sel = (k, lab) => lookSelect(k, lab, draft[k], ["leather"]);
       return '<div class="rhead"><span>Create your fighter</span></div><div class="srow"><span>Name</span><input class="rsel" data-c="name" maxlength="16" value="' + esc(draft.name) + '" placeholder="Your name"><span></span></div>' + sel("head", "Head") + sel("body", "Body") + sel("liv", "Livery") + sel("metal", "Metal") + '<p class="d">You start in tier 1 (leather) gear, so only its looks are offered. Better looks come with better armor. You can change the look later on the Equipment screen (I).</p>' + msg() + '<div class="btnrow"><button class="rb go" data-a="create">Begin</button></div>';
     }
+    let swap = null;
+    const portraitImg = (o, mode, w, alt) => {
+      const u = env2.portrait ? env2.portrait(o, mode) : null;
+      return u ? '<img src="' + u + '" alt="' + esc(alt) + '" style="width:' + w + 'px;image-rendering:pixelated">' : '<span class="d">[portrait]</span>';
+    };
+    const myModel = () => ({ look: profile.look || null, tier: profile.armor, weapon: profile.weapon, shield: profile.shield || null });
+    function sheetPanel() {
+      const p = profile, d = derive(p), need = xpNeed(p.level), wc = CFG.weaponClasses[CFG.weapons[p.weapon].cls], ar2 = CFG.tiers[p.armor], sh2 = p.shield && SHIELDS[p.shield];
+      const slot = (id, label, name, sub) => '<button class="slot' + (swap === id ? " on" : "") + '" data-a="swap:' + id + '"><small>' + label + "</small><b>" + esc(name) + '</b><span class="d">' + esc(sub) + "</span></button>";
+      const list = (rows) => '<div class="swaplist"><small>SWAP FOR (owned)</small>' + rows.join("") + "</div>";
+      const opt = (a, name, sub, on2) => '<button class="sopt" data-a="' + a + '"' + (on2 ? " disabled" : "") + "><span>" + esc(name) + '</span><span class="d">' + (on2 ? "equipped" : esc(sub)) + "</span></button>";
+      let eq = slot("weapon", "WEAPON", CFG.weapons[p.weapon].label, (wc.twoHanded ? "two-handed" : "one-handed") + " \xB7 dmg " + wc.dmg + " \xB7 reach " + wc.reach);
+      if (swap === "weapon") eq += list(p.owned.weapons.map((k) => {
+        const c = CFG.weaponClasses[CFG.weapons[k].cls];
+        return opt("equip:weapon:" + k, CFG.weapons[k].label, (c.twoHanded ? "2H" : "1H") + " \xB7 dmg " + c.dmg + (c.twoHanded && p.shield ? " \xB7 shield stowed" : ""), p.weapon === k);
+      }));
+      eq += slot("armor", "ARMOR", ar2.label, Math.round(ar2.pct * 100) + "% off hits \xB7 durability " + ar2.dur);
+      if (swap === "armor") eq += list(p.owned.armor.map((k) => opt("equip:armor:" + k, CFG.tiers[k].label, Math.round(CFG.tiers[k].pct * 100) + "% off", p.armor === k)));
+      eq += slot("shield", "SHIELD", sh2 ? sh2.n : "None", sh2 ? wc.twoHanded ? "stowed: two-handed weapon" : (sh2.heavy ? "blocks heavies" : "blocks normal hits") + " \xB7 no parry" : "block key blocks and parries");
+      if (swap === "shield") eq += list([opt("equip:shield:none", "None", "block and parry", !p.shield)].concat(p.owned.shields.map((k) => opt("equip:shield:" + k, SHIELDS[k].n, SHIELDS[k].heavy ? "blocks heavies" : "light", p.shield === k))));
+      eq += slot("skill", "SKILLS (" + p.skills.length + " / " + d.skillSlots + ")", p.skills.length ? p.skills.map((k) => SKILLS[k].n).join(", ") : "None", p.owned.skills.length ? "click to change" : "learn skills at the Smith");
+      if (swap === "skill") eq += list(p.owned.skills.length ? p.owned.skills.map((k) => '<button class="sopt" data-a="skill:' + k + '"><span>' + esc(SKILLS[k].n) + '</span><span class="d">' + (p.skills.includes(k) ? "on: click to take off" : "off: click to equip") + "</span></button>") : ['<span class="d">No skills learned yet.</span>']);
+      const attrs = ATTRS.map((a) => '<div class="arow2"><b>' + ATTR_INFO[a].n + '</b><span class="d">' + esc(ATTR_INFO[a].d.split(".")[0]) + "</span><span>" + attr(p, a) + (p.grown[a] || 0 ? " <small>(+" + p.grown[a] + ")</small>" : "") + '</span><button class="rb" data-a="spend:' + a + '"' + (p.points > 0 ? "" : " disabled") + ' aria-label="Raise ' + ATTR_INFO[a].n + '">+</button></div>').join("");
+      const chainN = d.chainSlots, nu2 = nextChainUnlock(p), chain = Array.from({ length: chainN }, (_, i15) => (p.styles.chain || [])[i15] || null).map((id) => !id ? '<span class="chip lock">(empty)</span>' : '<span class="chip">' + esc((env2.styles().find((x) => x.id === id) || { name: id || "(empty)" }).name) + "</span>").join("") + (p.level < CHAIN_FREE_AT ? '<span class="chip lock">Lv ' + CHAIN_FREE_AT + "</span>" : "") + CHAIN_UNLOCKS.slice(p.upgrades.chain || 0).map((u) => '<span class="chip lock">Lv ' + u.level + "</span>").join("");
+      return head("Character", '<div class="gold">' + p.gold + ' G</div><span class="d" style="margin-left:8px">Tab to close</span>') + '<div class="sheet"><div class="scol"><div class="who"><div class="face">' + portraitImg(myModel(), "face", 84, "Your face") + '</div><div><div class="nm">' + esc(p.name) + '</div><div class="lv">Level ' + p.level + '</div><div class="d">XP ' + p.xp + " / " + need + "</div>" + bar(p.xp, need, "xp") + "</div></div>" + (p.points > 0 ? '<div class="lvup">Level up: ' + p.points + " point" + (p.points > 1 ? "s" : "") + " to spend</div>" : '<div class="d">No points to spend. One per level.</div>') + attrs + '</div><div class="scol"><div class="sec">Equipped <small>(click an item to swap it)</small></div><div class="eqgrid"><div class="eqcol">' + eq + '</div><div class="model"><div class="mbox">' + portraitImg(p.model || myModel(), "full", 130, "Your profile model") + '</div><div class="d" style="text-align:center">Profile model: what others see in the Book of Swords' + (p.model ? "" : " (not set: shows your current look)") + '</div><button class="rb go" data-a="model">Set profile model to my current look</button></div></div></div><div class="scol"><div class="sec">Stats</div><div class="kv"><span>Max HP</span><b>' + d.maxHp + "</b><span>Stamina</span><b>" + d.staminaMax + "</b><span>Damage</span><b>x" + d.dmgMult.toFixed(2) + "</b><span>Move speed</span><b>x" + d.spdMult.toFixed(2) + "</b><span>Stamina regen</span><b>x" + d.regenMult.toFixed(2) + "</b><span>Armor</span><b>" + Math.round(ar2.pct * 100) + "%</b><span>Hirelings</span><b>" + p.hirelings.length + " / " + d.hireCap + '</b></div><div class="sec">Combo chain <small>' + chainN + ' / 5 slots</small></div><div class="chips">' + chain + '</div><div class="sec">Record</div><div class="kv"><span>Runs</span><b>' + (p.runs || 0) + "</b><span>Best wave</span><b>" + (p.best || 0) + "</b><span>Best style rank</span><b>" + RUNCFG.rank.names[p.bestRank || 0] + "</b></div></div></div>" + msg();
+    }
+    const book = { list: null, err: "", q: "", sel: null, prof: null, loading: false };
+    function bookLoad() {
+      const cl2 = env2.cloud && env2.cloud();
+      book.loading = true;
+      book.err = "";
+      if (!cl2) {
+        book.err = "No connection to the save server.";
+        book.loading = false;
+        return;
+      }
+      cl2.book(book.q).then((r) => {
+        book.list = r && r.players || [];
+        book.loading = false;
+        if (ui.modal === "book") render();
+      }).catch(() => {
+        book.err = "The Book of Swords lives on the save server, which this page can't reach. It works in the Discord activity.";
+        book.loading = false;
+        if (ui.modal === "book") render();
+      });
+    }
+    function bookOpen(id) {
+      const cl2 = env2.cloud && env2.cloud();
+      book.sel = id;
+      book.prof = null;
+      if (!cl2) return;
+      cl2.profile(id).then((r) => {
+        if (book.sel === id) {
+          book.prof = r && r.profile;
+          if (ui.modal === "book") render();
+        }
+      }).catch(() => {
+        book.err = "Could not open that page.";
+        if (ui.modal === "book") render();
+      });
+    }
+    function bookPanel() {
+      const ago = (t) => {
+        if (!t) return "?";
+        const s = (Date.now() - t) / 1e3;
+        return s < 120 ? "now" : s < 7200 ? Math.round(s / 60) + " min" : s < 172800 ? Math.round(s / 3600) + " h" : Math.round(s / 86400) + " days";
+      };
+      let left = '<label class="d">Find a fighter <input class="rsel" data-c="bookq" value="' + esc(book.q) + '" placeholder="Name" maxlength="16"></label><div class="brow hd"><span>NAME</span><span>LEVEL</span><span>BEST</span><span>SEEN</span></div>';
+      if (book.loading && !book.list) left += '<div class="d">Opening the book...</div>';
+      else if (book.list && !book.list.length) left += '<div class="d">No names written yet.</div>';
+      else if (book.list) left += book.list.map((x) => '<button class="brow' + (book.sel === x.id ? " on" : "") + '" data-a="bk:' + esc(x.id) + '"><span>' + esc(x.name) + "</span><span>" + x.level + "</span><span>wave " + x.best + '</span><span class="d">' + ago(x.lastSeen) + "</span></button>").join("");
+      let right = '<div class="d">Pick a name to read their page.</div>';
+      const P3 = book.prof;
+      if (book.sel && !P3) right = '<div class="d">Turning the pages...</div>';
+      if (P3) right = '<div class="who"><div class="face">' + portraitImg(P3.model, "face", 76, P3.name + "'s face") + '</div><div><div class="nm">' + esc(P3.name) + '</div><div class="lv">Level ' + P3.level + '</div><div class="d">Last seen: ' + ago(P3.lastSeen) + '</div></div></div><div class="eqgrid"><div class="mbox">' + portraitImg(P3.model, "full", 120, P3.name + "'s profile model") + '</div><div><div class="sec">Attributes</div><div class="kv">' + ATTRS.map((a) => "<span>" + ATTR_INFO[a].n + "</span><b>" + ((P3.attrs || {})[a] || 0) + "</b>").join("") + '</div><div class="sec">Record</div><div class="kv"><span>Runs</span><b>' + (P3.runs || 0) + "</b><span>Best wave</span><b>" + (P3.best || 0) + "</b><span>Best style rank</span><b>" + RUNCFG.rank.names[P3.bestRank || 0] + "</b><span>Fights with</span><b>" + esc((CFG.weapons[P3.weapon] || { label: "?" }).label) + "</b></div></div></div>";
+      return head("Book of Swords") + '<div class="d">Every fighter who has stood at a Project War fire.</div>' + (book.err ? '<div class="note">' + esc(book.err) + "</div>" : "") + '<div class="bookg"><div class="blist">' + left + '</div><div class="bpage">' + right + "</div></div>";
+    }
     function votePanel() {
       const ms2 = partyOf(), me = run.me, mine = me.vote, left = Math.ceil(run.voteIn != null && run.isGuest ? run.voteIn : Math.max(0, run.voteAt - live.t));
       return '<div class="rhead"><span>Wave ' + run.wave + ' cleared</span><span class="d">' + left + 's</span></div><div class="big">Leave with <b>' + run.leavePay() + ` G</b>?</div><p class="d">Press on and the next stage pays more, but if everyone falls the run's gold is lost. Most votes decide; a tie, or no answer, presses on.</p>` + (ms2.length > 1 ? ms2.map((m) => '<div class="srow"><span>' + esc(m.name) + '</span><span class="d">' + (m.vote === "leave" ? "leave" : m.vote === "stay" ? "press on" : "deciding...") + "</span><span></span></div>").join("") : "") + (mine ? '<p class="d">You voted to ' + (mine === "leave" ? "leave" : "press on") + ". Waiting for the others.</p>" : "") + '<div class="btnrow"><button class="rb go" data-a="vote:leave">Leave</button><button class="rb" data-a="vote:stay">Press on</button></div>';
@@ -20675,7 +20823,7 @@ void main(){
       if (!r) return "";
       return '<div class="rhead"><span>' + (r.kind === "dead" ? "You fell" : "Back from the field") + '</span></div><div class="big">Wave ' + r.wave + '</div><div class="sum">Kills ' + r.kills + " \xB7 XP " + r.xp + (r.levels ? " \xB7 Levels +" + r.levels : "") + "</div>" + (r.kind === "dead" ? '<div class="big bad">Lost ' + r.lost + ' G</div><p class="d">Gold from this run is gone. Gear, levels, skills and hirelings are safe.</p>' : '<div class="big">+' + r.gold + " G</div>") + '<div class="btnrow"><button class="rb go" data-a="camp">' + (run.me.acked ? "Waiting for the others..." : "Return to camp") + "</button></div>";
     }
-    const PANELS = { stats: statsPanel, shop: shopPanel, style: stylePanel, hire: hirePanel, cart: cartPanel, vote: votePanel, result: resultPanel, equip: equipPanel, create: createPanel };
+    const PANELS = { stats: statsPanel, shop: shopPanel, style: stylePanel, hire: hirePanel, cart: cartPanel, vote: votePanel, result: resultPanel, equip: equipPanel, create: createPanel, sheet: sheetPanel, book: bookPanel };
     function render() {
       if (!ui.modal) {
         ov.innerHTML = "";
@@ -20717,10 +20865,20 @@ void main(){
       }
       return true;
     };
+    let bookT = 0;
     ov.addEventListener("input", (ev) => {
-      if (ev.target.dataset && ev.target.dataset.c === "name") draft.name = ev.target.value;
+      const c = ev.target.dataset && ev.target.dataset.c;
+      if (c === "name") draft.name = ev.target.value;
+      if (c === "bookq") {
+        book.q = ev.target.value.slice(0, 16);
+        clearTimeout(bookT);
+        bookT = setTimeout(() => {
+          bookLoad();
+        }, 350);
+      }
     });
     ov.addEventListener("change", (ev) => {
+      if (ev.target.dataset && ev.target.dataset.c === "bookq") return;
       if (onC(ev)) return;
       const f = ev.target.dataset && ev.target.dataset.f;
       if (!f) return;
@@ -20753,6 +20911,7 @@ void main(){
           rebuild();
         }
       } else if (a === "equip") {
+        swap = null;
         x === "weapon" ? equipWeapon(profile, y) : x === "shield" ? equipShield(profile, y) : equipArmor(profile, y);
         rebuild();
       } else if (a === "style") {
@@ -20787,11 +20946,26 @@ void main(){
         live.player.x = 150;
         open("create");
         return;
+      } else if (a === "swap") {
+        swap = swap === x ? null : x;
+        render();
+        return;
+      } else if (a === "model") {
+        profile.model = myModel();
+        note = "Profile model set: this is how you look in the Book of Swords.";
+        save();
+        render();
+        return;
+      } else if (a === "bk") {
+        bookOpen(x);
+        render();
+        return;
       } else if (a === "create") {
         if (!draft) return;
         profile.name = (draft.name || "").trim().slice(0, 16) || "Baron";
         profile.look = { head: draft.head, body: draft.body, liv: draft.liv, metal: draft.metal };
         profile.created = true;
+        if (!profile.firstSeen) profile.firstSeen = Date.now();
         draft = null;
         run.me.name = profile.name;
         live.player.x = 330;
@@ -20882,19 +21056,49 @@ void main(){
       const x = live.player.x;
       return STATIONS.find((s) => Math.abs(s.x - x) <= NEAR) || null;
     };
+    ui.saveNow = () => {
+      save();
+      const cl2 = env2.cloud && env2.cloud();
+      if (cl2) cl2.flush();
+    };
+    ui.loadSave = (txt2) => {
+      const p = fromJSON(txt2);
+      if (!p) return false;
+      for (const k of Object.keys(profile)) delete profile[k];
+      Object.assign(profile, p);
+      run.me.name = profile.name;
+      try {
+        localStorage.setItem(KEY, toJSON(profile));
+      } catch (e) {
+      }
+      if (ui.active) {
+        rebuild();
+        if (ui.modal === "create" && profile.created) close();
+        else if (ui.modal) render();
+      }
+      return true;
+    };
     ui.key = (code, act) => {
       if (!ui.active) return false;
       if (ui.modal) {
-        if (code === "Escape" && ui.modal !== "vote" && ui.modal !== "result" && ui.modal !== "create") close();
+        if ((code === "Escape" || code === "Tab" && ui.modal === "sheet") && ui.modal !== "vote" && ui.modal !== "result" && ui.modal !== "create") close();
         return true;
       }
-      if (code === "KeyI" && run.phase === "camp") {
-        open("equip");
+      if (code === "Tab" && run.phase === "camp") {
+        swap = null;
+        open("sheet");
         return true;
       }
       if (act === "use" && run.phase === "camp") {
         const s = near();
-        if (s) open(s.id);
+        if (s) {
+          if (s.id === "book") {
+            book.sel = null;
+            book.prof = null;
+            bookLoad();
+          }
+          open(s.id);
+        }
         return true;
       }
       return false;
@@ -20988,7 +21192,7 @@ void main(){
         if (s) {
           txt(c, "T", 134, H - 20, "#ffe27a", 12);
           txt(c, s.name + ": " + s.hint, 152, H - 20, "#fff", 10);
-        } else txt(c, "W A S D walk \xB7 Sign + T \xB7 I equipment \xB7 The cart starts a run", W2 / 2, H - 20, "#cfe", 9, "center");
+        } else txt(c, "W A S D walk \xB7 Sign + T \xB7 Tab character \xB7 The cart starts a run", W2 / 2, H - 20, "#cfe", 9, "center");
       } else {
         const others = live.players.filter((q) => q !== p).map((q) => {
           const m = partyOf().find((x) => x.pid === q.pid);
@@ -30675,6 +30879,7 @@ void main(){
       if (!res.ok) throw new Error("Token exchange failed (" + res.status + ")");
       const { access_token } = await res.json();
       const auth = await sdk.commands.authenticate({ access_token });
+      d.token = access_token;
       d.user = auth && auth.user;
       d.name = d.user && (d.user.global_name || d.user.username) || "Player";
       const setP = (list) => {
@@ -30703,6 +30908,59 @@ void main(){
     d.roomName = "dc-" + String(d.instanceId || "solo").replace(/[^\w-]/g, "").slice(0, 36);
     d.wsBase = "wss://" + location.host + "/.proxy/ws";
     return d;
+  }
+
+  // game/cloud.js
+  function makeCloud() {
+    let token = null, timer = null, pending = null, lastSent = "";
+    const api = async (path, opt) => {
+      const r = await fetch("/data" + path, opt);
+      if (!r.ok) throw new Error("server " + r.status);
+      return r.json();
+    };
+    const auth = () => ({ authorization: "Bearer " + token, "content-type": "application/json" });
+    async function flush(keep) {
+      clearTimeout(timer);
+      timer = null;
+      if (!token || !pending) return;
+      const body = JSON.stringify(pending);
+      pending = null;
+      if (body === lastSent) return;
+      try {
+        await fetch("/data/me", { method: "PUT", headers: auth(), body, keepalive: !!keep });
+        lastSent = body;
+      } catch (e) {
+      }
+    }
+    return {
+      get signedIn() {
+        return !!token;
+      },
+      setToken(t) {
+        token = t || null;
+      },
+      async load() {
+        if (!token) return null;
+        return api("/me", { headers: auth() });
+      },
+      // { save: text | null }
+      put(save, pub) {
+        if (!token) return;
+        pending = { save, pub };
+        clearTimeout(timer);
+        timer = setTimeout(flush, 4e3);
+      },
+      // at most one write per few seconds
+      flush,
+      book(q) {
+        return api("/book?q=" + encodeURIComponent(q || ""));
+      },
+      // { players: [{ id, name, level, best, lastSeen }] }
+      profile(id) {
+        return api("/profile/" + encodeURIComponent(id));
+      }
+      // the public profile: no inventory
+    };
   }
 
   // game/party.js
@@ -31299,6 +31557,47 @@ void main(){
       if (p.carry) return { kind: "carry", u: sim.t };
       if (p.shotT > 0) return { kind: "shoot", u: 1 - p.shotT / 0.25 };
       return null;
+    }, portrait = function(o, mode) {
+      o = o || {};
+      const lk2 = o.look || {}, key = JSON.stringify([mode, lk2, o.tier, o.weapon, o.shield]);
+      if (PORTRAITS.has(key)) return PORTRAITS.get(key);
+      const aw = CFG.weapons[o.weapon] || CFG.weapons.longsword, two = CFG.weaponClasses[aw.cls].twoHanded;
+      const f = { role: "p", tier: CFG.tiers[o.tier] ? o.tier : "leather", pHead: lk2.head || "", pBody: lk2.body || "", pLiv: lk2.liv || "", pMetal: lk2.metal || "", two, wkind: aw.kind || "sword", shield: !!o.shield && !two, face: 1, t: 1.2, flash: 0, swing: null, moving: false };
+      let url = null;
+      try {
+        const rig = model3d_default.pose("p", f);
+        if (!rig) return null;
+        const cv2 = model3d_default.render(rig), J = model3d_default.joints(rig), c = document.createElement("canvas"), g = c.getContext("2d");
+        if (mode === "face") {
+          const w = 28, h = 26, x = Math.round(J.head[0] - w / 2), y = Math.round(J.head[1] - h * 0.62);
+          c.width = w;
+          c.height = h;
+          g.drawImage(cv2, x, y, w, h, 0, 0, w, h);
+        } else {
+          const t = document.createElement("canvas");
+          t.width = cv2.width;
+          t.height = cv2.height;
+          const tg2 = t.getContext("2d");
+          tg2.drawImage(cv2, 0, 0);
+          const d = tg2.getImageData(0, 0, t.width, t.height).data;
+          let x02 = t.width, y02 = t.height, x1 = 0, y1 = 0;
+          for (let y = 0; y < t.height; y++) for (let x = 0; x < t.width; x++) if (d[(y * t.width + x) * 4 + 3] > 8) {
+            if (x < x02) x02 = x;
+            if (x > x1) x1 = x;
+            if (y < y02) y02 = y;
+            if (y > y1) y1 = y;
+          }
+          if (x1 < x02) return null;
+          c.width = x1 - x02 + 3;
+          c.height = y1 - y02 + 3;
+          g.drawImage(t, x02 - 1, y02 - 1, c.width, c.height, 0, 0, c.width, c.height);
+        }
+        url = c.toDataURL();
+      } catch (e) {
+        url = null;
+      }
+      PORTRAITS.set(key, url);
+      return url;
     }, render = function() {
       ctx.imageSmoothingEnabled = false;
       hudBegin();
@@ -31966,6 +32265,8 @@ void main(){
         live,
         FONT,
         readLook,
+        portrait,
+        cloud: () => cloud,
         lookOptions: (tiers) => {
           const pools = (tiers || ["leather", "mail", "plate"]).map((t) => model3d_default.rankPools[t]).filter(Boolean), ok = (k, v2) => !v2 || pools.some((p) => p[k].includes(v2));
           return Object.fromEntries([["head", "lkhead", "heads"], ["body", "lkbody", "bodies"], ["liv", "lkliv", null], ["metal", "lkmetal", "metals"]].map(([k, id, pk]) => [k, [...$(id).options].filter((o) => !pk || ok(pk, o.value)).map((o) => ({ v: o.value, l: o.textContent }))]));
@@ -31993,6 +32294,16 @@ void main(){
         $("netbase").value = d.wsBase;
         sim.say("info", "Discord: signed in as " + d.name + ".");
         if (!party) netConnect();
+        if (d.token) {
+          cloud.setToken(d.token);
+          cloud.load().then((r) => {
+            if (r && r.save) runui.loadSave(r.save);
+            else runui.saveNow();
+          }).catch(() => sim.say("info", "Save server unreachable: playing on this device's save."));
+        }
+        addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "hidden") cloud.flush(true);
+        });
         setInterval(() => {
           const r = runui.run;
           d.setPresence(r.phase === "camp" ? "In camp" : r.phase === "dead" ? "Fell in the field" : "Wave " + r.wave, runui.profile.name + " \xB7 Lv " + runui.profile.level, performance.now() / 1e3);
@@ -32024,6 +32335,7 @@ void main(){
     const cv = $("stage");
     let ctx = cv.getContext("2d");
     const live = new Sim(CFG);
+    const cloud = makeCloud();
     let runui = null;
     let sim = live;
     window.PW = {
@@ -32307,6 +32619,7 @@ void main(){
       const aw = CFG.weapons[q.weapon] || CFG.weapons.longsword, c = CFG.weaponClasses[aw.cls];
       return { twoHanded: c.twoHanded, kind: aw.kind, reach: c.reach };
     };
+    const PORTRAITS = /* @__PURE__ */ new Map();
     const LC = $("logo"), lg2 = LC.getContext("2d"), EC = $("elogo");
     const PALETTE = ["#d9b24a", "#e8e4d8", "#a82424", "#23468c", "#2f6b34", "#1c1c20", "#6b3f8f", "#c2602a", "#7fb0d9", "#8a6a45", "#5a5f68", "#f0d6a0"];
     let ltool = "draw", lcol = PALETTE[0], ldown = false, lsave = null;

@@ -31,3 +31,9 @@ The code side is ready; the steps below need your Discord and Cloudflare account
 - Every 5 waves the party votes (leave only if leave votes beat stay; ties and silence press on). If everyone falls, gold from the run is lost; gear, levels and skills stay.
 - Guests are trusted for their build (gear, stats are clamped to sane ranges, not verified).
 - Local test: `cd server && npx wrangler dev --local --port 8788`, open `http://127.0.0.1:8788/arena.html` in two windows, set Server `ws://127.0.0.1:8788` and the same Room in Test arena, press Connect.
+
+## Saves and the Book of Swords
+- Inside Discord the save lives on the server (D1 database `project-war`, free plan), under the player's Discord account: the Worker checks the login token with Discord (`/data/me`). The server's save wins on load; with none yet, the device's save is uploaded.
+- Writes are throttled (one per few seconds per player). Outside Discord the browser's save is all there is.
+- The Book of Swords (`/data/book`, `/data/profile/<id>`) lists everyone who has played, newest first, with the public profile only: name, level, profile model, attributes, record. No inventory or gold.
+- Saves are trusted from the player's own game (clamped, not verified), so a player can edit their own numbers.

@@ -14,3 +14,4 @@ Current state types made this way: idle, walk, hurt, dying, falling, clash, parr
 - Never anything that costs money: free plans and free tiers only (Cloudflare Worker + Durable Object on the free plan, GitHub Pages/raw).
 - The live page is `docs/index.html` (copy of `dist/arena.html` built with `DISCORD_CLIENT_ID=1575635299189653668 npm run build`); the `project-war` Worker serves it from the repo, so a push updates the game.
 - Run `npm test` before pushing.
+- Server data: `/data/me` (save, by Discord token), `/data/book`, `/data/profile/<id>` on the `project-war` Worker, D1 `project-war` (id 8cfe8027-14b7-4e81-9404-3b56aef642ca). The Worker is deployed through the Cloudflare connector; keep `server/worker.js` and `server/party-room.js` in step with what is deployed.

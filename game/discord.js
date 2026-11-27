@@ -17,7 +17,7 @@ export async function initDiscord({ clientId, onParticipants, onError } = {}) {
     const res = await fetch('/api/token', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }) });
     if (!res.ok) throw new Error('Token exchange failed (' + res.status + ')');
     const { access_token } = await res.json();
-    const auth = await sdk.commands.authenticate({ access_token });
+    const auth = await sdk.commands.authenticate({ access_token }); d.token = access_token;      // kept for the save server, which checks it with Discord
     d.user = auth && auth.user; d.name = (d.user && (d.user.global_name || d.user.username)) || 'Player';
     const setP = list => { d.participants = (list || []).map(p => ({ id: p.id, name: p.global_name || p.username, avatar: p.avatar })); if (onParticipants) onParticipants(d.participants); };
     try { const r = await sdk.commands.getInstanceConnectedParticipants(); setP(r.participants); } catch (e) { }
