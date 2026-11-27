@@ -695,7 +695,12 @@ const BASE_STYLES = [{ id: 'cut', name: 'Cut', hands: 0 }, { id: 'chop', name: '
   function loadLibrary(txt, quiet) {
     try {
       const o = JSON.parse(txt), user = o.anims || [o];
-      const arr = BUILTIN_ANIMS.filter(b => !user.some(u => u.id === b.id)).concat(user);
+      let arr = BUILTIN_ANIMS.filter(b => !user.some(u => u.id === b.id)).concat(user);
+      { // one idle, walk, damaged... per type and hand count wins: the last loaded. Put the one marked in game (else the newest made by hand, else the built-in) last.
+        const ATK = ['attack', 'grab', 'throw', 'slam', 'strike'], sk = x => (x.type || 'attack') + (x.load === '2' || (!x.load && x.two) ? 2 : 1), win = new Map();
+        for (const x of arr) { const t = x.type || 'attack'; if (ATK.includes(t) || !x.keys || !x.keys.length) continue; const k = sk(x), w = win.get(k); if (!w || x.eq || (!w.eq && (!x.base || w.base))) win.set(k, x); }
+        const W = new Set(win.values()); arr = arr.filter(x => !W.has(x)).concat([...W]);
+      }
       M3.clearCustom(); for (const k in sim.moves) if (k !== CFG.enemy.move) delete sim.moves[k];        // built-ins may have been replaced: every move is baked again
       const sel = $('atkstyle'); sel.querySelectorAll('option[data-custom]').forEach(x => x.remove());
       const info = []; let first = null; roleStyle = {}; libStyles = []; baseJuggle = [];

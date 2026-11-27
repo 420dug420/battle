@@ -32962,7 +32962,18 @@ void main(){
     }, loadLibrary = function(txt, quiet) {
       try {
         const o = JSON.parse(txt), user = o.anims || [o];
-        const arr = anims_default.filter((b) => !user.some((u) => u.id === b.id)).concat(user);
+        let arr = anims_default.filter((b) => !user.some((u) => u.id === b.id)).concat(user);
+        {
+          const ATK = ["attack", "grab", "throw", "slam", "strike"], sk = (x) => (x.type || "attack") + (x.load === "2" || !x.load && x.two ? 2 : 1), win = /* @__PURE__ */ new Map();
+          for (const x of arr) {
+            const t = x.type || "attack";
+            if (ATK.includes(t) || !x.keys || !x.keys.length) continue;
+            const k = sk(x), w = win.get(k);
+            if (!w || x.eq || !w.eq && (!x.base || w.base)) win.set(k, x);
+          }
+          const W2 = new Set(win.values());
+          arr = arr.filter((x) => !W2.has(x)).concat([...W2]);
+        }
         model3d_default.clearCustom();
         for (const k in sim.moves) if (k !== CFG.enemy.move) delete sim.moves[k];
         const sel = $("atkstyle");

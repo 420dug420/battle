@@ -59,7 +59,7 @@ input[type=range]{width:100%}.leg{display:inline-block;width:10px;height:10px;bo
 <div id="tl"></div><input type="range" id="fr" min="0" max="89" value="0">
 <div class="row"><button id="b1">⏮</button><button id="bm">◀ 1</button><button id="play">▶ Play</button><button id="bp">1 ▶</button><button id="be">⏭</button>
 <select id="spd" style="width:auto"><option value="0.1">0.1x</option><option value="0.25" selected>0.25x</option><option value="0.5">0.5x</option><option value="1">1x</option></select>
-<button id="addk" class="go">◆ Key here (K)</button><button id="delk">Delete key (Del)</button><button id="ctk">Hit lands here</button><button id="endk" title="Adds a key that returns the fighter to the idle stance">End → idle stance</button></div>
+<button id="addk" class="go">◆ Key here (K)</button><button id="delk">Delete key (Del)</button><button id="ctk">Hit lands here</button><button id="endk" title="Adds a key that returns the fighter to the idle stance the game uses (the one marked ★ in game)">End → idle stance</button><button id="eqk" title="Make this idle / walk / stance the one the game uses">★ Use in game</button></div>
 <div id="info"></div>
 <div class="hint" id="help"></div>
 </div>
@@ -15738,7 +15738,11 @@ function mkAnim(type,load,name){return{id:uid(),name:name||({attack:'New attack'
 function cur(){return lib.anims.find(a=>a.id===lib.sel)}
 const ONESHOT=['hurt','dying','falling','clash','parry','dash','jump','shoot','bash','charge','secondwind','whirl','hookthrow'],GRABT=['grab','throw','slam','strike'],isGrab=a=>GRABT.includes(a.type),isAtk=a=>a.type==='attack'||isGrab(a),isLoop=a=>!isAtk(a),NF=a=>isLoop(a)?60:90,twoOf=a=>a.load==='2',shieldOf=a=>a.load==='1s';
 function dur(){return +$('dur').value/10}
-function reg(){M.clearCustom();const c=cur();for(const a of lib.anims)if(a!==c&&a.keys.length)M.registerAnim(regDef(a));if(c&&c.keys.length)M.registerAnim(regDef(c));save()}
+/* which idle, walk, damaged... the game uses: one per type and hand count. The one marked "in game"; if none is marked, the newest one you made yourself; else the built-in. It is registered and exported last, since the last one loaded wins. */
+const SLOTK=a=>a.type+(a.load==='2'?2:1),EQABLE=a=>!['attack','grab','throw','slam','strike'].includes(a.type);
+function picked(a){const L=lib.anims.filter(x=>x.keys.length&&SLOTK(x)===SLOTK(a));return L.find(x=>x.eq)||L.filter(x=>!x.base).pop()||L.pop()||null}
+function ordered(){const out=lib.anims.filter(a=>!EQABLE(a)||picked(a)!==a);return out.concat(lib.anims.filter(a=>EQABLE(a)&&picked(a)===a))}
+function reg(){M.clearCustom();const c=cur();for(const a of ordered())if(a!==c&&a.keys.length)M.registerAnim(regDef(a));if(c&&c.keys.length)M.registerAnim(regDef(c));save()}
 function regDef(a){return{base:a.type==='attack'?a.base:undefined,id:a.id,type:a.type,two:twoOf(a),contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,keys:a.keys,vm:!!a.vm}}
 function fobjBase(a0){const a=a0||cur();return{role:'p',tier:$('tier').value,two:twoOf(a),shield:shieldOf(a),face:1,broken:false,tabard:'#c2413b',helm:'#98a2ae',moving:false,walkT:0,flash:0,flashMax:.2,t:0}}
 function gv0(a,fr){const n=NF(a),c=Math.max(1,a.contact||36),hu=0.4;if(a.type==='grab')return{kind:'grab',u:fr/(n-1),hu};
@@ -15806,15 +15810,15 @@ function drawHit(a,j,d,Z,W){const hb=hitOf(a);if(!$('hbshow').checked||hb.shape=
   else{oc.beginPath();oc.arc(j.pelvis[0]*Z,j.pelvis[1]*Z,hb.r*PXU*Z,0,7);oc.fill();oc.stroke()}
   oc.restore()}
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]);
-function exportAnim(a){return{id:a.id,name:a.name,type:a.type,load:a.load,contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,hit:a.type==='attack'?clone(hitOf(a)):undefined,role:a.type==='attack'&&a.role?a.role:undefined,juggle:a.type==='attack'&&a.juggle?true:undefined,base:a.base||undefined,vm:isGrab(a)&&a.vm?true:undefined,keys:a.keys.map(k=>{const o={f:k.f};for(const key in DEF0)o[key]=+(+(k[key]==null?DEF0[key]:k[key])).toFixed(3);if(isGrab(a)&&k.vz!=null){o.vz=+(+k.vz).toFixed(3);o.vy=+(+k.vy).toFixed(3);o.vr=+(+k.vr).toFixed(1)}return o})}}
-function exportLib(){return{v:2,anims:lib.anims.map(exportAnim)}}
+function exportAnim(a){return{id:a.id,name:a.name,type:a.type,load:a.load,contact:a.contact,loop:a.loop,len:NF(a),end:NF(a)-1,hit:a.type==='attack'?clone(hitOf(a)):undefined,role:a.type==='attack'&&a.role?a.role:undefined,juggle:a.type==='attack'&&a.juggle?true:undefined,base:a.base||undefined,eq:EQABLE(a)&&a.eq?true:undefined,vm:isGrab(a)&&a.vm?true:undefined,keys:a.keys.map(k=>{const o={f:k.f};for(const key in DEF0)o[key]=+(+(k[key]==null?DEF0[key]:k[key])).toFixed(3);if(isGrab(a)&&k.vz!=null){o.vz=+(+k.vz).toFixed(3);o.vy=+(+k.vy).toFixed(3);o.vr=+(+k.vr).toFixed(1)}return o})}}
+function exportLib(){return{v:2,anims:ordered().map(exportAnim)}}
 function renderTL(a,n){const tl=$('tl');tl.innerHTML='';const w=tl.clientWidth,X=f=>f/(n-1)*(w-12)+6;
   for(const k of a.keys){const d=document.createElement('div');d.className='k'+(k.f===frame?' sel':'');d.style.left=X(k.f)+'px';d.title='frame '+(k.f+1);d.onclick=()=>{setPlay(false);go(k.f)};tl.appendChild(d)}
   if(isAtk(a)&&a.type!=='grab'&&a.type!=='attack'){const c=document.createElement('div');c.className='ct';c.style.left=X(a.contact)+'px';c.title='finisher lands';tl.appendChild(c)}
   if(a.type==='attack'){const hb=hitOf(a);if(hb.shape!=='none'){const b=document.createElement('div');b.className='hbbar';b.style.left=X(hb.f0)+'px';b.style.width=Math.max(3,X(hb.f1)-X(hb.f0))+'px';b.title='hitbox active: frames '+(hb.f0+1)+' to '+(hb.f1+1);tl.appendChild(b)}const c=document.createElement('div');c.className='ct';c.style.left=X(a.contact)+'px';c.title='hit lands';tl.appendChild(c)}
   const p=document.createElement('div');p.className='ph';p.style.left=X(frame)+'px';tl.appendChild(p)}
 function renderList(){const L=$('alist');L.innerHTML='';for(const a of lib.anims){const d=document.createElement('div');d.className='ai'+(a.id===lib.sel?' sel':'');
-  d.innerHTML='<span>'+esc(a.name)+'</span><small>'+a.type+(a.role?' ('+a.role+')':'')+(a.juggle?' [juggle]':'')+(a.base?' · built-in':'')+' · '+(a.load==='2'?'2H':a.load==='1s'?'1H+shield':'1H')+'</small>';d.onclick=()=>select(a.id);L.appendChild(d)}}
+  d.innerHTML='<span>'+esc(a.name)+'</span><small>'+a.type+(a.role?' ('+a.role+')':'')+(a.juggle?' [juggle]':'')+(a.base?' · built-in':'')+(EQABLE(a)&&a.keys.length&&picked(a)===a?' · ★ in game':'')+' · '+(a.load==='2'?'2H':a.load==='1s'?'1H+shield':'1H')+'</small>';d.onclick=()=>select(a.id);L.appendChild(d)}}
 function select(id){lib.sel=id;const a=cur();setPlay(false);$('name').value=a.name;$('role').value=a.role||'light';$('juggle').checked=!!a.juggle;$('rolebox').style.display=a.type==='attack'?'':'none';$('load').value=a.load;$('loop').value=Math.round(a.loop*10);$('lv').textContent=a.loop.toFixed(1);frame=a.keys.length?a.keys[0].f:0;renderList();reg();draw()}
 function go(f){frame=Math.max(0,Math.min(NF(cur())-1,f));draw()}
 for(const[id,lab,mn,mx,st,sh,vv]of SL){const r=document.createElement('div');r.className='sl';if(sh)r.dataset.sh=1;if(vv)r.dataset.v=1;r.innerHTML='<span>'+lab+'</span><input type="range" id="s_'+id+'" min="'+mn+'" max="'+mx+'" step="'+st+'"><span id="v_'+id+'"></span>';$('sliders').appendChild(r);
@@ -15863,7 +15867,7 @@ $('addk').onclick=()=>{ensureKey();reg();draw()};
 $('delk').onclick=()=>{const a=cur();a.keys=a.keys.filter(k=>k.f!==frame);reg();draw()};
 $('endk').onclick=()=>{const a=cur();if(!isAtk(a)||a.type==='grab'){note('End to idle is for attacks, throws, slams and strikes. The grab hold keeps its last pose.');return}
   const last=a.keys.length?a.keys[a.keys.length-1].f:0,at=frame>last?frame:Math.min(NF(a)-1,last+10);
-  const f=fobjBase();f.t=0;M.pose('p',f);const prm=Object.assign({},DEF0,M.paramsFromP(M.lastP),{f:at});
+  const f=fobjBase();f.t=0;const ida=lib.anims.find(x=>x.type==='idle'&&x.keys.length&&SLOTK(x)===('idle'+(f.two?2:1))&&picked(x)===x);if(ida)M.registerAnim(regDef(ida));M.pose('p',f);const prm=Object.assign({},DEF0,M.paramsFromP(M.lastP),{f:at});
   a.keys=a.keys.filter(k=>k.f!==at);a.keys.push(prm);a.keys.sort((x,y)=>x.f-y.f);frame=at;reg();save();draw();note('Added an idle-stance key at frame '+(at+1)+'.')};
 $('vman').onchange=e=>{const a=cur();a.vm=e.target.checked;if(a.vm)for(const k of a.keys)if(k.vz==null)Object.assign(k,vdef(a,k.f));reg();draw()};$('vshow').onchange=()=>draw();
 $('ctk').onclick=()=>{const a=cur();a.contact=Math.max(1,Math.min(88,frame));reg();draw()};
@@ -15893,7 +15897,8 @@ $('basel').onclick=()=>{M.clearCustom();let added=0,kept=0;
       const NICE={whirl:'whirlwind',hookthrow:'hook throw',secondwind:'second wind',hurt:'damaged',shieldup:'shield raised',bash:'shield slam',carry:'carry (ally)',launched:'launched (juggled)'};const a=mkAnim(type,load,'Built-in '+(type==='attack'?nm.toLowerCase():(NICE[nm]||nm))+tag);a.base=base;if(BASE_LOOPS[type])a.loop=BASE_LOOPS[type];if(type==='attack')a.contact=36;
       a.keys=sampleBase(a,st);if(a.keys.length){lib.anims.push(a);added++}}}
   reg();save();renderList();draw();note('Loaded '+added+' built-in animations'+(kept?' ('+kept+' already in the list, left as they are)':'')+'. Edit any of them; export, then load the file in the game and the edited one replaces the built-in.')};
-$('new').onclick=()=>{const a=mkAnim($('newtype').value,cur()?cur().load:'1s');lib.anims.push(a);select(a.id)};
+$('new').onclick=()=>{const a=mkAnim($('newtype').value,cur()?cur().load:'1s');if(EQABLE(a)){for(const x of lib.anims)if(SLOTK(x)===SLOTK(a))x.eq=false;a.eq=true}lib.anims.push(a);select(a.id)};
+$('eqk').onclick=()=>{const a=cur();if(!a||!EQABLE(a)){note('Attacks are picked in the game itself. This is for idle, walk, damaged and the other stances.');return}for(const x of lib.anims)if(SLOTK(x)===SLOTK(a))x.eq=false;a.eq=true;reg();save();renderList();draw();note('"'+a.name+'" is now the one the game uses ('+(a.load==='2'?'2H':'1H')+'). End → idle stance uses it too.')};
 $('dup').onclick=()=>{const a=clone(cur());a.id=uid();a.name+=' copy';lib.anims.push(a);select(a.id)};
 $('del').onclick=()=>{const a=cur();if(!confirm('Delete "'+a.name+'"?'))return;try{const g=JSON.parse(localStorage.getItem('pwgone')||'[]');g.push(a.id);localStorage.setItem('pwgone',JSON.stringify(g))}catch(e){}lib.anims=lib.anims.filter(x=>x!==a);if(!lib.anims.length)lib.anims.push(mkAnim('attack'));select(lib.anims[0].id)};
 for(const[id,lab,mn,mx,st,t]of HBSL){const r=document.createElement('div');r.className='sl';r.id='hr_'+id;r.innerHTML='<span>'+lab+'</span><input type="range" id="hs_'+id+'" min="'+mn+'" max="'+mx+'" step="'+st+'"><span id="hv_'+id+'"></span>';$('hbsl').appendChild(r);
