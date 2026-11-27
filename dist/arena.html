@@ -30691,7 +30691,7 @@ void main(){
             hurt: q.hurt,
             hurtMax: 0.6,
             st: playerState(q),
-            style: q.swing && q.swing.kind && q.swing.kind !== "light" ? (mine ? roleStyle : q.roleStyles || {})[q.swing.kind] || { heavy: "chop", dash: qw.twoHanded ? "lunge" : "cut", counter: "cut", jump: "chop" }[q.swing.kind] : mine ? look.style : q.swing && q.swing.style || "cut"
+            style: q.swing && q.swing.kind && q.swing.kind !== "light" ? (mine && !(runui && runui.active) ? roleStyle : q.roleStyles || {})[q.swing.kind] || { heavy: "chop", dash: qw.twoHanded ? "lunge" : "cut", counter: "cut", jump: "chop" }[q.swing.kind] : q.swing && q.swing.style || (mine ? look.style : "cut")
           }, model3d_default.grabAtt(sim, qw.twoHanded)));
         } else if (it.kind === "a") {
           const a = it.a, aw = CFG.weapons[a.weapon], two = CFG.weaponClasses[aw.cls].twoHanded, L = a.look || model3d_default.enemyLook(a.tier, a.lookSeed);
